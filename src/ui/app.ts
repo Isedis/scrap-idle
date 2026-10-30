@@ -24,6 +24,7 @@ export { textBar } from './dom';
 import { Scene } from './scene';
 import { RecyclePanel } from './recyclePanel';
 import { JournalPanel } from './journalPanel';
+import { Dread } from './dread';
 import { eventById, unwatched, watch, type EventKind, type Recording } from '../game/story';
 import { RECYCLE_AT, hasNode, milestoneBase, passiveBonus } from '../game/layers';
 import { STAGES, depthMeters, formatDepth, stageIndex, threatActive } from '../game/threat';
@@ -119,6 +120,8 @@ export class App {
   /** Live events on screen right now, by kind, with the recording a tap would catch. */
   private live = new Map<EventKind, Recording>();
   private replaying = false;
+  private dread!: Dread;
+  private sharpButton!: HTMLButtonElement;
   private panels = new Map<Tab, HTMLElement>();
   private tabs = new Map<Tab, HTMLButtonElement>();
   private toastEl!: HTMLElement;
@@ -214,6 +217,9 @@ export class App {
     this.lostEl.setAttribute('role', 'alert');
 
     this.root.append(header, main, nav, this.toastEl, this.lostEl);
+    this.dread = new Dread(this.root, main, (line) => this.typeLine(line));
+    this.sharpButton.setAttribute('aria-pressed', String(this.dread.sharp));
+    this.sharpButton.textContent = this.dread.sharp ? 'Резкие моменты: вкл' : 'Резкие моменты: выкл';
     this.show('dump');
   }
 
@@ -618,6 +624,18 @@ export class App {
     });
     panel.append(this.updateStatus, this.updateButton);
 
+    panel.append(el('h2', 'panel-title', 'Страх'));
+    panel.append(el('p', 'note', 'Вспышки, разрывы экрана и лицо на последней стадии угрозы. Выключите, если мерцание вам вредно.'));
+    this.sharpButton = el('button', 'btn', 'Резкие моменты: вкл');
+    this.sharpButton.type = 'button';
+    this.sharpButton.id = 'sharp';
+    this.sharpButton.addEventListener('click', () => {
+      this.dread.setSharp(!this.dread.sharp);
+      this.sharpButton.setAttribute('aria-pressed', String(this.dread.sharp));
+      this.sharpButton.textContent = this.dread.sharp ? 'Резкие моменты: вкл' : 'Резкие моменты: выкл';
+    });
+    panel.append(this.sharpButton);
+
     panel.append(el('h2', 'panel-title', 'Сохранение'));
     panel.append(el('p', 'note', 'Игра сохраняется сама каждые 10 секунд и при сворачивании.'));
 
@@ -735,6 +753,7 @@ export class App {
   /** Every animation frame: only the camera feed. */
   frame(dt: number): void {
     const state = this.getState();
+    if (!this.losing) this.dread.update(dt, stageIndex(state.threat.level));
     this.scene.update(dt, {
       owned: state.owned,
       rate: ratePerSecond(state),
@@ -893,6 +912,8 @@ export class App {
     this.threatBar.textContent = `угроза ${textBar(level, 10)} ${Math.floor(level * 100)}%`;
     this.depthEl.textContent = `${STAGES[stage].name.toUpperCase()} · объект на глубине ${formatDepth(depthMeters(state.totalTrash))} ▼`;
     this.root.dataset.threat = String(stage);
+    // The light button begs as it gets worse.
+    this.lightButton.textContent = stage >= 4 ? 'СВЕТ!!' : stage >= 3 ? 'Свет!' : 'Прожектор';
     if (level >= 1) this.loseRun();
   }
 }

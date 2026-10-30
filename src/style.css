@@ -465,9 +465,17 @@ body::after {
   background: radial-gradient(ellipse at 50% 45%, transparent 45%, rgb(0 0 0 / 0.55) 100%);
 }
 
+#app[data-threat='3']::before { animation: heartbeat 1.2s ease-in-out infinite; }
+
 #app[data-threat='4']::before {
-  background: radial-gradient(ellipse at 50% 45%, transparent 30%, rgb(10 0 0 / 0.8) 100%);
-  animation: dread 3s ease-in-out infinite;
+  background: radial-gradient(ellipse at 50% 45%, transparent 30%, rgb(25 0 0 / 0.85) 100%);
+  animation: heartbeat 0.62s ease-in-out infinite;
+}
+
+/* Two beats, then a pause: the edges close in on each one. */
+@keyframes heartbeat {
+  0%, 40%, 100% { opacity: 0.75; }
+  10%, 26% { opacity: 1; }
 }
 
 #app[data-threat='4'] .trash { animation: shake 0.25s steps(2) infinite; }
@@ -479,6 +487,84 @@ body::after {
 @keyframes shake {
   50% { transform: translate(1px, -1px); }
 }
+
+/* ---- The interface breaking under the threat ---- */
+.dread-glitch {
+  color: var(--danger) !important;
+  text-shadow: -2px 0 rgb(255 60 60 / 0.7), 2px 0 rgb(60 255 255 / 0.5) !important;
+}
+
+.dread-whisper {
+  position: fixed;
+  z-index: 45;
+  max-width: 90vw;
+  pointer-events: none;
+  color: var(--danger);
+  font-size: clamp(28px, 10vw, 64px);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  opacity: 0;
+  filter: blur(1px);
+}
+
+.dread-whisper.show { animation: whisper 3.2s ease-in-out; }
+
+@keyframes whisper {
+  30%, 60% { opacity: var(--strength); }
+  100% { opacity: 0; transform: scale(1.08); }
+}
+
+.dread-black,
+.dread-face {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  background: #000;
+  opacity: 0;
+}
+
+.dread-black.on,
+.dread-face.on { opacity: 1; }
+
+/* Too close to the lens: the face overflows the screen and is cut off by it. */
+.dread-face { z-index: 71; overflow: hidden; }
+.dread-face svg {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: max(150vw, 110vh);
+  height: max(150vw, 110vh);
+  transform: translate(-46%, -50%);
+}
+.dread-face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(transparent 0 2px, rgb(0 0 0 / 0.35) 2px 3px);
+}
+.dread-face.on svg { animation: face-in 0.3s ease-out; }
+
+@keyframes face-in {
+  from { transform: translate(-46%, -50%) scale(1.25); filter: brightness(2); }
+  60% { transform: translate(-45%, -49%) scale(1.02); }
+}
+
+main.dread-tear {
+  transform: translateX(9px) skewX(-4deg);
+  filter: contrast(1.6) brightness(1.3);
+}
+
+/* Letters split into red and cyan under pressure. */
+#app[data-threat='3'] header,
+#app[data-threat='3'] .panels { text-shadow: -1px 0 rgb(255 60 60 / 0.4), 1px 0 rgb(60 255 255 / 0.3); }
+#app[data-threat='4'] header,
+#app[data-threat='4'] .panels { text-shadow: -2px 0 rgb(255 60 60 / 0.55), 2px 0 rgb(60 255 255 / 0.4); }
+
+/* Rows can't keep still at the edge. */
+#app[data-threat='4'] .producer:nth-child(odd) { animation: shake 0.3s steps(2) infinite; }
+#app[data-threat='4'] .producer:nth-child(3n) { animation: shake 0.45s steps(2) infinite reverse; }
 
 /* The lost shift: a black screen with camera zero. */
 .lost {
