@@ -216,6 +216,9 @@ export class App {
     this.incomeEl = el('div', 'income-panel');
     this.incomeEl.hidden = true;
     figures.addEventListener('click', () => {
+      // The header grows with the breakdown: a notice under it would slide over the floodlight.
+      this.toastQueue = [];
+      this.nextToast();
       this.incomeEl.hidden = !this.incomeEl.hidden;
       figures.setAttribute('aria-expanded', String(!this.incomeEl.hidden));
       this.render();
@@ -322,6 +325,8 @@ export class App {
     this.toastEl = el('div', 'toast');
     this.toastEl.setAttribute('role', 'status');
     this.toastEl.hidden = true;
+    // A tap clears the notice; whatever waited behind it comes next.
+    this.toastEl.addEventListener('click', () => this.nextToast());
 
     this.lostEl = el('div', 'lost');
     this.lostEl.hidden = true;

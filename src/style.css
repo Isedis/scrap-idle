@@ -950,11 +950,12 @@ button { font: inherit; color: inherit; }
 /* ---- Toast ---- */
 .toast {
   /* Under the header (set when shown): down by the tab bar it covered the buy buttons,
-     over the header it covered the floodlight. Taps go through it to whatever is below. */
+     over the header it covered the floodlight. A tap clears it. */
   position: fixed;
   left: 50%;
   top: calc(env(safe-area-inset-top, 0px) + 6px);
-  pointer-events: none;
+  min-height: 44px;
+  cursor: pointer;
   z-index: 20;
   width: max-content;
   max-width: calc(100% - 32px);
