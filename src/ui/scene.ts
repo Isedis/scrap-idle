@@ -958,12 +958,12 @@ export class Scene {
 
   // ---- The fence, the cat and the raccoon ---------------------------------------
 
-  /** Top of the yard's fence, right of the heap. */
+  /** Top of the yard's fence: tall enough that the cat walks above the press roof. */
   private get fenceTop() {
-    return this.horizon - 16;
+    return this.horizon - 36;
   }
 
-  /** A chain-link fence on concrete posts along the back of the yard, right of the heap. */
+  /** A tall chain-link perimeter fence on concrete posts, behind the yard right of the heap. */
   private drawFence(): void {
     const { ctx } = this;
     const x0 = this.heapX + this.heapHalf * 0.6;
@@ -982,13 +982,13 @@ export class Scene {
     ctx.stroke();
     ctx.globalAlpha = 1;
     this.line(x0, top, this.w, top, C.hub, 1.4);
-    this.line(x0, top + 8, this.w, top + 8, C.deep, 1);
+    this.line(x0, top + 12, this.w, top + 12, C.deep, 1);
     for (let x = x0; x < this.w; x += 14) this.box(x - 1, top - 1, 2.5, y - top + 1, C.far, 0.8);
   }
 
   /** Where the cat is on the fence: comes in from the right, sits, jumps down behind it. */
   private catX(t: number): number {
-    const stop = this.w * 0.86;
+    const stop = this.w * 0.9;
     return t < 2.2 ? this.w + 12 - (this.w + 12 - stop) * (t / 2.2) : stop;
   }
 
