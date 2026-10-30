@@ -1445,3 +1445,13 @@ main.hunt-step { transform: translate(-2px, 2px); }
   animation: urge 1.2s steps(2) infinite;
 }
 .alert.alarm { animation: alarm 0.6s ease 3; }
+
+/* Trouble on a tab: a red mark on the left, the tab itself red. */
+.badge.danger {
+  left: auto;
+  right: calc(50% + 8px);
+  background: var(--danger);
+  font-weight: 700;
+  animation: urge 1s steps(2) infinite;
+}
+.tab.danger { color: var(--danger); }

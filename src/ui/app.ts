@@ -165,6 +165,8 @@ export class App {
   private layerSwitch!: HTMLElement;
   private layerButtons = new Map<'recycle' | 'sorting', HTMLButtonElement>();
   private knownSortOpen = false;
+  /** Red marks on the tabs whose defence needs the player. */
+  private dangerMarks = new Map<'dump' | 'plant', HTMLElement>();
   /** What the Layers badge called for that the player has already seen on the tab. */
   private layersSeen = new Set<string>();
   private autoTab!: HTMLButtonElement;
@@ -367,7 +369,15 @@ export class App {
     this.autoBadge.hidden = true;
     this.autoTab.append(this.autoBadge);
     this.autoTab.hidden = true;
-    nav.append(this.tabButton('dump', 'Свалка', ICONS.heap), upgradesTab, this.recycleTab, this.autoTab, journalTab, settingsTab);
+    const dumpTab = this.tabButton('dump', 'Свалка', ICONS.heap);
+    // A red mark on the tab whose defence needs the player, on the other side from the amber one.
+    for (const [tab, at] of [[dumpTab, 'dump'], [this.recycleTab, 'plant']] as const) {
+      const mark = el('span', 'badge danger', '⚠');
+      mark.hidden = true;
+      tab.append(mark);
+      this.dangerMarks.set(at, mark);
+    }
+    nav.append(dumpTab, upgradesTab, this.recycleTab, this.autoTab, journalTab, settingsTab);
 
     this.toastEl = el('div', 'toast');
     this.toastEl.setAttribute('role', 'status');
@@ -1441,6 +1451,12 @@ export class App {
       level >= 0.7 && { key: 'threat', at: 'dump', text: `Угроза ${pct(level)} · прожектор → Свалка` },
       h.phase === 'idle' && h.meter >= 0.7 && { key: 'heard', at: 'plant', text: `Оно слушает ${pct(h.meter)} · убавьте шум → Цех` },
     ];
+    // The tabs themselves show where the trouble is, whichever tab is open.
+    for (const [at, mark] of this.dangerMarks) {
+      const on = dangers.some((x) => x && x.at === at);
+      mark.hidden = !on;
+      this.tabs.get(at === 'dump' ? 'dump' : 'recycle')!.classList.toggle('danger', on);
+    }
     const onDump = !this.panels.get('dump')!.hidden;
     const onPlant = !this.recyclePanel.root.hidden;
     // The tab on screen already shows its own danger: the warning points to the other one.
