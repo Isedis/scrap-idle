@@ -28,8 +28,8 @@ describe('threat level', () => {
     expect(climb(0, run, full * 2, false)).toBe(1);
     expect(climb(0, run, full, true)).toBeCloseTo(0.1);
     expect(climb(0, run, full * 100, true)).toBe(OFFLINE_CAP);
-    // Offline never pulls a higher online level down.
-    expect(climb(0.95, run, 10, true)).toBe(0.95);
+    // A level above the cap comes down to it while closed, so there is time to react on return.
+    expect(climb(0.97, run, 10, true)).toBe(OFFLINE_CAP);
   });
 
   it('pays in the dark, then bites', () => {
@@ -124,5 +124,15 @@ describe('depth', () => {
     expect(formatDepth(D(37.5))).toBe('37.5 м');
     expect(formatDepth(D(0.004))).toBe('4.00 мм');
     expect(formatDepth(D(3e-12))).toBe('3.00e-12 м');
+  });
+});
+
+describe('coming back', () => {
+  it('a level saved near the edge never burns the run on return', () => {
+    const s = newGame(0);
+    s.runTrash = THREAT_STARTS_AT;
+    s.threat.level = 0.99;
+    applyOffline(s, 3600e3);
+    expect(s.threat.level).toBe(OFFLINE_CAP);
   });
 });

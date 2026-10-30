@@ -44,7 +44,9 @@ export function climb(level: number, runTrash: Decimal, seconds: number, offline
   if (!threatActive(runTrash)) return level;
   const rate = 1 / fillSeconds(runTrash) / (offline ? OFFLINE_SLOWDOWN : 1);
   const next = level + rate * seconds;
-  return offline ? Math.max(level, Math.min(next, OFFLINE_CAP)) : Math.min(next, 1);
+  // Closed, it never passes the cap, and a higher level left from before comes down to it:
+  // whoever comes back always has time to reach the floodlight.
+  return offline ? Math.min(next, OFFLINE_CAP) : Math.min(next, 1);
 }
 
 /**

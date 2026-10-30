@@ -11,6 +11,9 @@ const RENDER_MS = 100;
 /** Away longer than this, the player gets a "while you were gone" note. */
 const OFFLINE_NOTE_SECONDS = 60;
 
+/** A gap between frames longer than this means the game was in the background: it counts as closed. */
+const BACKGROUND_GAP_SECONDS = 5;
+
 let state: GameState = readSave() ?? newGame();
 const before = state.trash;
 const away = applyOffline(state);
@@ -22,12 +25,16 @@ const app = new App(
   (next) => (state = next),
 );
 app.render();
-if (away >= OFFLINE_NOTE_SECONDS) {
-  app.toast(`Пока вас не было, собрано ${format(state.trash.sub(before))} кг`);
+welcomeBack(away, before);
+
+/** Tells the player what happened while the game was closed or in the background. */
+function welcomeBack(seconds: number, trashBefore: typeof before): void {
+  if (seconds < OFFLINE_NOTE_SECONDS) return;
+  app.toast(`Пока вас не было, собрано ${format(state.trash.sub(trashBefore))} кг`);
   const caught = state.story.records.filter((r) => r.away && !r.watched).length;
   if (caught > 0) app.toast(`Камера записала движение: ${caught}. Записи в журнале`);
   // Once something has stirred, a long absence does not go unnoticed.
-  if (away >= 30 * 60 && state.story.records.length > 0) app.greet(away);
+  if (seconds >= 30 * 60 && state.story.records.length > 0) app.greet(seconds);
 }
 
 /** A hidden tab can come back after hours; the auto-buyer catches up at most this many buys per frame. */
@@ -37,10 +44,18 @@ let lastRender = 0;
 let autobuyClock = 0;
 function frame(): void {
   const now = Date.now();
-  // A hidden tab pauses frames; the gap is simulated exactly on return.
-  const dt = (now - state.lastTick) / 1000;
-  advance(state, dt);
-  state.lastTick = now;
+  let dt = (now - state.lastTick) / 1000;
+  if (dt > BACKGROUND_GAP_SECONDS) {
+    // The phone paused the game in the background: that time runs as if it was closed,
+    // so the threat climbs slowly and stops short of the edge.
+    const trashBefore = state.trash;
+    const seconds = applyOffline(state, now);
+    welcomeBack(seconds, trashBefore);
+    dt = 0;
+  } else {
+    advance(state, dt);
+    state.lastTick = now;
+  }
 
   const event = storyTick(state, dt);
   if (event) app.onEvent(event);
