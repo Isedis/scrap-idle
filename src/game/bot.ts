@@ -5,6 +5,12 @@ import {
   buyNode,
   buyUpgrade,
   canRecycle,
+  currentGain,
+  buyTrack,
+  buyRepeat,
+  repeatsOpen,
+  visibleTracks,
+  trackLevel,
   lightUp,
   newGame,
   purchasePlan,
@@ -15,7 +21,8 @@ import {
   type GameState,
 } from './state';
 import { milestonesReached, producerById } from './producers';
-import { NODES, canBuyNode, recycleGain } from './layers';
+import { NODES, REPEATS, canBuyNode, repeatCost } from './layers';
+import { trackCost } from './infinite';
 import type { Decimal } from './num';
 
 export interface PaceEvent {
@@ -87,7 +94,7 @@ export function simulate(seconds: number, opts: { recycle?: boolean } = {}): Sim
     const list: Option[] = [];
     // A shallow copy is enough: only counts and upgrade ids change.
     const gain = (apply: (c: GameState) => void) => {
-      const copy: GameState = { ...s, owned: { ...s.owned }, upgrades: [...s.upgrades] };
+      const copy: GameState = { ...s, owned: { ...s.owned }, upgrades: [...s.upgrades], tracks: { ...s.tracks } };
       apply(copy);
       return ratePerSecond(copy).sub(base).toNumber();
     };
@@ -97,6 +104,11 @@ export function simulate(seconds: number, opts: { recycle?: boolean } = {}): Sim
       // Players try a new producer early out of curiosity, so the first unit gets a head start.
       const curiosity = (s.owned[id] ?? 0) === 0 ? 4 : 1;
       if (extra > 0) list.push({ cost, payback: cost.toNumber() / extra / curiosity, apply: (st) => void buy(st, id) });
+    }
+    for (const t of visibleTracks(s)) {
+      const cost = trackCost(t, trackLevel(s, t.id));
+      const extra = gain((c) => (c.tracks[t.id] = trackLevel(c, t.id) + 1));
+      if (extra > 0) list.push({ cost, payback: cost.toNumber() / extra, apply: (st) => void buyTrack(st, t.id) });
     }
     for (const u of availableUpgrades(s)) {
       const extra = gain((c) => c.upgrades.push(u.id));
@@ -108,15 +120,20 @@ export function simulate(seconds: number, opts: { recycle?: boolean } = {}): Sim
   const spendTree = () => {
     for (;;) {
       const node = NODES.filter((n) => canBuyNode(s.recycle, n)).sort((a, b) => a.cost.cmp(b.cost))[0];
-      if (!node || !buyNode(s, node.id)) return;
+      if (!node || !buyNode(s, node.id)) break;
       events.push({ t, what: `дерево: ${node.name}` });
+    }
+    // Then the endless nodes, cheapest first.
+    while (repeatsOpen(s)) {
+      const next = REPEATS.map((r) => ({ r, cost: repeatCost(r, s.recycle.repeats[r.id] ?? 0) })).sort((a, b) => a.cost.cmp(b.cost))[0];
+      if (!buyRepeat(s, next.r.id)) break;
     }
   };
 
   note();
   while (t < seconds) {
     if (opts.recycle && canRecycle(s)) {
-      const gain = recycleGain(s.runTrash);
+      const gain = currentGain(s);
       if (gain.gte(s.recycle.total.max(1)) || s.runSeconds > RECYCLE_PATIENCE) {
         run.seconds = s.runSeconds;
         run.gain = recycle(s).toNumber();

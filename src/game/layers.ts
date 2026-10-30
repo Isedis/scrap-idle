@@ -17,10 +17,12 @@ export interface LayerState {
   nodes: string[];
   /** Shortest run that ended in this layer's reset, in seconds of play. */
   bestSeconds: number | null;
+  /** Levels of the endless nodes, by id. */
+  repeats: Record<string, number>;
 }
 
 export function newLayer(): LayerState {
-  return { points: D(0), total: D(0), resets: 0, nodes: [], bestSeconds: null };
+  return { points: D(0), total: D(0), resets: 0, nodes: [], bestSeconds: null, repeats: {} };
 }
 
 export interface LayerDef {
@@ -61,17 +63,17 @@ export function passiveBonus(total: Decimal): Decimal {
   return total.sqrt().mul(PASSIVE).add(1);
 }
 
-/** Recycled material a recycle would give right now. */
-export function recycleGain(runTrash: Decimal): Decimal {
+/** Recycled material a recycle would give right now; `mult` comes from the recipe node. */
+export function recycleGain(runTrash: Decimal, mult = 1): Decimal {
   if (runTrash.lt(RECYCLE_AT)) return D(0);
-  return runTrash.div(RECYCLE_AT).root(GAIN_ROOT).mul(GAIN_AT_THRESHOLD).floor();
+  return runTrash.div(RECYCLE_AT).root(GAIN_ROOT).mul(GAIN_AT_THRESHOLD * mult).floor();
 }
 
 /** Run trash at which the gain goes up by one. */
-export function nextGainAt(runTrash: Decimal): Decimal {
-  const next = recycleGain(runTrash).add(1).max(GAIN_AT_THRESHOLD);
+export function nextGainAt(runTrash: Decimal, mult = 1): Decimal {
+  const next = recycleGain(runTrash, mult).add(1);
   // A hair over the exact point, so float rounding never shows a goal that is one short.
-  return next.div(GAIN_AT_THRESHOLD).pow(GAIN_ROOT).mul(RECYCLE_AT).mul(1 + 1e-9);
+  return next.div(GAIN_AT_THRESHOLD * mult).pow(GAIN_ROOT).mul(RECYCLE_AT).max(RECYCLE_AT).mul(1 + 1e-9);
 }
 
 export type Branch = 'production' | 'start' | 'automation' | 'offline';
@@ -106,6 +108,7 @@ export const NODES: readonly NodeDef[] = [
   { id: 's4', branch: 'start', name: 'Стартовый капитал', text: 'Старт со 100 млн кг', cost: D(60), requires: 's3' },
   { id: 'a1', branch: 'automation', name: 'Автозакупщик', text: 'Сам покупает самого выгодного производителя раз в 2 с', cost: D(3) },
   { id: 'a2', branch: 'automation', name: 'Шустрый закупщик', text: 'Автозакупщик срабатывает 4 раза в секунду', cost: D(20), requires: 'a1' },
+  { id: 'a3', branch: 'automation', name: 'Автопереработчик', text: 'Сам перерабатывает, когда награда достигает порога', cost: D(80), requires: 'a2' },
   { id: 'o1', branch: 'offline', name: 'Ночной сторож', text: 'Офлайн копится до 2 суток', cost: D(2) },
   { id: 'o2', branch: 'offline', name: 'Вахтовый метод', text: 'Офлайн копится до 7 суток', cost: D(8), requires: 'o1' },
 ];
@@ -130,7 +133,7 @@ export function isNodeOpen(layer: LayerState, node: NodeDef): boolean {
 
 /** Multiplier on all production from Recycling: the passive bonus and the production branch. */
 export function recycleProductionMult(layer: LayerState): Decimal {
-  let mult = passiveBonus(layer.total);
+  let mult = passiveBonus(layer.total).mul(Decimal.pow(MEMORY_MULT, layer.repeats.memory ?? 0));
   if (hasNode(layer, 'p1')) mult = mult.mul(2);
   if (hasNode(layer, 'p3')) mult = mult.mul(3);
   if (hasNode(layer, 'p5')) mult = mult.mul(5);
@@ -150,3 +153,32 @@ export function offlineCapSeconds(layer: LayerState): number {
 export function autobuyInterval(layer: LayerState): number | null {
   return hasNode(layer, 'a2') ? 0.25 : hasNode(layer, 'a1') ? 2 : null;
 }
+
+// ---- Endless nodes ------------------------------------------------------------
+
+export interface RepeatDef {
+  id: 'memory' | 'recipe';
+  name: string;
+  /** Effect of one level. */
+  text: string;
+  baseCost: Decimal;
+  growth: number;
+}
+
+/** Bought with Recycled material, any number of times, after the tree; never reset by recycling. */
+export const REPEATS: readonly RepeatDef[] = [
+  { id: 'memory', name: 'Память кучи', text: 'Весь доход ×1.2 за уровень', baseCost: D(50), growth: 2.5 },
+  { id: 'recipe', name: 'Рецепт переработки', text: 'Вторсырья за переработку +10% за уровень', baseCost: D(100), growth: 3 },
+];
+
+export const MEMORY_MULT = 1.2;
+export const RECIPE_STEP = 0.1;
+
+export const repeatById = (id: string) => REPEATS.find((r) => r.id === id);
+
+export function repeatCost(def: RepeatDef, level: number): Decimal {
+  return def.baseCost.mul(Decimal.pow(def.growth, level)).floor();
+}
+
+/** Multiplier on Recycled material per recycle. */
+export const gainMult = (layer: LayerState) => 1 + RECIPE_STEP * (layer.repeats.recipe ?? 0);

@@ -1,6 +1,6 @@
 import { format, type Decimal } from '../game/num';
-import { BRANCHES, LAYERS, NODES, RECYCLE_AT, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, recycleGain, type NodeDef } from '../game/layers';
-import { buyNode, canRecycle, type GameState } from '../game/state';
+import { BRANCHES, LAYERS, NODES, RECYCLE_AT, REPEATS, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, gainMult, repeatCost, type NodeDef, type RepeatDef } from '../game/layers';
+import { AUTO_FACTORS, autoRecycleAt, buyNode, buyRepeat, canRecycle, currentGain, repeatsOpen, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
 
 interface NodeRow {
@@ -23,6 +23,13 @@ export class RecyclePanel {
   private button!: HTMLButtonElement;
   private nodeRows: NodeRow[] = [];
   private armed = 0;
+  private auto!: HTMLElement;
+  private autoToggle!: HTMLButtonElement;
+  private autoNote!: HTMLElement;
+  private factorButtons = new Map<number, HTMLButtonElement>();
+  private repeatsBox!: HTMLElement;
+  private repeatsLocked!: HTMLElement;
+  private repeatRows: { def: RepeatDef; level: HTMLElement; button: HTMLButtonElement }[] = [];
 
   constructor(
     private getState: () => GameState,
@@ -55,7 +62,7 @@ export class RecyclePanel {
       el('div', '', 'Останутся: вторсырьё и всё дерево ниже.'),
     );
     this.action.append(this.actionTitle, this.actionBar, this.actionNote, this.button, keeps);
-    this.root.append(this.action);
+    this.root.append(this.action, this.buildAuto());
 
     this.root.append(el('h2', 'panel-title', 'Дерево переработки'));
     for (const [branch, label] of BRANCHES) {
@@ -69,6 +76,8 @@ export class RecyclePanel {
       });
       this.root.append(group);
     }
+
+    this.root.append(this.buildRepeats());
 
     // The next layers, shown as closed doors.
     this.root.append(el('h2', 'panel-title', 'Дальше'));
@@ -93,6 +102,66 @@ export class RecyclePanel {
     });
     root.append(body, button);
     return { def, root, button };
+  }
+
+  /** Auto-recycler controls: on/off and the threshold as a multiple of everything earned. */
+  private buildAuto(): HTMLElement {
+    this.auto = el('div', 'r-auto');
+    this.auto.hidden = true;
+    const head = el('div', 'panel-head');
+    this.autoToggle = el('button', 'mode auto', 'Авто');
+    this.autoToggle.type = 'button';
+    this.autoToggle.id = 'auto-recycle';
+    this.autoToggle.addEventListener('click', () => {
+      const s = this.getState();
+      s.autoRecycle.on = !s.autoRecycle.on;
+      this.render(s);
+    });
+    head.append(el('div', 'r-branch-title', 'Автопереработчик'), this.autoToggle);
+    const factors = el('div', 'modes');
+    factors.setAttribute('role', 'group');
+    factors.setAttribute('aria-label', 'Порог автопереработки');
+    for (const f of AUTO_FACTORS) {
+      const b = el('button', 'mode', `×${f}`);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        const s = this.getState();
+        s.autoRecycle.factor = f;
+        this.render(s);
+      });
+      this.factorButtons.set(f, b);
+      factors.append(b);
+    }
+    this.autoNote = el('div', 'r-note');
+    this.auto.append(head, el('div', 'r-note', 'Перерабатывать, когда награда достигнет доли от всего заработанного вторсырья:'), factors, this.autoNote);
+    return this.auto;
+  }
+
+  /** Endless nodes after the tree: bought again and again with Recycled material. */
+  private buildRepeats(): HTMLElement {
+    this.repeatsBox = el('div', 'r-branch');
+    this.repeatsBox.append(el('div', 'r-branch-title', 'Бесконечное'));
+    this.repeatsLocked = el('div', 'r-note', 'Откроется, когда куплено всё дерево.');
+    this.repeatsBox.append(this.repeatsLocked);
+    REPEATS.forEach((def, i) => {
+      const root = el('div', 'r-node');
+      root.append(el('span', 'r-twig', i === REPEATS.length - 1 ? '└─' : '├─'));
+      const body = el('div', 'r-node-body');
+      const name = el('div', 'r-node-name', def.name);
+      const level = el('span', 'p-count');
+      name.append(' ', level);
+      body.append(name, el('div', 'r-node-text', def.text));
+      const button = el('button', 'buy r-node-buy');
+      button.type = 'button';
+      button.id = `repeat-${def.id}`;
+      button.addEventListener('click', () => {
+        if (buyRepeat(this.getState(), def.id)) this.onNode({ id: def.id, branch: 'production', name: def.name, text: def.text, cost: repeatCost(def, 0) });
+      });
+      root.append(body, button);
+      this.repeatRows.push({ def, level, button });
+      this.repeatsBox.append(root);
+    });
+    return this.repeatsBox;
   }
 
   /** Two taps: the first arms the button for three seconds, the second recycles. */
@@ -124,7 +193,7 @@ export class RecyclePanel {
     lines.push(`текущий заход: ${mmss(state.runSeconds)}`);
     this.stats.replaceChildren(...lines.map((l) => el('div', '', l)));
 
-    const gain = recycleGain(state.runTrash);
+    const gain = currentGain(state);
     const ready = gain.gt(0);
     this.action.classList.toggle('ready', ready);
     this.button.disabled = !ready;
@@ -134,10 +203,30 @@ export class RecyclePanel {
       this.actionBar.textContent = `${textBar(p, 16)} ${Math.floor(p * 100)}%`;
       this.actionNote.textContent = `${format(state.runTrash)} / ${format(RECYCLE_AT)} кг за заход`;
     } else {
-      const next: Decimal = nextGainAt(state.runTrash);
+      const next: Decimal = nextGainAt(state.runTrash, gainMult(state.recycle));
       this.actionTitle.textContent = `Переработать сейчас: +${format(gain)} вторсырья`;
       this.actionBar.textContent = `${textBar(progress(state.runTrash, next), 16)} до +${format(gain.add(1))}`;
       this.actionNote.textContent = `следующая единица при ${format(next)} кг`;
+    }
+
+    // Auto-recycler.
+    this.auto.hidden = !hasNode(layer, 'a3');
+    this.autoToggle.setAttribute('aria-pressed', String(state.autoRecycle.on));
+    for (const [f, b] of this.factorButtons) b.setAttribute('aria-pressed', String(state.autoRecycle.factor === f));
+    this.autoNote.textContent = state.autoRecycle.on
+      ? `сработает при награде от ${format(autoRecycleAt(state))}`
+      : 'выключен';
+
+    // Endless nodes.
+    const open = repeatsOpen(state);
+    this.repeatsLocked.hidden = open;
+    for (const r of this.repeatRows) {
+      const level = layer.repeats[r.def.id] ?? 0;
+      const cost = repeatCost(r.def, level);
+      r.level.textContent = `ур. ${level}`;
+      r.button.disabled = !open || layer.points.lt(cost);
+      r.button.textContent = open ? `${format(cost)} ВС` : 'Закрыто';
+      r.button.style.setProperty('--p', String(open ? progress(layer.points, cost) : 0));
     }
 
     for (const row of this.nodeRows) {
@@ -153,6 +242,7 @@ export class RecyclePanel {
 
   /** Whether the tab deserves a badge: recycling is ready or a node is affordable. */
   attention(state: GameState): boolean {
-    return canRecycle(state) || NODES.some((n) => canBuyNode(state.recycle, n));
+    const repeatReady = repeatsOpen(state) && REPEATS.some((r) => state.recycle.points.gte(repeatCost(r, state.recycle.repeats[r.id] ?? 0)));
+    return canRecycle(state) || repeatReady || NODES.some((n) => canBuyNode(state.recycle, n));
   }
 }

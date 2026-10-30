@@ -11,9 +11,15 @@ import {
   producerCostMult,
   recycleGain,
   recycleProductionMult,
+  gainMult,
+  repeatById,
+  repeatCost,
+  NODES,
   type LayerState,
 } from './layers';
-import { OFFLINE_EFFICIENCY, climb, newThreat, stageIndex, threatActive, threatMult, type ThreatState } from './threat';
+import { DARK_BONUS, OFFLINE_EFFICIENCY, climb, depthMeters, newThreat, stageIndex, threatActive, threatMult, type ThreatState } from './threat';
+import { COMPACT_DEPTH_DIGITS, TRACKS, bulkMult, compactMult, darkPeak, trackById, trackCost, type TrackLevels } from './infinite';
+import { achievementMult } from './achievements';
 import { eventById, eventInterval, isNight, newStory, pickEvent, record, storyMult, type Recording, type StoryState } from './story';
 
 export type BuyMode = 'one' | 'ten' | 'max';
@@ -43,6 +49,17 @@ export interface GameState {
   threat: ThreatState;
   /** What the camera has caught: the archive, open cases, notes. */
   story: StoryState;
+  /** Endless upgrade levels bought this run. */
+  tracks: TrackLevels;
+  /** Compaction levels bought over the whole game: they bring the thing closer for good. */
+  compacted: number;
+  /** Achievement ids earned. */
+  achievements: string[];
+  /**
+   * Recycle on its own once the gain reaches `factor` times all Recycled material earned so far
+   * (works once bought in the tree).
+   */
+  autoRecycle: { on: boolean; factor: number };
   /** Epoch ms of the last simulated moment, used for offline progress. */
   lastTick: number;
 }
@@ -63,6 +80,10 @@ export function newGame(now = Date.now()): GameState {
     autobuy: true,
     threat: newThreat(),
     story: newStory(),
+    tracks: {},
+    compacted: 0,
+    achievements: [],
+    autoRecycle: { on: false, factor: 1 },
     lastTick: now,
   };
 }
@@ -76,8 +97,10 @@ export function producerRate(state: GameState, id: string): Decimal {
   if (!def || n === 0) return D(0);
   let mult = Decimal.pow(milestoneBase(state.recycle), milestonesReached(n))
     .mul(recycleProductionMult(state.recycle))
-    .mul(threatMult(state.threat.level))
-    .mul(storyMult(state.story));
+    .mul(threatMult(state.threat.level, darkPeak(state.tracks, DARK_BONUS)))
+    .mul(storyMult(state.story))
+    .mul(compactMult(state.tracks))
+    .mul(achievementMult(state.achievements));
   let bonus = 0;
   for (const uid of state.upgrades) {
     const e = upgradeById(uid)?.effect;
@@ -140,7 +163,7 @@ export function revealProducers(state: GameState): string[] {
 export function purchasePlan(state: GameState, id: string, mode: BuyMode = state.buyMode): { count: number; cost: Decimal } {
   const def = producerById(id)!;
   const n = owned(state, id);
-  const mult = producerCostMult(state.recycle);
+  const mult = producerCostMult(state.recycle) * bulkMult(state.tracks);
   if (mode === 'max') {
     const count = affordableCount(def, n, state.trash, mult);
     // Nothing affordable: show the price of one so the player sees the goal.
@@ -210,14 +233,16 @@ export function takeNewUpgrades(state: GameState): UpgradeDef[] {
 
 // ---- Recycling ----------------------------------------------------------------
 
-export const canRecycle = (state: GameState) => recycleGain(state.runTrash).gt(0);
+/** What a recycle would give right now. */
+export const currentGain = (state: GameState) => recycleGain(state.runTrash, gainMult(state.recycle));
+export const canRecycle = (state: GameState) => currentGain(state).gt(0);
 
 /**
  * Trades this run for Recycled material: trash, producers and upgrades start over,
  * keeping what the Recycling tree says to keep. Returns the material gained (0 if not allowed).
  */
 export function recycle(state: GameState): Decimal {
-  const gain = recycleGain(state.runTrash);
+  const gain = currentGain(state);
   if (gain.lte(0)) return gain;
   const layer = state.recycle;
   layer.points = layer.points.add(gain);
@@ -242,13 +267,64 @@ function startNewRun(state: GameState): void {
   state.upgrades = hasNode(layer, 's3') ? state.upgrades.filter((id) => /-1$/.test(id)) : [];
   state.threat.level = 0;
   state.story.traces = [];
+  state.tracks = {};
 }
 
 // ---- Threat -------------------------------------------------------------------
 
 /** The floodlight: pushes the threat back to nothing. */
 export function lightUp(state: GameState): void {
+  state.threat.lights += 1;
+  state.threat.bravest = Math.max(state.threat.bravest, state.threat.level);
   state.threat.level = 0;
+}
+
+/** How deep the thing is: closer with everything ever collected and every Compaction level ever bought. */
+export function depthOf(state: GameState): Decimal {
+  return depthMeters(state.totalTrash, state.compacted * COMPACT_DEPTH_DIGITS);
+}
+
+// ---- Endless upgrades -----------------------------------------------------------
+
+export const trackLevel = (state: GameState, id: string) => state.tracks[id as keyof TrackLevels] ?? 0;
+
+/** Endless upgrades the player can see this run. */
+export const visibleTracks = (state: GameState) => TRACKS.filter((t) => state.runTrash.gte(t.unlockAt) || trackLevel(state, t.id) > 0);
+
+export function buyTrack(state: GameState, id: string): boolean {
+  const track = trackById(id);
+  if (!track || !visibleTracks(state).includes(track)) return false;
+  const cost = trackCost(track, trackLevel(state, id));
+  if (state.trash.lt(cost)) return false;
+  state.trash = state.trash.sub(cost);
+  state.tracks[track.id] = trackLevel(state, id) + 1;
+  if (track.id === 'compact') state.compacted += 1;
+  return true;
+}
+
+/** Endless Recycling nodes open once the whole tree is bought. */
+export const repeatsOpen = (state: GameState) => NODES.every((n) => state.recycle.nodes.includes(n.id));
+
+export function buyRepeat(state: GameState, id: string): boolean {
+  const def = repeatById(id);
+  if (!def || !repeatsOpen(state)) return false;
+  const level = state.recycle.repeats[def.id] ?? 0;
+  const cost = repeatCost(def, level);
+  if (state.recycle.points.lt(cost)) return false;
+  state.recycle.points = state.recycle.points.sub(cost);
+  state.recycle.repeats[def.id] = level + 1;
+  return true;
+}
+
+/** Choices for the auto-recycler threshold, as multiples of all Recycled material earned. */
+export const AUTO_FACTORS = [0.5, 1, 2, 5] as const;
+
+/** Gain at which the auto-recycler recycles: a multiple of everything earned, at least the first threshold. */
+export const autoRecycleAt = (state: GameState) => state.recycle.total.mul(state.autoRecycle.factor).max(10);
+
+/** Whether the auto-recycler should recycle now. */
+export function autoRecycleDue(state: GameState): boolean {
+  return state.autoRecycle.on && hasNode(state.recycle, 'a3') && state.runSeconds >= 10 && currentGain(state).gte(autoRecycleAt(state));
 }
 
 /** The threat reached the edge: the run is lost with nothing in return. Recycling progress stays. */

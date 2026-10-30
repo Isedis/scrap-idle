@@ -102,11 +102,11 @@ describe('threat in the game', () => {
 
   it('saves the level and losses; older saves start calm', () => {
     const s = active();
-    s.threat = { level: 0.42, losses: 3 };
+    s.threat = { level: 0.42, losses: 3, lights: 17, bravest: 0.93 };
     const back = deserialize(serialize(s))!;
-    expect(back.threat).toEqual({ level: 0.42, losses: 3 });
+    expect(back.threat).toEqual({ level: 0.42, losses: 3, lights: 17, bravest: 0.93 });
     const old = deserialize('{"v":3,"trash":"1","totalTrash":"1","runTrash":"1","runSeconds":5,"owned":{},"revealed":[],"upgrades":[],"seenUpgrades":[],"buyMode":"one","layers":{},"autobuy":true,"lastTick":0}')!;
-    expect(old.threat).toEqual({ level: 0, losses: 0 });
+    expect(old.threat).toEqual({ level: 0, losses: 0, lights: 0, bravest: 0 });
   });
 });
 

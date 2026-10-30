@@ -14,6 +14,7 @@ import {
   recycle,
   lightUp,
   loseShift,
+  depthOf,
   type BuyMode,
   type GameState,
 } from '../game/state';
@@ -24,10 +25,13 @@ export { textBar } from './dom';
 import { Scene } from './scene';
 import { RecyclePanel } from './recyclePanel';
 import { JournalPanel } from './journalPanel';
+import { TracksPanel } from './tracksPanel';
+import { checkAchievements, ACH_BONUS } from '../game/achievements';
+import { COMPACT_MILESTONE, type TrackDef } from '../game/infinite';
 import { Dread } from './dread';
 import { eventById, unwatched, watch, type EventKind, type Recording } from '../game/story';
 import { RECYCLE_AT, hasNode, milestoneBase, passiveBonus } from '../game/layers';
-import { STAGES, depthMeters, formatDepth, stageIndex, threatActive } from '../game/threat';
+import { STAGES, formatDepth, stageIndex, threatActive } from '../game/threat';
 
 /** How long the floodlight button must be held. */
 const HOLD_MS = 1500;
@@ -110,6 +114,7 @@ export class App {
   private knownStage = 0;
   private losing = false;
   private journalPanel!: JournalPanel;
+  private tracksPanel!: TracksPanel;
   private journalBadge!: HTMLElement;
   private feedLabel!: HTMLElement;
   private motionEl!: HTMLElement;
@@ -568,8 +573,36 @@ export class App {
     this.upgradeEmpty = el('p', 'empty', 'Новых улучшений пока нет. Они открываются, когда растёт производство.');
     this.upgradeList = el('div', 'producers');
     for (const def of UPGRADES) this.upgradeRows.set(def.id, this.buildUpgradeRow(def));
-    panel.append(this.upgradeEmpty, this.upgradeList);
+    this.tracksPanel = new TracksPanel(this.getState, (def) => this.onTrack(def));
+    panel.append(this.upgradeEmpty, this.upgradeList, this.tracksPanel.root);
     return panel;
+  }
+
+  /** An endless upgrade was bought; every few Compaction levels the thing comes up closer. */
+  private onTrack(def: TrackDef): void {
+    const state = this.getState();
+    this.scene.flash('amber');
+    this.pop(this.rateEl, 'pulse');
+    if (def.id === 'compact' && state.compacted % COMPACT_MILESTONE === 0) {
+      this.typeLine(`УПЛОТНЕНИЕ ×${state.compacted}. ОБЪЕКТ ПОДНЯЛСЯ. ГЛУБИНА ${formatDepth(depthOf(state)).toUpperCase()}`);
+      this.scene.glitch(0.8);
+      this.toast('Куча осела. То, что под ней, стало ближе');
+    } else {
+      this.caption(`${def.name}: ур. ${state.tracks[def.id]}`);
+    }
+    this.render();
+  }
+
+  /** Lighter than a manual recycle: no tab switch, a short note. */
+  autoRecycle(): void {
+    const state = this.getState();
+    const gain = recycle(state);
+    if (gain.lte(0)) return;
+    writeSave(state);
+    this.resetKnown();
+    this.scene.glitch(0.4);
+    this.toast(`Автопереработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
+    this.render();
   }
 
   private buildUpgradeRow(def: UpgradeDef): UpgradeRow {
@@ -788,6 +821,13 @@ export class App {
     }
     this.knownRevealed = state.revealed.length;
 
+    const earned = checkAchievements(state, depthOf(state));
+    if (earned.length > 3) {
+      this.toast(`Достижения: +${earned.length} (доход +${Math.round(earned.length * ACH_BONUS * 100)}%)`);
+    } else {
+      for (const a of earned) this.toast(`Достижение: ${a.name} (+${Math.round(ACH_BONUS * 100)}%)`);
+    }
+
     for (const u of takeNewUpgrades(state)) this.toast(`Новое улучшение: ${u.name}`);
 
     if (!this.knownRecycleReady && canRecycle(state)) {
@@ -865,6 +905,8 @@ export class App {
       row.button.disabled = !can;
       row.button.style.setProperty('--p', String(progress(state.trash, u.cost)));
     }
+    this.tracksPanel.render(state);
+    affordable += this.tracksPanel.affordable(state);
     this.upgradeBadge.hidden = affordable === 0;
     this.upgradeBadge.textContent = String(affordable);
 
@@ -910,7 +952,7 @@ export class App {
     }
     this.knownStage = stage;
     this.threatBar.textContent = `угроза ${textBar(level, 10)} ${Math.floor(level * 100)}%`;
-    this.depthEl.textContent = `${STAGES[stage].name.toUpperCase()} · объект на глубине ${formatDepth(depthMeters(state.totalTrash))} ▼`;
+    this.depthEl.textContent = `${STAGES[stage].name.toUpperCase()} · объект на глубине ${formatDepth(depthOf(state))} ▼`;
     this.root.dataset.threat = String(stage);
     // The light button begs as it gets worse.
     this.lightButton.textContent = stage >= 4 ? 'СВЕТ!!' : stage >= 3 ? 'Свет!' : 'Прожектор';

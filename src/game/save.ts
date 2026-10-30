@@ -1,14 +1,17 @@
 import { parseNum } from './num';
-import { advance, newGame, type BuyMode, type GameState } from './state';
+import { AUTO_FACTORS, advance, newGame, type BuyMode, type GameState } from './state';
 import { PRODUCERS } from './producers';
 import { upgradeById } from './upgrades';
 import { nodeById, newLayer, offlineCapSeconds, type LayerState } from './layers';
 import { NOTES, eventById, newStory, type Recording, type StoryState } from './story';
+import { TRACKS, type TrackLevels } from './infinite';
+import { ACHIEVEMENTS } from './achievements';
+import { REPEATS } from './layers';
 import { recordAway } from './state';
 
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
-const VERSION = 5;
+const VERSION = 6;
 
 /** Run length for a run whose start is not known; stays negative however long it is played. */
 const UNKNOWN_RUN_SECONDS = -1e12;
@@ -37,6 +40,8 @@ interface LayerSave {
   resets: number;
   nodes: string[];
   bestSeconds: number | null;
+  /** Since v6. */
+  repeats?: Record<string, number>;
 }
 
 /** v3 adds the current run and prestige layers, keyed by layer id so later layers slot in. */
@@ -58,6 +63,27 @@ interface SaveV4 extends Omit<SaveV3, 'v'> {
 interface SaveV5 extends Omit<SaveV4, 'v'> {
   v: 5;
   story: StoryState;
+}
+
+/** v6 adds endless upgrades, achievements, the auto-recycler and light statistics. */
+interface SaveV6 extends Omit<SaveV5, 'v' | 'threat'> {
+  v: 6;
+  threat: { level: number; losses: number; lights: number; bravest: number };
+  tracks: TrackLevels;
+  compacted: number;
+  achievements: string[];
+  autoRecycle: { on: boolean; factor: number };
+}
+
+/** Non-negative whole counts by known id. */
+function levels<K extends string>(data: unknown, ids: readonly K[]): Partial<Record<K, number>> {
+  const out: Partial<Record<K, number>> = {};
+  if (!data || typeof data !== 'object') return out;
+  for (const id of ids) {
+    const n = (data as Record<string, unknown>)[id];
+    if (typeof n === 'number' && Number.isFinite(n) && n > 0) out[id] = Math.floor(n);
+  }
+  return out;
 }
 
 function loadStory(data: Partial<StoryState> | undefined): StoryState {
@@ -87,6 +113,7 @@ const saveLayer = (l: LayerState): LayerSave => ({
   resets: l.resets,
   nodes: l.nodes,
   bestSeconds: l.bestSeconds,
+  repeats: l.repeats,
 });
 
 function loadLayer(data: Partial<LayerSave> | undefined): LayerState | null {
@@ -100,11 +127,12 @@ function loadLayer(data: Partial<LayerSave> | undefined): LayerState | null {
   layer.resets = Number.isFinite(data.resets) && data.resets! >= 0 ? Math.floor(data.resets!) : 0;
   layer.nodes = Array.isArray(data.nodes) ? [...new Set(data.nodes.filter((id) => typeof id === 'string' && nodeById(id)))] : [];
   layer.bestSeconds = typeof data.bestSeconds === 'number' && data.bestSeconds >= 0 ? data.bestSeconds : null;
+  layer.repeats = levels(data.repeats, REPEATS.map((r) => r.id));
   return layer;
 }
 
 export function serialize(state: GameState): string {
-  const data: SaveV5 = {
+  const data: SaveV6 = {
     v: VERSION,
     trash: state.trash.toString(),
     totalTrash: state.totalTrash.toString(),
@@ -117,8 +145,12 @@ export function serialize(state: GameState): string {
     runSeconds: state.runSeconds,
     layers: { recycle: saveLayer(state.recycle) },
     autobuy: state.autobuy,
-    threat: { level: state.threat.level, losses: state.threat.losses },
+    threat: { ...state.threat },
     story: state.story,
+    tracks: state.tracks,
+    compacted: state.compacted,
+    achievements: state.achievements,
+    autoRecycle: state.autoRecycle,
     lastTick: state.lastTick,
   };
   return JSON.stringify(data);
@@ -126,13 +158,13 @@ export function serialize(state: GameState): string {
 
 /** Parses a save; returns null for anything that is not a readable save. */
 export function deserialize(text: string): GameState | null {
-  let data: Partial<SaveV5> | Partial<SaveV4> | Partial<SaveV3> | Partial<SaveV2> | Partial<SaveV1>;
+  let data: Partial<SaveV6> | Partial<SaveV5> | Partial<SaveV4> | Partial<SaveV3> | Partial<SaveV2> | Partial<SaveV1>;
   try {
     data = JSON.parse(text);
   } catch {
     return null;
   }
-  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5].includes(data.v as number)) return null;
+  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5, 6].includes(data.v as number)) return null;
 
   const state = newGame(typeof data.lastTick === 'number' ? data.lastTick : Date.now());
   const trash = parseNum(data.trash ?? '0');
@@ -149,7 +181,7 @@ export function deserialize(text: string): GameState | null {
   if (!state.revealed.includes('collector')) state.revealed.unshift('collector');
 
   // A v1 save simply has none of these yet.
-  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5) {
+  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6) {
     const ids = (list: unknown) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string' && upgradeById(id)) : []);
     state.upgrades = [...new Set(ids(data.upgrades))];
     state.seenUpgrades = [...new Set([...ids(data.seenUpgrades), ...state.upgrades])];
@@ -159,7 +191,7 @@ export function deserialize(text: string): GameState | null {
   // Before v3 there was a single run: everything collected so far belongs to it, length unknown.
   state.runTrash = state.totalTrash;
   state.runSeconds = UNKNOWN_RUN_SECONDS;
-  if (data.v === 3 || data.v === 4 || data.v === 5) {
+  if (data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6) {
     const run = parseNum(data.runTrash ?? '0');
     const recycle = loadLayer(data.layers?.recycle);
     if (!run || !recycle) return null;
@@ -170,13 +202,27 @@ export function deserialize(text: string): GameState | null {
   }
 
   // Older saves start with nothing stirring.
-  if (data.v === 4 || data.v === 5) {
+  if (data.v === 4 || data.v === 5 || data.v === 6) {
     const t = data.threat;
     const level = typeof t?.level === 'number' && Number.isFinite(t.level) ? t.level : 0;
     state.threat.level = Math.min(Math.max(level, 0), 1);
     state.threat.losses = typeof t?.losses === 'number' && t.losses >= 0 ? Math.floor(t.losses) : 0;
   }
-  if (data.v === 5) state.story = loadStory(data.story);
+  if (data.v === 5 || data.v === 6) state.story = loadStory(data.story);
+  if (data.v === 6) {
+    const t = data.threat;
+    state.threat.lights = typeof t?.lights === 'number' && t.lights >= 0 ? Math.floor(t.lights) : 0;
+    state.threat.bravest = typeof t?.bravest === 'number' && Number.isFinite(t.bravest) ? Math.min(Math.max(t.bravest, 0), 1) : 0;
+    state.tracks = levels(data.tracks, TRACKS.map((tr) => tr.id));
+    state.compacted = Math.max(Number.isFinite(data.compacted) ? Math.floor(data.compacted!) : 0, state.tracks.compact ?? 0, 0);
+    const known = new Set(ACHIEVEMENTS.map((a) => a.id));
+    state.achievements = Array.isArray(data.achievements) ? [...new Set(data.achievements.filter((id) => known.has(id)))] : [];
+    const ar = data.autoRecycle;
+    state.autoRecycle = {
+      on: ar?.on === true,
+      factor: AUTO_FACTORS.includes(ar?.factor as (typeof AUTO_FACTORS)[number]) ? ar!.factor : 1,
+    };
+  }
   return state;
 }
 

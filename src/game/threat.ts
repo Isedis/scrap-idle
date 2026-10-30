@@ -13,9 +13,13 @@ export interface ThreatState {
   level: number;
   /** Runs lost to the threat over the whole game. */
   losses: number;
+  /** Times the floodlight was switched on. */
+  lights: number;
+  /** Highest level the light was ever switched on at. */
+  bravest: number;
 }
 
-export const newThreat = (): ThreatState => ({ level: 0, losses: 0 });
+export const newThreat = (): ThreatState => ({ level: 0, losses: 0, lights: 0, bravest: 0 });
 
 /** No threat until the run has collected this much: the first minutes stay calm. */
 export const THREAT_STARTS_AT = D(500);
@@ -55,10 +59,10 @@ export function climb(level: number, runTrash: Decimal, seconds: number, offline
  */
 export const DARK_BONUS = 1.5;
 
-export function threatMult(level: number): number {
+export function threatMult(level: number, peak = DARK_BONUS): number {
   const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-  if (level <= 0.5) return lerp(1, DARK_BONUS, level / 0.5);
-  if (level <= 0.7) return lerp(DARK_BONUS, 1, (level - 0.5) / 0.2);
+  if (level <= 0.5) return lerp(1, peak, level / 0.5);
+  if (level <= 0.7) return lerp(peak, 1, (level - 0.5) / 0.2);
   if (level <= 0.9) return lerp(1, 0.5, (level - 0.7) / 0.2);
   return lerp(0.5, 0.1, Math.min((level - 0.9) / 0.1, 1));
 }
@@ -92,8 +96,8 @@ const START_DEPTH_M = 5000;
 const DIGITS_PER_TENFOLD = 12;
 
 /** How deep the thing is: it rises with everything ever collected and never quite arrives. */
-export function depthMeters(totalTrash: Decimal): Decimal {
-  const digits = totalTrash.add(1).log10();
+export function depthMeters(totalTrash: Decimal, extraDigits = 0): Decimal {
+  const digits = totalTrash.add(1).log10().add(extraDigits);
   return D(START_DEPTH_M).div(Decimal.pow(10, digits.div(DIGITS_PER_TENFOLD)));
 }
 

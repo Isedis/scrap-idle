@@ -998,3 +998,29 @@ button { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---- Endless upgrades ---- */
+.tracks { margin-top: 18px; }
+.tracks .panel-title { color: var(--amber); }
+.track .p-icon { color: var(--amber); font-size: 24px; font-weight: 700; text-shadow: 0 0 8px rgb(255 191 71 / 0.5); }
+.track .p-count { color: var(--amber); }
+
+/* ---- Auto-recycler ---- */
+.r-auto {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.r-auto .panel-head { margin-top: 0; }
+.r-auto .modes { align-self: start; }
+.r-auto .mode { min-height: 44px; }
+
+/* ---- Achievements ---- */
+.j-ach { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.j-ach-item { padding: 6px 8px; border: 1px dashed var(--line); border-radius: 4px; opacity: 0.45; }
+.j-ach-item.got { opacity: 1; border-style: solid; border-color: var(--glow); }
+.j-ach-name { font-size: 12px; font-weight: 700; }
+.j-ach-item.got .j-ach-name { color: var(--glow); }
+.j-ach-text { color: var(--mid); font-size: 11px; line-height: 1.35; }

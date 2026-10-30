@@ -1,7 +1,7 @@
 import '@fontsource-variable/jetbrains-mono';
 import './style.css';
 import { format } from './game/num';
-import { activeAutobuyInterval, advance, autoBuy, newGame, revealProducers, storyTick, type GameState } from './game/state';
+import { activeAutobuyInterval, advance, autoBuy, autoRecycleDue, newGame, revealProducers, storyTick, type GameState } from './game/state';
 import { applyOffline, readSave, writeSave } from './game/save';
 import { App } from './ui/app';
 import { CHECK_EVERY_MS, latestBuild, reloadInto } from './update';
@@ -68,6 +68,8 @@ function frame(): void {
       autoBuy(state);
     }
   }
+
+  if (autoRecycleDue(state)) app.autoRecycle();
 
   app.frame(dt);
   if (now - lastRender >= RENDER_MS) {

@@ -1,5 +1,6 @@
 import { CASES, CASE_BONUS, NOTES, eventById, unwatched, type Recording } from '../game/story';
 import type { GameState } from '../game/state';
+import { ACHIEVEMENTS, achievementMult } from '../game/achievements';
 import { el } from './dom';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -20,6 +21,8 @@ export class JournalPanel {
   private notesMeta!: HTMLElement;
   private voices!: HTMLElement;
   private voicesHead!: HTMLElement;
+  private achievements!: HTMLElement;
+  private achMeta!: HTMLElement;
   /** Signature of what is on screen, so lists rebuild only when something changed. */
   private shown = '';
 
@@ -51,11 +54,17 @@ export class JournalPanel {
     this.voicesHead = el('h2', 'panel-title', 'КАМ-00');
     this.voices = el('div', 'j-voices');
     this.root.append(this.voicesHead, this.voices);
+
+    const achHead = el('div', 'panel-head');
+    this.achMeta = el('span', 'panel-meta');
+    achHead.append(el('h2', 'panel-title', 'Достижения'), this.achMeta);
+    this.achievements = el('div', 'j-ach');
+    this.root.append(achHead, this.achievements);
   }
 
   render(state: GameState): void {
     const story = state.story;
-    const sig = JSON.stringify([story.records.map((r) => [r.seq, r.watched]), story.cases, story.notes, story.voices.length]);
+    const sig = JSON.stringify([story.records.map((r) => [r.seq, r.watched]), story.cases, story.notes, story.voices.length, state.achievements.length]);
     if (sig === this.shown) return;
     this.shown = sig;
 
@@ -82,6 +91,18 @@ export class JournalPanel {
 
     this.voicesHead.hidden = story.voices.length === 0;
     this.voices.replaceChildren(...story.voices.map((v) => el('div', 'j-voice', v)));
+
+    const earned = state.achievements;
+    this.achMeta.textContent = `${earned.length}/${ACHIEVEMENTS.length} · доход ×${achievementMult(earned).toFixed(2)}`;
+    // Unearned ones stay dim, with what they take.
+    this.achievements.replaceChildren(
+      ...ACHIEVEMENTS.map((a) => {
+        const got = earned.includes(a.id);
+        const row = el('div', `j-ach-item${got ? ' got' : ''}`);
+        row.append(el('div', 'j-ach-name', `${got ? '■' : '□'} ${a.name}`), el('div', 'j-ach-text', a.text));
+        return row;
+      }),
+    );
   }
 
   private recordRow(r: Recording): HTMLElement {
