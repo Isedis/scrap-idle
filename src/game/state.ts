@@ -18,7 +18,7 @@ import {
   type LayerState,
 } from './layers';
 import { DARK_BONUS, OFFLINE_CAP, OFFLINE_EFFICIENCY, climb, depthMeters, newThreat, stageIndex, threatActive, threatMult, type ThreatState } from './threat';
-import { COMPACT_DEPTH_DIGITS, TRACKS, bulkMult, compactMult, darkPeak, trackById, trackCost, type TrackLevels } from './infinite';
+import { COMPACT_DEPTH_DIGITS, TRACKS, compactMult, darkPeak, milestoneHeadStart, trackById, trackCost, type TrackLevels } from './infinite';
 import { achievementMult } from './achievements';
 import {
   FRACS,
@@ -147,6 +147,12 @@ export function newGame(now = Date.now()): GameState {
 
 const owned = (state: GameState, id: string) => state.owned[id] ?? 0;
 
+/** Units a producer counts toward its milestones: those owned, plus Bulk's head start once there is one. */
+export function milestoneUnits(state: GameState, id: string): number {
+  const n = owned(state, id);
+  return n > 0 ? n + milestoneHeadStart(state.tracks) : 0;
+}
+
 /** Multiplier every producer shares: layers, the threat, the story, endless upgrades, achievements. */
 export function sharedMult(state: GameState): Decimal {
   return recycleProductionMult(state.recycle)
@@ -200,7 +206,7 @@ export function producerRate(state: GameState, id: string, shared: Decimal = sha
   for (const syn of fx.synergies) if (syn.target === id) bonus += syn.perUnit * owned(state, syn.source);
   return def.baseRate
     .mul(n)
-    .mul(Decimal.pow(milestoneBase(state.recycle), milestonesReached(n)))
+    .mul(Decimal.pow(milestoneBase(state.recycle), milestonesReached(milestoneUnits(state, id))))
     .mul(shared)
     .mul(fx.global)
     .mul(fx.producer.get(id) ?? 1)
@@ -291,7 +297,7 @@ export function revealProducers(state: GameState): string[] {
 export function purchasePlan(state: GameState, id: string, mode: BuyMode = state.buyMode): { count: number; cost: Decimal } {
   const def = producerById(id)!;
   const n = owned(state, id);
-  const mult = producerCostMult(state.recycle) * bulkMult(state.tracks) * sortingCostMult(state.sorting);
+  const mult = producerCostMult(state.recycle) * sortingCostMult(state.sorting);
   if (mode === 'max') {
     const count = affordableCount(def, n, state.trash, mult);
     // Nothing affordable: show the price of one so the player sees the goal.

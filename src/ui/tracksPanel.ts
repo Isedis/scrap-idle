@@ -1,5 +1,5 @@
 import { D, format } from '../game/num';
-import { BULK_DISCOUNT, COMPACT_MULT, DARK_STEP, TRACKS, trackCost, type TrackDef } from '../game/infinite';
+import { BULK_HEAD_START, COMPACT_MULT, DARK_STEP, TRACKS, trackCost, type TrackDef } from '../game/infinite';
 import { DARK_BONUS } from '../game/threat';
 import { buyTrack, trackLevel, visibleTracks, type GameState } from '../game/state';
 import { el, progress } from './dom';
@@ -19,7 +19,7 @@ function current(def: TrackDef, level: number): string {
     case 'compact':
       return `сейчас ×${format(D(COMPACT_MULT).pow(level))}`;
     case 'bulk':
-      return `сейчас −${Math.round((1 - BULK_DISCOUNT ** level) * 100)}% к ценам`;
+      return `сейчас пороги на ${BULK_HEAD_START * level} шт. ближе`;
     case 'dark':
       return `пик в темноте ×${(DARK_BONUS + DARK_STEP * level).toFixed(1)}`;
   }

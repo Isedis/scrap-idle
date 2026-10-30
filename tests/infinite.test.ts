@@ -7,9 +7,9 @@ import {
   currentGain,
   depthOf,
   lightUp,
+  milestoneUnits,
   newGame,
   producerRate,
-  purchasePlan,
   recycle,
   repeatsOpen,
   trackLevel,
@@ -46,14 +46,20 @@ describe('endless upgrades', () => {
     expect(trackCost(t, 41).div(trackCost(t, 40)).toNumber()).toBeCloseTo(t.growth);
   });
 
-  it('compaction multiplies income, bulk cuts prices, the dark pact raises the peak', () => {
+  it('compaction multiplies income, bulk brings milestones closer, the dark pact raises the peak', () => {
     const s = rich();
     const rate = producerRate(s, 'collector').toNumber();
-    const price = purchasePlan(s, 'collector', 'one').cost.toNumber();
     buyTrack(s, 'compact');
-    buyTrack(s, 'bulk');
     expect(producerRate(s, 'collector').toNumber()).toBeCloseTo(rate * 1.25);
-    expect(purchasePlan(s, 'collector', 'one').cost.toNumber()).toBeCloseTo(price * 0.97);
+    // 47 collectors: two Bulk levels count ten more, past the milestone at 50.
+    s.owned = { collector: 47 };
+    expect(milestoneUnits(s, 'collector')).toBe(47);
+    const before = producerRate(s, 'collector').toNumber();
+    buyTrack(s, 'bulk');
+    buyTrack(s, 'bulk');
+    expect(milestoneUnits(s, 'collector')).toBe(57);
+    expect(milestoneUnits(s, 'cart')).toBe(0);
+    expect(producerRate(s, 'collector').toNumber()).toBeCloseTo(before * 2);
     s.threat.level = 0.5;
     const dark = producerRate(s, 'collector').toNumber();
     buyTrack(s, 'dark');

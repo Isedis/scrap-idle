@@ -20,6 +20,7 @@ import {
   takeNewUpgrades,
   producerRate,
   sharedMult,
+  milestoneUnits,
   canResort,
   resort,
   resortGain,
@@ -105,7 +106,7 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
     shown = s.revealed.length;
     for (const u of takeNewUpgrades(s)) events.push({ t, what: `улучшение: ${u.name}` });
     for (const id of s.revealed) {
-      const m = milestonesReached(s.owned[id] ?? 0);
+      const m = milestonesReached(milestoneUnits(s, id));
       if (m > (milestones[id] ?? 0)) events.push({ t, what: `порог: ${producerById(id)!.name} ${s.owned[id]}` });
       milestones[id] = m;
     }
@@ -155,7 +156,9 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
     }
     for (const t of visibleTracks(s)) {
       const cost = trackCost(t, trackLevel(s, t.id));
-      const extra = gainShared((c) => (c.tracks[t.id] = trackLevel(c, t.id) + 1));
+      const up = (c: GameState) => void (c.tracks[t.id] = trackLevel(c, t.id) + 1);
+      // Bulk moves milestones, which differ per producer; the other tracks scale what all share.
+      const extra = t.id === 'bulk' ? ratePerSecond(copyWith(up)).sub(base).toNumber() : gainShared(up);
       if (extra > 0) list.push({ cost, payback: cost.toNumber() / extra, apply: (st) => void buyTrack(st, t.id) });
     }
     for (const u of availableUpgrades(s)) {

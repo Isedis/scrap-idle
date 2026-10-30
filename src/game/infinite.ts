@@ -33,10 +33,10 @@ export const TRACKS: readonly TrackDef[] = [
   {
     id: 'bulk',
     name: 'Оптовые закупки',
-    text: 'Производители дешевле на 3% за уровень',
+    text: 'Пороги производителей на 5 штук ближе за уровень',
     flavor: 'Поставщик не спрашивает, зачем столько. Поставщик вообще не разговаривает',
     baseCost: D(1e11),
-    growth: 8,
+    growth: 5,
     unlockAt: D(1e10),
   },
   {
@@ -60,7 +60,8 @@ export function trackCost(track: TrackDef, level: number): Decimal {
 export type TrackLevels = Partial<Record<TrackDef['id'], number>>;
 
 export const COMPACT_MULT = 1.25;
-export const BULK_DISCOUNT = 0.97;
+/** Units every bought producer counts toward its milestones per Bulk level. */
+export const BULK_HEAD_START = 5;
 export const DARK_STEP = 0.1;
 /** Every this many Compaction levels ever bought, the terminal marks the thing rising. */
 export const COMPACT_MILESTONE = 10;
@@ -68,5 +69,5 @@ export const COMPACT_MILESTONE = 10;
 export const COMPACT_DEPTH_DIGITS = 0.25;
 
 export const compactMult = (levels: TrackLevels) => Decimal.pow(COMPACT_MULT, levels.compact ?? 0);
-export const bulkMult = (levels: TrackLevels) => BULK_DISCOUNT ** (levels.bulk ?? 0);
+export const milestoneHeadStart = (levels: TrackLevels) => BULK_HEAD_START * (levels.bulk ?? 0);
 export const darkPeak = (levels: TrackLevels, base: number) => base + DARK_STEP * (levels.dark ?? 0);

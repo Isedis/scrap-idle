@@ -17,6 +17,7 @@ import {
   loseShift,
   depthOf,
   incomeBreakdown,
+  milestoneUnits,
   automationOpen,
   resort,
   type ScriptNote,
@@ -188,7 +189,7 @@ export class App {
   private resetKnown(): void {
     const state = this.getState();
     this.knownRevealed = state.revealed.length;
-    for (const def of PRODUCERS) this.knownMilestones.set(def.id, milestonesReached(state.owned[def.id] ?? 0));
+    for (const def of PRODUCERS) this.knownMilestones.set(def.id, milestonesReached(milestoneUnits(state, def.id)));
     this.knownRecycleReady = canRecycle(state);
     this.knownStage = stageIndex(state.threat.level);
     this.knownSortOpen = state.sorting.open;
@@ -1115,11 +1116,11 @@ export class App {
     }
 
     for (const def of PRODUCERS) {
-      const owned = state.owned[def.id] ?? 0;
-      const reached = milestonesReached(owned);
+      const units = milestoneUnits(state, def.id);
+      const reached = milestonesReached(units);
       if (reached > (this.knownMilestones.get(def.id) ?? 0)) {
         const base = milestoneBase(state.recycle);
-        this.toast(`${def.name}: ${prevMilestone(owned)} шт, доход ×${base}`);
+        this.toast(`${def.name}: ${prevMilestone(units)} шт, доход ×${base}`);
         this.scene.flash('green');
         this.scene.burst();
         this.caption(`${def.name} ×${base}`);
@@ -1158,9 +1159,12 @@ export class App {
       const plan = purchasePlan(state, row.def.id);
       row.count.textContent = `×${owned}`;
       row.rate.textContent = `даёт +${format(producerRate(state, row.def.id))}/с`;
-      const from = prevMilestone(owned);
-      const to = nextMilestone(owned);
-      row.milestone.textContent = `${textBar((owned - from) / (to - from), 8)} ${owned}/${to} → ×${milestoneBase(state.recycle)}`;
+      // Bulk counts extra units toward milestones: shown as owned + head start.
+      const units = milestoneUnits(state, row.def.id);
+      const head = units - owned;
+      const from = prevMilestone(units);
+      const to = nextMilestone(units);
+      row.milestone.textContent = `${textBar((units - from) / (to - from), 8)} ${owned}${head > 0 ? `+${head}` : ''}/${to} → ×${milestoneBase(state.recycle)}`;
       const amount = state.buyMode === 'one' ? '' : state.buyMode === 'ten' ? ' ×10' : plan.count > 1 ? ` ×${plan.count}` : '';
       row.label.textContent = `Купить${amount}`;
       row.price.textContent = `${format(plan.cost)} кг`;
