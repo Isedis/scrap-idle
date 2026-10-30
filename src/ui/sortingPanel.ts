@@ -253,7 +253,7 @@ export class SortingPanel {
   }
 
   private buildRecipes(): HTMLElement {
-    const box = el('div', 's-view');
+    const box = el('div', 's-view s-recipes');
     box.append(this.why('Рецепты — постоянные улучшения. Платятся фракциями и никогда не сгорают, даже при пересортировке.'));
     for (const branch of RECIPE_BRANCHES) {
       const list = el('div', 'r-branch');

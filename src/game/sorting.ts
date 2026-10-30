@@ -538,6 +538,7 @@ export const uniqueById = (id: string) => UNIQUE_BY_ID.get(id);
 /** A price as short text: «150 мет · 80 ст», or with other labels, «150 М · 80 С». */
 export function priceText(price: Price, fmt: (n: Decimal) => string, labels: Record<Frac, string> = FRAC_SHORT): string {
   return FRACS.filter((f) => price[f])
-    .map((f) => `${fmt(D(price[f]!))} ${labels[f]}`)
+    // Each amount stays on one line with its fraction when the price wraps.
+    .map((f) => `${fmt(D(price[f]!))} ${labels[f]}`.replace(/ /g, '\u00a0'))
     .join(' · ');
 }

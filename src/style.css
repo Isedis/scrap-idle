@@ -1131,7 +1131,9 @@ button { font: inherit; color: inherit; }
 .s-last { padding: 6px 8px; border-left: 2px solid var(--amber); color: var(--amber); font-size: 12px; line-height: 1.4; }
 .s-last.bad { border-color: var(--danger); color: var(--danger); }
 
-.s-price { min-width: 110px; max-width: 48%; white-space: normal; line-height: 1.3; }
+/* Recipes can cost up to four fractions: the price gets a fixed share of the row and wraps inside the button. */
+.s-recipes .r-node { grid-template-columns: 22px minmax(0, 1fr) minmax(0, 44%); }
+.s-price { width: 100%; min-width: 0; white-space: normal; line-height: 1.3; overflow-wrap: anywhere; }
 
 .s-resort-wrap { display: grid; gap: 10px; margin-top: 10px; }
 .s-ranks { display: grid; gap: 2px; }
