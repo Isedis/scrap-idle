@@ -127,6 +127,17 @@ describe('auto-buyer', () => {
     expect((s.owned[id!] ?? 0)).toBeGreaterThan(id === 'collector' ? 1 : 0);
   });
 
+  it('values a producer not bought yet with the same bonuses as the rest', () => {
+    // Late game: big bonuses, a pile of collectors, carts just revealed and never bought.
+    const s = newGame(0);
+    s.recycle.total = D(1e6);
+    s.recycle.nodes = ['p1', 'p2', 'p3'];
+    s.revealed = ['collector', 'cart'];
+    s.owned = { collector: 25 };
+    s.trash = D(1e12);
+    expect(autoBuy(s)).toBe('cart');
+  });
+
   it('does nothing when broke', () => {
     const s = newGame(0);
     expect(autoBuy(s)).toBeNull();

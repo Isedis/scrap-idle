@@ -204,13 +204,21 @@ export function buy(state: GameState, id: string, mode: BuyMode = state.buyMode)
  * The auto-buyer's pick: the revealed producer whose next unit costs the least per
  * unit of output it adds. Returns its id if it was affordable and bought.
  */
+/** What a first unit of a producer would make, with every bonus that already applies. */
+function firstUnitRate(state: GameState, id: string): Decimal {
+  state.owned[id] = 1;
+  const rate = producerRate(state, id);
+  delete state.owned[id];
+  return rate;
+}
+
 export function autoBuy(state: GameState, mode: BuyMode = 'one', skip: readonly string[] = []): string | null {
   let best: string | null = null;
   let bestRatio: Decimal | null = null;
   for (const id of state.revealed) {
     if (skip.includes(id)) continue;
     const n = owned(state, id);
-    const perUnit = n > 0 ? producerRate(state, id).div(n) : producerById(id)!.baseRate;
+    const perUnit = n > 0 ? producerRate(state, id).div(n) : firstUnitRate(state, id);
     if (perUnit.lte(0)) continue;
     const ratio = purchasePlan(state, id, 'one').cost.div(perUnit);
     if (!bestRatio || ratio.lt(bestRatio)) {
