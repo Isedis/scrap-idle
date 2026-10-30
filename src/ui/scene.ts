@@ -2,7 +2,7 @@ import type { Decimal } from '../game/num';
 import type { EventKind } from '../game/story';
 
 /** Palette of the camera feed: a night-vision picture in phosphor greens with amber lights. */
-const C = {
+export const C = {
   skyTop: '#041009',
   skyBottom: '#0f2d1c',
   skyline: '#0c2416',
@@ -144,7 +144,7 @@ interface Junk {
 const PHOSPHOR_BG = [6, 20, 12];
 const PHOSPHOR_HI = [216, 255, 220];
 
-interface Phosphor {
+export interface Phosphor {
   /** Fill for scenery: mostly sunk into the background. */
   body: string;
   /** Fill for actors: brighter so they stand out. */
@@ -157,7 +157,7 @@ interface Phosphor {
 const phosphorCache = new Map<string, Phosphor>();
 
 /** Splits a colour into bodies and edges for the vector-terminal look. */
-function phosphor(hex: string): Phosphor {
+export function phosphor(hex: string): Phosphor {
   let out = phosphorCache.get(hex);
   if (out) return out;
   const n = parseInt(hex.slice(1), 16);
@@ -176,7 +176,7 @@ function phosphor(hex: string): Phosphor {
 }
 
 /** Dark outline drawn around actors so they separate from the busy background. */
-const HALO = 'rgb(4 14 8)';
+export const HALO = 'rgb(4 14 8)';
 
 /** The camera overlay's own colour, like the REC mark: the one thing in the picture that is not green. */
 const HUD_RED = '#ff6b57';

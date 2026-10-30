@@ -21,6 +21,7 @@ import {
   crush,
   hasRecipe,
   impurity,
+  flowPerSecond,
   inspectSeconds,
   levelCost,
   levelsOf,
@@ -43,6 +44,7 @@ import {
   type StationId,
 } from '../game/sorting';
 import { sortingAdvice } from '../game/advice';
+import { BeltCam } from './beltCam';
 import { canResort, ratePerSecond, resortGain, resortShares, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
 
@@ -104,6 +106,8 @@ interface RecipeRow {
 /** The Sorting view on the Layers tab, in four parts: the line, the table, recipes, the reset. */
 export class SortingPanel {
   readonly root: HTMLElement;
+  /** Camera 02 over the belt, on top of every part of the tab. */
+  readonly camera = new BeltCam();
   private view: View = 'line';
   private views = new Map<View, HTMLElement>();
   private viewButtons = new Map<View, HTMLButtonElement>();
@@ -199,7 +203,7 @@ export class SortingPanel {
     this.views.set('table', this.buildTable());
     this.views.set('recipes', this.buildRecipes());
     this.views.set('reset', this.buildReset());
-    this.body.append(head, this.now, fracs, tabs, ...this.views.values());
+    this.body.append(this.camera.root, head, this.now, fracs, tabs, ...this.views.values());
     this.root.append(this.closed, this.body);
   }
 
@@ -578,6 +582,20 @@ export class SortingPanel {
     RANKS.forEach((r, i) => {
       this.rankRows[i].classList.toggle('got', so.sorts >= r.at);
       this.rankRows[i].classList.toggle('next', r === next);
+    });
+  }
+
+  /** Every animation frame while the tab is on screen: the camera. */
+  frame(dt: number, state: GameState): void {
+    const so = state.sorting;
+    if (!so.open) return;
+    this.camera.update(dt, {
+      line: so.line.slice(0, slotCount(so)),
+      levels: so.levels,
+      flow: flowPerSecond(so, ratePerSecond(state)).toNumber(),
+      queue: so.queue,
+      queueSize: queueSize(so),
+      threat: state.threat.level,
     });
   }
 

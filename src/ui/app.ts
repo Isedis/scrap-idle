@@ -731,6 +731,7 @@ export class App {
         if (this.losing) continue;
         this.typeLine(n.line);
         this.scene.glitch(1.2);
+        this.sortingPanel.camera.anomaly();
         this.pop(this.threatEl, 'alarm');
         this.sortingPanel.showFind('Стол осмотра: предмет не опознан. Угроза +15%', true);
       } else {
@@ -962,6 +963,7 @@ export class App {
   frame(dt: number): void {
     const state = this.getState();
     if (!this.losing) this.dread.update(dt, stageIndex(state.threat.level));
+    if (!this.sortingPanel.root.hidden) this.sortingPanel.frame(dt, state);
     this.scene.update(dt, {
       owned: state.owned,
       rate: ratePerSecond(state),
