@@ -3,11 +3,11 @@
    One committed look: the plant's control terminal (green phosphor, scanlines), showing the
    night dump through a security camera lit by an amber street lamp. */
 :root {
-  --bg: #050d07;
-  --panel: #08140b;
-  --line: #1d3a25;
-  --dim: #2f6b3f;
-  --mid: #5cbf74;
+  --bg: #08160d;
+  --panel: #0e2015;
+  --line: #25472f;
+  --dim: #3d7a50;
+  --mid: #82d698;
   --glow: #7dff9a;
   --amber: #ffbf47;
   --danger: #ff6b57;
@@ -30,7 +30,7 @@ html, body {
 
 body {
   margin: 0;
-  background: radial-gradient(ellipse 120% 80% at 50% 30%, #0a1a0f, var(--bg) 70%) fixed, var(--bg);
+  background: radial-gradient(ellipse 120% 80% at 50% 30%, #10271a, var(--bg) 70%) fixed, var(--bg);
   color: var(--glow);
   font: 14px/1.45 var(--font);
   -webkit-tap-highlight-color: transparent;
@@ -44,7 +44,7 @@ body::after {
   inset: 0;
   z-index: 50;
   pointer-events: none;
-  background: repeating-linear-gradient(transparent 0 2px, rgb(0 0 0 / 0.22) 2px 3px);
+  background: repeating-linear-gradient(transparent 0 2px, rgb(0 0 0 / 0.1) 2px 3px);
   animation: flicker 9s infinite;
 }
 
@@ -108,7 +108,7 @@ body::after {
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
-  background: #03080a;
+  background: #041009;
 }
 
 .feed-canvas {
@@ -346,6 +346,11 @@ body::after {
 }
 
 .upgrade .p-flavor { margin-top: 2px; }
+
+/* Producer descriptions stay folded until the card is tapped, to keep the list short. */
+.producer:not(.upgrade):not(.teaser) .p-flavor { display: none; }
+.producer.open:not(.upgrade) .p-flavor { display: block; }
+.producer:not(.upgrade):not(.teaser) .p-body { cursor: pointer; }
 
 .teaser { grid-template-columns: 32px minmax(0, 1fr); }
 .teaser .p-icon,

@@ -258,6 +258,10 @@ export class App {
       }
     });
 
+    // Tapping the card (not the button) shows or hides the description.
+    body.addEventListener('click', () => root.classList.toggle('open'));
+    icon.addEventListener('click', () => root.classList.toggle('open'));
+
     root.append(icon, body, button);
     return { def, root, count, rate, milestone, button, label, price };
   }
