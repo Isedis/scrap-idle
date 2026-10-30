@@ -8,10 +8,19 @@ import { TRACKS, type TrackLevels } from './infinite';
 import { ACHIEVEMENTS } from './achievements';
 import { REPEATS } from './layers';
 import { recordAway } from './state';
+import {
+  LIGHT_LEVELS,
+  RECYCLE_MINUTES,
+  RECYCLE_MODES,
+  SCRIPTS,
+  UPGRADE_SHARES,
+  newScripts,
+  type ScriptsState,
+} from './scripts';
 
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
-const VERSION = 6;
+const VERSION = 7;
 
 /** Run length for a run whose start is not known; stays negative however long it is played. */
 const UNKNOWN_RUN_SECONDS = -1e12;
@@ -75,6 +84,41 @@ interface SaveV6 extends Omit<SaveV5, 'v' | 'threat'> {
   autoRecycle: { on: boolean; factor: number };
 }
 
+/** What is kept of the Automation tab; the clocks rebuild on their own. */
+type ScriptsSave = Omit<ScriptsState, 'clock' | 'cooldown' | 'peak'>;
+
+/** v7 adds the Automation tab. */
+interface SaveV7 extends Omit<SaveV6, 'v'> {
+  v: 7;
+  scripts: ScriptsSave;
+}
+
+const oneOf = <T>(list: readonly T[], value: unknown, fallback: T): T => (list.includes(value as T) ? (value as T) : fallback);
+const count = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0);
+
+function loadScripts(data: Partial<ScriptsSave> | undefined): ScriptsState {
+  const sc = newScripts();
+  if (!data || typeof data !== 'object') return sc;
+  const buyable = SCRIPTS.filter((d) => d.cost).map((d) => d.id);
+  sc.bought = Array.isArray(data.bought) ? [...new Set(data.bought.filter((id) => buyable.includes(id)))] : [];
+  sc.speed = count(data.speed);
+  sc.reliability = count(data.reliability);
+  sc.failures = count(data.failures);
+  sc.producerMode = oneOf(BUY_MODES, data.producerMode, sc.producerMode);
+  const producers = new Set(PRODUCERS.map((p) => p.id));
+  sc.producerOff = Array.isArray(data.producerOff) ? [...new Set(data.producerOff.filter((id) => producers.has(id)))] : [];
+  sc.upgradesOn = data.upgradesOn !== false;
+  sc.upgradesShare = oneOf(UPGRADE_SHARES, data.upgradesShare, sc.upgradesShare);
+  sc.endlessOn = data.endlessOn !== false;
+  const tracks = TRACKS.map((t) => t.id);
+  sc.endlessOff = Array.isArray(data.endlessOff) ? [...new Set(data.endlessOff.filter((id) => tracks.includes(id)))] : [];
+  sc.recycleMode = oneOf(RECYCLE_MODES, data.recycleMode, sc.recycleMode);
+  sc.recycleMinutes = oneOf(RECYCLE_MINUTES, data.recycleMinutes, sc.recycleMinutes);
+  sc.lightOn = data.lightOn !== false;
+  sc.lightAt = oneOf(LIGHT_LEVELS, data.lightAt, sc.lightAt);
+  return sc;
+}
+
 /** Non-negative whole counts by known id. */
 function levels<K extends string>(data: unknown, ids: readonly K[]): Partial<Record<K, number>> {
   const out: Partial<Record<K, number>> = {};
@@ -132,7 +176,8 @@ function loadLayer(data: Partial<LayerSave> | undefined): LayerState | null {
 }
 
 export function serialize(state: GameState): string {
-  const data: SaveV6 = {
+  const { clock: _c, cooldown: _d, peak: _p, ...scripts } = state.scripts;
+  const data: SaveV7 = {
     v: VERSION,
     trash: state.trash.toString(),
     totalTrash: state.totalTrash.toString(),
@@ -151,6 +196,7 @@ export function serialize(state: GameState): string {
     compacted: state.compacted,
     achievements: state.achievements,
     autoRecycle: state.autoRecycle,
+    scripts,
     lastTick: state.lastTick,
   };
   return JSON.stringify(data);
@@ -158,13 +204,13 @@ export function serialize(state: GameState): string {
 
 /** Parses a save; returns null for anything that is not a readable save. */
 export function deserialize(text: string): GameState | null {
-  let data: Partial<SaveV6> | Partial<SaveV5> | Partial<SaveV4> | Partial<SaveV3> | Partial<SaveV2> | Partial<SaveV1>;
+  let data: Partial<SaveV7> | Partial<SaveV6> | Partial<SaveV5> | Partial<SaveV4> | Partial<SaveV3> | Partial<SaveV2> | Partial<SaveV1>;
   try {
     data = JSON.parse(text);
   } catch {
     return null;
   }
-  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5, 6].includes(data.v as number)) return null;
+  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5, 6, 7].includes(data.v as number)) return null;
 
   const state = newGame(typeof data.lastTick === 'number' ? data.lastTick : Date.now());
   const trash = parseNum(data.trash ?? '0');
@@ -181,7 +227,7 @@ export function deserialize(text: string): GameState | null {
   if (!state.revealed.includes('collector')) state.revealed.unshift('collector');
 
   // A v1 save simply has none of these yet.
-  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6) {
+  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7) {
     const ids = (list: unknown) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string' && upgradeById(id)) : []);
     state.upgrades = [...new Set(ids(data.upgrades))];
     state.seenUpgrades = [...new Set([...ids(data.seenUpgrades), ...state.upgrades])];
@@ -191,7 +237,7 @@ export function deserialize(text: string): GameState | null {
   // Before v3 there was a single run: everything collected so far belongs to it, length unknown.
   state.runTrash = state.totalTrash;
   state.runSeconds = UNKNOWN_RUN_SECONDS;
-  if (data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6) {
+  if (data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7) {
     const run = parseNum(data.runTrash ?? '0');
     const recycle = loadLayer(data.layers?.recycle);
     if (!run || !recycle) return null;
@@ -202,14 +248,14 @@ export function deserialize(text: string): GameState | null {
   }
 
   // Older saves start with nothing stirring.
-  if (data.v === 4 || data.v === 5 || data.v === 6) {
+  if (data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7) {
     const t = data.threat;
     const level = typeof t?.level === 'number' && Number.isFinite(t.level) ? t.level : 0;
     state.threat.level = Math.min(Math.max(level, 0), 1);
     state.threat.losses = typeof t?.losses === 'number' && t.losses >= 0 ? Math.floor(t.losses) : 0;
   }
-  if (data.v === 5 || data.v === 6) state.story = loadStory(data.story);
-  if (data.v === 6) {
+  if (data.v === 5 || data.v === 6 || data.v === 7) state.story = loadStory(data.story);
+  if (data.v === 6 || data.v === 7) {
     const t = data.threat;
     state.threat.lights = typeof t?.lights === 'number' && t.lights >= 0 ? Math.floor(t.lights) : 0;
     state.threat.bravest = typeof t?.bravest === 'number' && Number.isFinite(t.bravest) ? Math.min(Math.max(t.bravest, 0), 1) : 0;
@@ -223,6 +269,8 @@ export function deserialize(text: string): GameState | null {
       factor: AUTO_FACTORS.includes(ar?.factor as (typeof AUTO_FACTORS)[number]) ? ar!.factor : 1,
     };
   }
+  // Before v7 there was no Automation tab: every script starts uninstalled, with default settings.
+  if (data.v === 7) state.scripts = loadScripts(data.scripts);
   return state;
 }
 

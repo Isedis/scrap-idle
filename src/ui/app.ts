@@ -15,6 +15,8 @@ import {
   lightUp,
   loseShift,
   depthOf,
+  automationOpen,
+  type ScriptNote,
   type BuyMode,
   type GameState,
 } from '../game/state';
@@ -26,6 +28,8 @@ import { Scene } from './scene';
 import { RecyclePanel } from './recyclePanel';
 import { JournalPanel } from './journalPanel';
 import { TracksPanel } from './tracksPanel';
+import { AutomationPanel } from './automationPanel';
+import { FAIL_LINES } from '../game/scripts';
 import { checkAchievements, ACH_BONUS } from '../game/achievements';
 import { COMPACT_MILESTONE, type TrackDef } from '../game/infinite';
 import { Dread } from './dread';
@@ -46,7 +50,7 @@ const STAGE_NOTES = [
   'ОНО ПОДНИМАЕТСЯ. СВЕТ!',
 ];
 
-type Tab = 'dump' | 'upgrades' | 'recycle' | 'journal' | 'settings';
+type Tab = 'dump' | 'upgrades' | 'recycle' | 'auto' | 'journal' | 'settings';
 
 /** Seconds a terminal-only event stays on screen. */
 const CAM00_SECONDS = 1.6;
@@ -115,6 +119,9 @@ export class App {
   private losing = false;
   private journalPanel!: JournalPanel;
   private tracksPanel!: TracksPanel;
+  private automationPanel!: AutomationPanel;
+  private autoTab!: HTMLButtonElement;
+  private autoBadge!: HTMLElement;
   private journalBadge!: HTMLElement;
   private feedLabel!: HTMLElement;
   private motionEl!: HTMLElement;
@@ -191,7 +198,23 @@ export class App {
     this.journalPanel = new JournalPanel((rec) => this.watchRecord(rec, false));
     this.panels.set('journal', this.journalPanel.root);
 
-    main.append(this.buildDump(), this.buildUpgrades(), this.recyclePanel.root, this.journalPanel.root, this.buildSettings());
+    this.automationPanel = new AutomationPanel(this.getState, (message) => {
+      if (message) {
+        this.toast(message);
+        this.scene.flash('amber');
+      }
+      this.render();
+    });
+    this.panels.set('auto', this.automationPanel.root);
+
+    main.append(
+      this.buildDump(),
+      this.buildUpgrades(),
+      this.recyclePanel.root,
+      this.automationPanel.root,
+      this.journalPanel.root,
+      this.buildSettings(),
+    );
 
     const nav = el('nav', 'tabs');
     const upgradesTab = this.tabButton('upgrades', 'Улучшения', ICONS.upgrades);
@@ -211,7 +234,12 @@ export class App {
     this.journalBadge = el('span', 'badge');
     this.journalBadge.hidden = true;
     journalTab.append(this.journalBadge);
-    nav.append(this.tabButton('dump', 'Свалка', ICONS.heap), upgradesTab, this.recycleTab, journalTab, settingsTab);
+    this.autoTab = this.tabButton('auto', 'Автоматика', ICONS.auto);
+    this.autoBadge = el('span', 'badge', '!');
+    this.autoBadge.hidden = true;
+    this.autoTab.append(this.autoBadge);
+    this.autoTab.hidden = true;
+    nav.append(this.tabButton('dump', 'Свалка', ICONS.heap), upgradesTab, this.recycleTab, this.autoTab, journalTab, settingsTab);
 
     this.toastEl = el('div', 'toast');
     this.toastEl.setAttribute('role', 'status');
@@ -606,7 +634,27 @@ export class App {
     this.resetKnown();
     this.scene.glitch(0.4);
     this.toast(`Автопереработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
+    this.automationPanel.note(`recycle: №${state.recycle.resets}, +${format(gain)} ВС`);
     this.render();
+  }
+
+  /** What the scripts did this frame: the log, and the floodlight on camera. */
+  onScripts(notes: readonly ScriptNote[]): void {
+    const state = this.getState();
+    this.automationPanel.log(notes, state);
+    for (const n of notes) {
+      if (n.script !== 'light' || this.losing) continue;
+      if (n.failed) {
+        this.typeLine(FAIL_LINES[Math.floor(Math.random() * FAIL_LINES.length)]);
+        this.scene.glitch(1.2);
+        this.pop(this.threatEl, 'alarm');
+        this.toast('Автопрожектор не включился. Держите свет сами!');
+      } else {
+        this.scene.floodlight();
+        this.knownStage = 0;
+        this.caption('Автопрожектор: свет');
+      }
+    }
   }
 
   private buildUpgradeRow(def: UpgradeDef): UpgradeRow {
@@ -922,6 +970,12 @@ export class App {
       if (layer.resets === 0) this.toast('Новая вкладка: Переработка');
     }
     this.recycleBadge.hidden = !this.recyclePanel.attention(state);
+    if (this.autoTab.hidden && automationOpen(state)) {
+      this.autoTab.hidden = false;
+      this.toast('Новая вкладка: Автоматика');
+    }
+    this.autoBadge.hidden = !this.automationPanel.attention(state);
+    if (!this.automationPanel.root.hidden) this.automationPanel.render(state);
     if (!this.recyclePanel.root.hidden) this.recyclePanel.render(state);
     if (!this.journalPanel.root.hidden) this.journalPanel.render(state);
     const pending = unwatched(state.story);

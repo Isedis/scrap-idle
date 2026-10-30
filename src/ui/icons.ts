@@ -20,5 +20,6 @@ export const ICONS: Record<string, string> = {
   journal: svg('<rect x="3" y="7" width="13" height="10" rx="1.5"/><path d="m16 10.5 5-3v9l-5-3"/><circle cx="7" cy="12" r="1.2"/>'),
   locked: svg('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>'),
   heap: svg('<path d="M2.5 19.5h19"/><path d="M4 19.5l3.5-6 2.5 2.5 3.5-6.5 3 5 1.5-2 2.5 7"/>'),
+  auto: svg('<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M7 10l3 2.5L7 15M12.5 15.5h4.5"/>'),
   gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4 5.3 5.3"/>'),
 };

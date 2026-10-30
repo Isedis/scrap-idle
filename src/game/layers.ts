@@ -69,6 +69,12 @@ export function recycleGain(runTrash: Decimal, mult = 1): Decimal {
   return runTrash.div(RECYCLE_AT).root(GAIN_ROOT).mul(GAIN_AT_THRESHOLD * mult).floor();
 }
 
+/** The gain before rounding down, for judging when it stops paying to wait. */
+export function recycleGainRaw(runTrash: Decimal, mult = 1): number {
+  if (runTrash.lt(RECYCLE_AT)) return 0;
+  return runTrash.div(RECYCLE_AT).root(GAIN_ROOT).mul(GAIN_AT_THRESHOLD * mult).toNumber();
+}
+
 /** Run trash at which the gain goes up by one. */
 export function nextGainAt(runTrash: Decimal, mult = 1): Decimal {
   const next = recycleGain(runTrash, mult).add(1);
@@ -147,11 +153,6 @@ export const milestoneBase = (layer: LayerState) => (hasNode(layer, 'p4') ? 3 : 
 export function offlineCapSeconds(layer: LayerState): number {
   const day = 24 * 60 * 60;
   return hasNode(layer, 'o2') ? 7 * day : hasNode(layer, 'o1') ? 2 * day : day;
-}
-
-/** Seconds between auto-buyer purchases, or null when the player has none. */
-export function autobuyInterval(layer: LayerState): number | null {
-  return hasNode(layer, 'a2') ? 0.25 : hasNode(layer, 'a1') ? 2 : null;
 }
 
 // ---- Endless nodes ------------------------------------------------------------

@@ -2,7 +2,6 @@ import { D, Decimal } from './num';
 import { PRODUCERS, affordableCount, costOf, costOfMany, milestonesReached, producerById } from './producers';
 import { UPGRADES, upgradeById, type UpgradeDef } from './upgrades';
 import {
-  autobuyInterval,
   canBuyNode,
   hasNode,
   milestoneBase,
@@ -10,6 +9,7 @@ import {
   nodeById,
   producerCostMult,
   recycleGain,
+  recycleGainRaw,
   recycleProductionMult,
   gainMult,
   repeatById,
@@ -20,6 +20,19 @@ import {
 import { DARK_BONUS, OFFLINE_EFFICIENCY, climb, depthMeters, newThreat, stageIndex, threatActive, threatMult, type ThreatState } from './threat';
 import { COMPACT_DEPTH_DIGITS, TRACKS, bulkMult, compactMult, darkPeak, trackById, trackCost, type TrackLevels } from './infinite';
 import { achievementMult } from './achievements';
+import {
+  BASE_TICK,
+  FAST_TICK,
+  LIGHT_RETRY,
+  SPEED_STEP,
+  failChance,
+  newScripts,
+  reliabilityCost,
+  scriptById,
+  speedCost,
+  type ScriptId,
+  type ScriptsState,
+} from './scripts';
 import { eventById, eventInterval, isNight, newStory, pickEvent, record, storyMult, type Recording, type StoryState } from './story';
 
 export type BuyMode = 'one' | 'ten' | 'max';
@@ -60,6 +73,8 @@ export interface GameState {
    * (works once bought in the tree).
    */
   autoRecycle: { on: boolean; factor: number };
+  /** Automation tab: installed scripts and their settings. */
+  scripts: ScriptsState;
   /** Epoch ms of the last simulated moment, used for offline progress. */
   lastTick: number;
 }
@@ -84,6 +99,7 @@ export function newGame(now = Date.now()): GameState {
     compacted: 0,
     achievements: [],
     autoRecycle: { on: false, factor: 1 },
+    scripts: newScripts(),
     lastTick: now,
   };
 }
@@ -188,10 +204,11 @@ export function buy(state: GameState, id: string, mode: BuyMode = state.buyMode)
  * The auto-buyer's pick: the revealed producer whose next unit costs the least per
  * unit of output it adds. Returns its id if it was affordable and bought.
  */
-export function autoBuy(state: GameState): string | null {
+export function autoBuy(state: GameState, mode: BuyMode = 'one', skip: readonly string[] = []): string | null {
   let best: string | null = null;
   let bestRatio: Decimal | null = null;
   for (const id of state.revealed) {
+    if (skip.includes(id)) continue;
     const n = owned(state, id);
     const perUnit = n > 0 ? producerRate(state, id).div(n) : producerById(id)!.baseRate;
     if (perUnit.lte(0)) continue;
@@ -201,7 +218,7 @@ export function autoBuy(state: GameState): string | null {
       bestRatio = ratio;
     }
   }
-  return best && buy(state, best, 'one') > 0 ? best : null;
+  return best && buy(state, best, mode) > 0 ? best : null;
 }
 
 export function isUnlocked(state: GameState, u: UpgradeDef): boolean {
@@ -268,6 +285,7 @@ function startNewRun(state: GameState): void {
   state.threat.level = 0;
   state.story.traces = [];
   state.tracks = {};
+  state.scripts.peak = 0;
 }
 
 // ---- Threat -------------------------------------------------------------------
@@ -324,7 +342,137 @@ export const autoRecycleAt = (state: GameState) => state.recycle.total.mul(state
 
 /** Whether the auto-recycler should recycle now. */
 export function autoRecycleDue(state: GameState): boolean {
-  return state.autoRecycle.on && hasNode(state.recycle, 'a3') && state.runSeconds >= 10 && currentGain(state).gte(autoRecycleAt(state));
+  if (!state.autoRecycle.on || !hasNode(state.recycle, 'a3') || state.runSeconds < 10) return false;
+  const gain = currentGain(state);
+  if (gain.lte(0)) return false;
+  const sc = state.scripts;
+  switch (sc.recycleMode) {
+    case 'gain':
+      return gain.gte(autoRecycleAt(state));
+    case 'time':
+      return state.runSeconds >= sc.recycleMinutes * 60;
+    case 'peak':
+      // Recycled per second of the run has passed its best: waiting longer only slows things down.
+      return sc.peak > 0 && recycleRate(state) < sc.peak * PEAK_DROP;
+  }
+}
+
+/** The peak mode recycles once the rate falls this far below its best. */
+const PEAK_DROP = 0.95;
+const recycleRate = (state: GameState) => recycleGainRaw(state.runTrash, gainMult(state.recycle)) / Math.max(state.runSeconds, 1);
+
+// ---- Automation tab -------------------------------------------------------------
+
+/** Whether a script is installed: through its tree node or bought for Recycled material. */
+export function scriptOwned(state: GameState, id: ScriptId): boolean {
+  const def = scriptById(id)!;
+  return def.node ? hasNode(state.recycle, def.node) : state.scripts.bought.includes(id);
+}
+
+/** Whether a script's install offer is on the tab. */
+export function scriptOffered(state: GameState, id: ScriptId): boolean {
+  switch (id) {
+    case 'upgrades':
+      return state.recycle.resets >= 1;
+    case 'endless':
+      return state.recycle.resets >= 1 && state.totalTrash.gte(1e10);
+    case 'light':
+      return state.threat.lights >= 10 || state.threat.losses >= 1;
+    default:
+      return false;
+  }
+}
+
+export function installScript(state: GameState, id: ScriptId): boolean {
+  const def = scriptById(id);
+  if (!def?.cost || scriptOwned(state, id) || !scriptOffered(state, id) || state.recycle.points.lt(def.cost)) return false;
+  state.recycle.points = state.recycle.points.sub(def.cost);
+  state.scripts.bought.push(id);
+  return true;
+}
+
+/** Whether the Automation tab has anything on it yet. */
+export const automationOpen = (state: GameState) => hasNode(state.recycle, 'a1') || state.scripts.bought.length > 0;
+
+export function buySpeed(state: GameState): boolean {
+  const cost = speedCost(state.scripts.speed);
+  if (!automationOpen(state) || state.recycle.points.lt(cost)) return false;
+  state.recycle.points = state.recycle.points.sub(cost);
+  state.scripts.speed += 1;
+  return true;
+}
+
+export function buyReliability(state: GameState): boolean {
+  const cost = reliabilityCost(state.scripts.reliability);
+  if (!scriptOwned(state, 'light') || state.recycle.points.lt(cost)) return false;
+  state.recycle.points = state.recycle.points.sub(cost);
+  state.scripts.reliability += 1;
+  return true;
+}
+
+/** Seconds between ticks of the buying scripts. */
+export function scriptTick(state: GameState): number {
+  return (hasNode(state.recycle, 'a2') ? FAST_TICK : BASE_TICK) / (1 + SPEED_STEP * state.scripts.speed);
+}
+
+export const lightFailChance = (state: GameState) => failChance(depthOf(state), state.scripts.reliability);
+
+/** What a script did, for the log. */
+export interface ScriptNote {
+  script: ScriptId;
+  text: string;
+  /** The floodlight did not come on. */
+  failed?: boolean;
+}
+
+/** A hidden tab can come back after hours; the scripts catch up at most this many ticks per frame. */
+const MAX_TICKS_PER_FRAME = 8;
+
+/** Runs every installed script for one frame and says what they did. */
+export function runScripts(state: GameState, dt: number, rng: () => number = Math.random): ScriptNote[] {
+  const sc = state.scripts;
+  const notes: ScriptNote[] = [];
+
+  if (scriptOwned(state, 'light') && sc.lightOn) {
+    sc.cooldown = Math.max(0, sc.cooldown - dt);
+    if (sc.cooldown === 0 && state.threat.level >= sc.lightAt) {
+      const at = Math.floor(state.threat.level * 100);
+      if (rng() < lightFailChance(state)) {
+        sc.failures += 1;
+        sc.cooldown = LIGHT_RETRY;
+        notes.push({ script: 'light', text: `отказ на ${at}%`, failed: true });
+      } else {
+        state.threat.lights += 1;
+        state.threat.level = 0;
+        notes.push({ script: 'light', text: `свет на ${at}%` });
+      }
+    }
+  }
+
+  if (scriptOwned(state, 'recycle')) sc.peak = Math.max(sc.peak, recycleRate(state));
+
+  const interval = scriptTick(state);
+  sc.clock = Math.min(sc.clock + dt, interval * MAX_TICKS_PER_FRAME);
+  while (sc.clock >= interval) {
+    sc.clock -= interval;
+    if (state.autobuy && scriptOwned(state, 'producers')) {
+      const id = autoBuy(state, sc.producerMode, sc.producerOff);
+      if (id) notes.push({ script: 'producers', text: producerById(id)!.name });
+    }
+    if (sc.upgradesOn && scriptOwned(state, 'upgrades')) {
+      const limit = state.trash.mul(sc.upgradesShare);
+      const u = availableUpgrades(state).find((x) => x.cost.lte(limit));
+      if (u && buyUpgrade(state, u.id)) notes.push({ script: 'upgrades', text: u.name });
+    }
+    if (sc.endlessOn && scriptOwned(state, 'endless')) {
+      const cheapest = visibleTracks(state)
+        .filter((t) => !sc.endlessOff.includes(t.id))
+        .map((t) => ({ t, cost: trackCost(t, trackLevel(state, t.id)) }))
+        .sort((a, b) => a.cost.cmp(b.cost))[0];
+      if (cheapest && buyTrack(state, cheapest.t.id)) notes.push({ script: 'endless', text: cheapest.t.name });
+    }
+  }
+  return notes;
 }
 
 /** The threat reached the edge: the run is lost with nothing in return. Recycling progress stays. */
@@ -339,11 +487,6 @@ export function buyNode(state: GameState, id: string): boolean {
   state.recycle.points = state.recycle.points.sub(node.cost);
   state.recycle.nodes.push(id);
   return true;
-}
-
-/** Seconds between auto-buys if the auto-buyer is bought and switched on. */
-export function activeAutobuyInterval(state: GameState): number | null {
-  return state.autobuy ? autobuyInterval(state.recycle) : null;
 }
 
 // ---- Story events ---------------------------------------------------------------

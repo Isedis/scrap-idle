@@ -1,7 +1,7 @@
 import '@fontsource-variable/jetbrains-mono';
 import './style.css';
 import { format } from './game/num';
-import { activeAutobuyInterval, advance, autoBuy, autoRecycleDue, newGame, revealProducers, storyTick, type GameState } from './game/state';
+import { advance, autoRecycleDue, newGame, revealProducers, runScripts, storyTick, type GameState } from './game/state';
 import { applyOffline, readSave, writeSave } from './game/save';
 import { App } from './ui/app';
 import { CHECK_EVERY_MS, latestBuild, reloadInto } from './update';
@@ -37,11 +37,7 @@ function welcomeBack(seconds: number, trashBefore: typeof before): void {
   if (seconds >= 30 * 60 && state.story.records.length > 0) app.greet(seconds);
 }
 
-/** A hidden tab can come back after hours; the auto-buyer catches up at most this many buys per frame. */
-const AUTOBUY_MAX_PER_FRAME = 8;
-
 let lastRender = 0;
-let autobuyClock = 0;
 function frame(): void {
   const now = Date.now();
   let dt = (now - state.lastTick) / 1000;
@@ -60,14 +56,8 @@ function frame(): void {
   const event = storyTick(state, dt);
   if (event) app.onEvent(event);
 
-  const interval = activeAutobuyInterval(state);
-  if (interval !== null) {
-    autobuyClock = Math.min(autobuyClock + dt, interval * AUTOBUY_MAX_PER_FRAME);
-    while (autobuyClock >= interval) {
-      autobuyClock -= interval;
-      autoBuy(state);
-    }
-  }
+  const notes = runScripts(state, dt);
+  if (notes.length > 0) app.onScripts(notes);
 
   if (autoRecycleDue(state)) app.autoRecycle();
 

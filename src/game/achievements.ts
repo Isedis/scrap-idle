@@ -3,6 +3,7 @@ import { PRODUCERS } from './producers';
 import { UPGRADES } from './upgrades';
 import { NODES } from './layers';
 import { CASES, NOTES, isNight } from './story';
+import { SCRIPTS } from './scripts';
 import type { GameState } from './state';
 
 /** Each achievement adds this much to all production, for good. */
@@ -60,6 +61,9 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: 'km', name: 'Глубже километра', text: 'Объект ближе 1 км', check: (_, d) => d.lt(1000) },
   { id: 'm', name: 'Он под нами', text: 'Объект ближе 1 м', check: (_, d) => d.lt(1) },
   { id: 'cm', name: 'На расстоянии ладони', text: 'Объект ближе 1 см', check: (_, d) => d.lt(D(0.01)) },
+  // Automation
+  { id: 'scripts', name: 'Руки свободны', text: 'Установить все скрипты', check: (s) => SCRIPTS.every((d) => (d.node ? s.recycle.nodes.includes(d.node) : s.scripts.bought.includes(d.id))) },
+  { id: 'fail1', name: 'Отказ питания', text: 'Автопрожектор не включился', check: (s) => s.scripts.failures >= 1 },
   // The journal
   { id: 'case1', name: 'Первое дело', text: 'Открыть дело в журнале', check: (s) => s.story.cases.length >= 1 },
   { id: 'ninth', name: 'Девятый в смене', text: 'Открыть дело «Девятый»', check: (s) => s.story.cases.includes('extra') },
