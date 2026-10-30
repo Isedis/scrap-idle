@@ -24,6 +24,8 @@ export class Sound {
   private rumbleOsc: OscillatorNode | null = null;
   private volume: number;
   private threat = 0;
+  /** Context time of the next creak under pressure. */
+  private creakAt = 0;
 
   constructor() {
     let stored: string | null = null;
@@ -85,40 +87,88 @@ export class Sound {
     this.setThreat(this.threat);
   }
 
-  /** The camera's mains hum, and a low rumble that swells with the threat. */
+  /**
+   * The camera's mains hum, and a low rumble that swells with the threat. A phone speaker
+   * plays almost nothing under 150-200 Hz, so both are built from low notes rich in
+   * harmonics and filtered into the range it can play: heard as a buzz and a growl.
+   */
   private startHum(): void {
     const ctx = this.ctx!;
     this.hum = ctx.createGain();
-    this.hum.gain.value = 0.025;
+    this.hum.gain.value = 0.035;
     this.hum.connect(this.master!);
-    for (const f of [50, 100]) {
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.value = f;
-      o.connect(this.hum);
-      o.start();
-    }
+    const mains = ctx.createOscillator();
+    mains.type = 'sawtooth';
+    mains.frequency.value = 50;
+    const buzz = ctx.createBiquadFilter();
+    buzz.type = 'bandpass';
+    buzz.frequency.value = 320;
+    buzz.Q.value = 0.8;
+    mains.connect(buzz).connect(this.hum);
+    mains.start();
+
     this.rumble = ctx.createGain();
     this.rumble.gain.value = 0;
     this.rumble.connect(this.master!);
     this.rumbleOsc = ctx.createOscillator();
     this.rumbleOsc.type = 'sawtooth';
-    this.rumbleOsc.frequency.value = 38;
-    const low = ctx.createBiquadFilter();
-    low.type = 'lowpass';
-    low.frequency.value = 120;
-    this.rumbleOsc.connect(low).connect(this.rumble);
+    this.rumbleOsc.frequency.value = 55;
+    const growl = ctx.createBiquadFilter();
+    growl.type = 'lowpass';
+    growl.frequency.value = 480;
+    this.rumbleOsc.connect(growl).connect(this.rumble);
     this.rumbleOsc.start();
+    // Breath under the growl: noise in the low mids.
+    const air = ctx.createBufferSource();
+    air.buffer = this.noise;
+    air.loop = true;
+    const airBand = ctx.createBiquadFilter();
+    airBand.type = 'bandpass';
+    airBand.frequency.value = 260;
+    airBand.Q.value = 1.2;
+    const airGain = ctx.createGain();
+    airGain.gain.value = 0.6;
+    air.connect(airBand).connect(airGain).connect(this.rumble);
+    air.start();
   }
 
-  /** The rumble follows the threat: silent until the noises start, loud near the edge. */
+  /**
+   * The rumble follows the threat: silent until the noises start, loud near the edge.
+   * Under pressure, something creaks now and then. Called every render.
+   */
   setThreat(level: number): void {
     this.threat = level;
     if (!this.ctx || !this.rumble || !this.rumbleOsc) return;
     const t = this.ctx.currentTime;
-    const loud = level < 0.25 ? 0 : ((level - 0.25) / 0.75) ** 2 * 0.22;
+    const loud = level < 0.25 ? 0 : ((level - 0.25) / 0.75) ** 1.5 * 0.16;
     this.rumble.gain.setTargetAtTime(loud, t, 0.5);
-    this.rumbleOsc.frequency.setTargetAtTime(38 - level * 10, t, 0.5);
+    this.rumbleOsc.frequency.setTargetAtTime(55 - level * 15, t, 0.5);
+    if (level >= 0.25 && t >= this.creakAt) {
+      if (this.creakAt > 0) this.creak();
+      this.creakAt = t + (25 + Math.random() * 35) / (1 + 2 * level);
+    }
+  }
+
+  /** Something heavy shifting in the heap: a slow, grinding creak. */
+  private creak(): void {
+    if (!this.ctx || !this.master) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(140 + Math.random() * 60, t);
+    o.frequency.linearRampToValueAtTime(90 + Math.random() * 30, t + 0.9);
+    const band = this.ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 700;
+    band.Q.value = 5;
+    // Stuttering amplitude makes a creak of a plain tone.
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    for (let k = 0; k < 9; k++) g.gain.setValueAtTime(k % 2 ? 0.02 : 0.09, t + k * 0.1);
+    g.gain.setValueAtTime(0.0001, t + 0.95);
+    o.connect(band).connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 1);
   }
 
   // ---- One-off sounds ------------------------------------------------------------
@@ -165,7 +215,8 @@ export class Sound {
   relay(): void {
     this.burst(0.03, 0.4, 'highpass', 3000);
     this.burst(0.03, 0.35, 'highpass', 2500, 0.09);
-    this.tone('sawtooth', 120, 100, 0.6, 0.06, 0.1);
+    // The lamp catching: a buzz high enough for a phone speaker.
+    this.tone('sawtooth', 240, 200, 0.6, 0.06, 0.1);
   }
 
   /** Interference: a burst of static, longer for a bigger glitch. */
@@ -194,22 +245,23 @@ export class Sound {
     src.stop(t + 2.5);
   }
 
-  /** The press coming down: a deep thud with grit. */
+  /** The press coming down: a thud with metal grit, pitched where a phone can play it. */
   press(): void {
-    this.tone('sine', 90, 35, 0.7, 0.4);
-    this.burst(0.25, 0.25, 'lowpass', 400);
+    this.tone('square', 180, 60, 0.5, 0.18);
+    this.burst(0.35, 0.35, 'lowpass', 1500);
+    this.burst(0.12, 0.2, 'bandpass', 3500, 0.02, 2);
   }
 
-  /** The threat entering a worse stage: two low notes. */
+  /** The threat entering a worse stage: two hard notes, like a siren clearing its throat. */
   alarm(): void {
-    this.tone('triangle', 220, 210, 0.35, 0.12);
-    this.tone('triangle', 165, 160, 0.5, 0.12, 0.38);
+    this.tone('square', 440, 430, 0.3, 0.07);
+    this.tone('square', 330, 320, 0.45, 0.07, 0.33);
   }
 
   /** The automatic floodlight failing: a click, then a dying buzz. */
   fail(): void {
     this.burst(0.03, 0.4, 'highpass', 3000);
-    this.tone('sawtooth', 160, 40, 0.9, 0.1, 0.05);
+    this.tone('sawtooth', 420, 70, 1, 0.12, 0.05);
   }
 
   /** Unique waste found on the table: a soft chime, a little off. */
@@ -221,6 +273,6 @@ export class Sound {
   /** The shift lost: static and a long falling drone. */
   lost(): void {
     this.static(1.5);
-    this.tone('sawtooth', 70, 25, 3, 0.25);
+    this.tone('sawtooth', 260, 55, 3, 0.2);
   }
 }
