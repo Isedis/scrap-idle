@@ -65,23 +65,16 @@ body::after {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  padding-block: calc(env(safe-area-inset-top, 0px) + 14px) 14px;
+  padding-block: calc(env(safe-area-inset-top, 0px) + 8px) 8px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   background: linear-gradient(var(--bg) 82%, transparent);
 }
 
-.brand {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--mid);
-}
-
-.brand::before { content: '> '; }
+.amount { display: flex; align-items: baseline; gap: 8px; min-width: 0; max-width: 100%; }
 
 .trash {
-  margin-top: 6px;
-  font-size: clamp(32px, 10vw, 46px);
+  font-size: clamp(28px, 8.5vw, 40px);
   font-weight: 700;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
@@ -94,8 +87,10 @@ body::after {
   font-size: 12px;
 }
 
+/* Flow and Recycled material share one line. */
+.flows { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 2px; }
+
 .rate {
-  margin-top: 4px;
   color: var(--amber);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
@@ -362,7 +357,6 @@ body::after {
 
 /* Recycled material in the header once the player has any. */
 .layer-line {
-  margin-top: 2px;
   color: var(--glow);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -390,18 +384,18 @@ body::after {
 /* ---- Threat ---- */
 .threat {
   width: 100%;
-  margin-top: 8px;
+  margin-top: 6px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 6px 6px 6px 10px;
+  padding: 3px 3px 3px 10px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: rgb(0 0 0 / 0.25);
 }
 
-.threat-text { min-width: 0; display: grid; gap: 1px; }
+.threat-text { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
 .threat-bar { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .threat-stage { font-size: 11px; color: var(--mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -950,9 +944,10 @@ button { font: inherit; color: inherit; }
 
 /* ---- Toast ---- */
 .toast {
+  /* At the top, over the header: down by the tab bar it covered the buy buttons. */
   position: fixed;
   left: 50%;
-  bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px) + 16px);
+  top: calc(env(safe-area-inset-top, 0px) + 6px);
   z-index: 20;
   width: max-content;
   max-width: calc(100% - 32px);
@@ -967,7 +962,8 @@ button { font: inherit; color: inherit; }
   animation: toast-in 0.2s ease;
 }
 
-.toast::before { content: '> '; }
+.toast { display: grid; gap: 4px; }
+.toast-line::before { content: '> '; }
 
 /* ---- Update ---- */
 .update-status {
@@ -986,7 +982,7 @@ button { font: inherit; color: inherit; }
 }
 
 @keyframes toast-in {
-  from { opacity: 0; transform: translate(-50%, 8px); }
+  from { opacity: 0; transform: translate(-50%, -8px); }
 }
 
 @keyframes blink { 50% { opacity: 0; } }
@@ -1238,3 +1234,35 @@ button { font: inherit; color: inherit; }
 .feed.cam { height: 160px; margin-bottom: 4px; }
 .s-income { color: var(--mid); font-size: 12px; line-height: 1.4; }
 .s-level-gain { font-size: 10px; color: var(--glow); text-transform: none; }
+
+/* ---- Folding cameras ---- */
+.feed-fold {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--mid);
+  font: inherit;
+  font-size: 13px;
+  text-shadow: 0 0 4px rgb(0 0 0 / 0.9);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+#app[data-cams='off'] .feed { height: 44px; }
+#app[data-cams='off'] .feed-canvas,
+#app[data-cams='off'] .feed-clock,
+#app[data-cams='off'] .feed-caption,
+#app[data-cams='off'] .feed-playback,
+#app[data-cams='off'] .feed-paper { display: none; }
+#app[data-cams='off'] .feed-label { top: 50%; transform: translateY(-50%); }
+#app[data-cams='off'] .feed-rec { top: 50%; right: 100px; transform: translateY(-50%); }
+/* Folded, the whole strip is the button. */
+#app[data-cams='off'] .feed-fold { inset: 0; width: 100%; text-align: right; padding-right: 12px; }
+/* The motion alert stays tappable on a folded camera: it sits on top of the strip. */
+.feed-motion { z-index: 4; }
+#app[data-cams='off'] .feed-motion { top: 50%; left: 128px; transform: translateY(-50%); }

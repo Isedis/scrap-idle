@@ -33,6 +33,7 @@ import { AutomationPanel } from './automationPanel';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
 import { WorkshopCam } from './workshopCam';
+import { bundle } from './toasts';
 import { RANKS, describeUnique, uniqueById, FRAC_NAMES } from '../game/sorting';
 import { FAIL_LINES } from '../game/scripts';
 import { checkAchievements, ACH_BONUS } from '../game/achievements';
@@ -88,7 +89,9 @@ const BUY_MODES: [BuyMode, string][] = [
 
 /** How long each notice stays up; several in a row play one after another. */
 const TOAST_MS = 2600;
-const TOAST_QUEUE_MAX = 4;
+/** Each extra line of a bundled notice stays up this much longer. */
+const TOAST_LINE_MS = 900;
+const TOAST_QUEUE_MAX = 12;
 
 /** Owns the DOM; the game loop calls `render` a few times a second and `frame` every frame. */
 export class App {
@@ -184,17 +187,21 @@ export class App {
 
   private build(): void {
     const header = el('header', 'top');
-    header.append(el('div', 'brand', `scrap_idle v${__APP_VERSION__}`));
-    this.trashEl = el('div', 'trash', '0');
-    const unit = el('div', 'trash-unit', 'кг мусора в системе');
-    this.rateEl = el('div', 'rate', 'поток: +0 кг/с');
-    this.layerEl = el('div', 'layer-line');
+    // The amount and its unit on one line, the flow and Recycled material on the next: the
+    // header stays on every tab, so it is kept to what the player watches all the time.
+    const amount = el('div', 'amount');
+    this.trashEl = el('span', 'trash', '0');
+    amount.append(this.trashEl, el('span', 'trash-unit', 'кг'));
+    const flows = el('div', 'flows');
+    this.rateEl = el('span', 'rate', '+0 кг/с');
+    this.layerEl = el('span', 'layer-line');
     this.layerEl.hidden = true;
+    flows.append(this.rateEl, this.layerEl);
     // Lines camera 00 types into the terminal on its own.
     this.consoleEl = el('div', 'console');
     this.consoleEl.hidden = true;
     this.consoleEl.addEventListener('click', () => this.catchLive('typing') || this.catchLive('voice'));
-    header.append(this.trashEl, unit, this.rateEl, this.layerEl, this.buildThreat(), this.consoleEl);
+    header.append(amount, flows, this.buildThreat(), this.consoleEl);
 
     this.recyclePanel = new RecyclePanel(
       this.getState,
@@ -295,6 +302,9 @@ export class App {
     this.lostEl.setAttribute('role', 'alert');
 
     this.root.append(header, main, nav, this.toastEl, this.lostEl, this.intro.root);
+    // Every camera can fold away to a thin strip; one choice for all of them.
+    for (const feed of this.root.querySelectorAll<HTMLElement>('.feed')) this.addCameraFold(feed);
+    this.setCamerasFolded(camerasFolded());
     this.dread = new Dread(this.root, main, (line) => this.typeLine(line));
     this.sharpButton.setAttribute('aria-pressed', String(this.dread.sharp));
     this.sharpButton.textContent = this.dread.sharp ? 'Резкие моменты: вкл' : 'Резкие моменты: выкл';
@@ -945,16 +955,17 @@ export class App {
     if (this.toastEl.hidden) this.nextToast();
   }
 
+  /** Shows everything that waited as one notice, the same kinds of news folded together. */
   private nextToast(): void {
-    const message = this.toastQueue.shift();
+    const lines = bundle(this.toastQueue.splice(0));
     clearTimeout(this.toastTimer);
-    if (message === undefined) {
+    if (lines.length === 0) {
       this.toastEl.hidden = true;
       return;
     }
-    this.toastEl.textContent = message;
+    this.toastEl.replaceChildren(...lines.map((l) => el('div', 'toast-line', l)));
     this.toastEl.hidden = false;
-    this.toastTimer = window.setTimeout(() => this.nextToast(), TOAST_MS);
+    this.toastTimer = window.setTimeout(() => this.nextToast(), TOAST_MS + TOAST_LINE_MS * (lines.length - 1));
   }
 
   /** Marks a newer build as published: a badge on Settings and a note above the button. */
@@ -970,6 +981,8 @@ export class App {
   frame(dt: number): void {
     const state = this.getState();
     if (!this.losing) this.dread.update(dt, stageIndex(state.threat.level));
+    // Folded cameras draw nothing, which also spares the battery.
+    if (this.root.dataset.cams === 'off') return;
     if (!this.sortingPanel.root.hidden) this.sortingPanel.frame(dt, state);
     if (!this.recyclePanel.root.hidden) this.recyclePanel.frame(dt, state);
     if (!this.automationPanel.root.hidden) this.automationPanel.frame(dt, state);
@@ -991,6 +1004,26 @@ export class App {
       threat: state.threat.level,
       traces: state.story.traces,
     });
+  }
+
+  /** A button on a camera that folds every camera to a strip, or opens them again. */
+  private addCameraFold(feed: HTMLElement): void {
+    const b = el('button', 'feed-fold');
+    b.type = 'button';
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setCamerasFolded(this.root.dataset.cams !== 'off');
+    });
+    feed.append(b);
+  }
+
+  private setCamerasFolded(folded: boolean): void {
+    this.root.dataset.cams = folded ? 'off' : 'on';
+    for (const b of this.root.querySelectorAll<HTMLElement>('.feed-fold')) {
+      b.textContent = folded ? '▾ камера' : '▴';
+      b.setAttribute('aria-label', folded ? 'Показать камеры' : 'Свернуть камеры');
+    }
+    saveCamerasFolded(folded);
   }
 
   /** Runs the recycle and plays it on camera. */
@@ -1056,7 +1089,7 @@ export class App {
     this.announce(state);
 
     this.trashEl.textContent = format(state.trash);
-    this.rateEl.textContent = `поток: +${format(ratePerSecond(state))} кг/с`;
+    this.rateEl.textContent = `+${format(ratePerSecond(state))} кг/с`;
     const now = new Date();
     this.clockEl.textContent = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
 
@@ -1130,7 +1163,7 @@ export class App {
     this.motionEl.hidden = pending === 0 || this.replaying;
     this.motionEl.textContent = `● движение · ${pending}`;
     this.layerEl.hidden = layer.total.lte(0);
-    this.layerEl.textContent = `вторсырьё: ${format(layer.points)} · бонус ×${format(passiveBonus(layer.total))}`;
+    this.layerEl.textContent = `${format(layer.points)} ВС · ×${format(passiveBonus(layer.total))}`;
 
     this.autoButton.hidden = !hasNode(layer, 'a1');
     this.autoButton.setAttribute('aria-pressed', String(state.autobuy));
@@ -1180,5 +1213,24 @@ function markIntroSeen(): void {
     localStorage.setItem(INTRO_KEY, '1');
   } catch {
     // Without storage it simply shows again next time.
+  }
+}
+
+/** Whether the cameras are folded on this device: a display preference, so local storage is enough. */
+const CAMS_KEY = 'scrap-idle-cams';
+
+function camerasFolded(): boolean {
+  try {
+    return localStorage.getItem(CAMS_KEY) === 'off';
+  } catch {
+    return false;
+  }
+}
+
+function saveCamerasFolded(folded: boolean): void {
+  try {
+    localStorage.setItem(CAMS_KEY, folded ? 'off' : 'on');
+  } catch {
+    // Without storage the cameras simply open again next time.
   }
 }

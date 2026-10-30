@@ -200,19 +200,23 @@ export const RECIPE_BRANCHES: { id: RecipeDef['branch']; name: string }[] = [
   { id: 'automation', name: 'Автоматика' },
 ];
 
+/**
+ * Until the fourth slot, the line holds at most three stations, the two it starts with
+ * (plastic, paper) and a magnet, so early recipes ask only for plastic, paper and metal.
+ */
 export const RECIPES: readonly RecipeDef[] = [
-  { id: 'l1', branch: 'line', name: 'Третий слот', text: 'На ленте 3 места под станции', cost: { metal: 150 } },
+  { id: 'l1', branch: 'line', name: 'Третий слот', text: 'На ленте 3 места под станции', cost: { plastic: 150 } },
   { id: 'l2', branch: 'line', name: 'Брикетёр', text: 'Новая станция: умножает всё, что поймали станции до неё', cost: { plastic: 400, paper: 200 }, requires: 'l1' },
-  { id: 'l3', branch: 'line', name: 'Четвёртый слот', text: 'На ленте 4 места', cost: { metal: 1500, glass: 800 }, requires: 'l2' },
+  { id: 'l3', branch: 'line', name: 'Четвёртый слот', text: 'На ленте 4 места', cost: { metal: 1500, paper: 800 }, requires: 'l2' },
   { id: 'l4', branch: 'line', name: 'Дробилка', text: 'Новая станция: вдвое меньше хвостов', cost: { glass: 3000, metal: 3000 }, requires: 'l3' },
   { id: 'l5', branch: 'line', name: 'Пятый слот', text: 'На ленте 5 мест', cost: { metal: 2e4, plastic: 1e4 }, requires: 'l4' },
   { id: 'l6', branch: 'line', name: 'Шестой слот', text: 'На ленте 6 мест', cost: { metal: 1.5e5, glass: 1.5e5 }, requires: 'l5' },
   { id: 'i1', branch: 'inspect', name: 'Лупа', text: 'Осмотр вдвое быстрее', cost: { paper: 120 } },
   { id: 'i2', branch: 'inspect', name: 'Полка', text: 'На столе ещё 2 места', cost: { paper: 600, plastic: 300 }, requires: 'i1' },
-  { id: 'i3', branch: 'inspect', name: 'Лампа над столом', text: 'Осмотр вдвое быстрее', cost: { paper: 4000, glass: 2000 }, requires: 'i2' },
+  { id: 'i3', branch: 'inspect', name: 'Лампа над столом', text: 'Осмотр вдвое быстрее', cost: { paper: 4000, metal: 2000 }, requires: 'i2' },
   { id: 'i4', branch: 'inspect', name: 'Опись', text: 'Уникальные отходы находятся каждый второй осмотр', cost: { paper: 3e4 }, requires: 'i3' },
   { id: 'e1', branch: 'economy', name: 'Гранулы', text: 'Весь доход ×3', cost: { plastic: 300 } },
-  { id: 'e2', branch: 'economy', name: 'Стеклобой', text: 'Вторсырья за переработку ×2', cost: { glass: 500 }, requires: 'e1' },
+  { id: 'e2', branch: 'economy', name: 'Стеклобой', text: 'Вторсырья за переработку ×2', cost: { plastic: 600, metal: 200 }, requires: 'e1' },
   { id: 'e3', branch: 'economy', name: 'Переплавка', text: 'Производители вдвое дешевле', cost: { metal: 2500 }, requires: 'e2' },
   { id: 'e4', branch: 'economy', name: 'Вторичный цикл', text: 'Фракций за пересортировку ×2', cost: { plastic: 5000, metal: 5000, glass: 5000, paper: 5000 }, requires: 'e3' },
   { id: 'e5', branch: 'economy', name: 'Широкая лента', text: 'Поток на ленту ×2', cost: { plastic: 4e4, paper: 4e4 }, requires: 'e4' },

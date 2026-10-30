@@ -1,6 +1,20 @@
 import { D, format } from './num';
 import { NODES, RECYCLE_AT, canBuyNode, hasNode, isNodeOpen } from './layers';
-import { FRACS, FRAC_SHORT, RECIPES, SORT_AT, canBuyRecipe, hasRecipe, slotCount, sortNeed, tailsOf, type Price } from './sorting';
+import {
+  FRACS,
+  FRAC_NAMES,
+  FRAC_SHORT,
+  RECIPES,
+  SORT_AT,
+  STATIONS,
+  canBuyRecipe,
+  hasRecipe,
+  runLine,
+  slotCount,
+  sortNeed,
+  tailsOf,
+  type Price,
+} from './sorting';
 import { canRecycle, canResort, currentGain, resortGain, type GameState } from './state';
 
 /**
@@ -45,7 +59,16 @@ export function sortingAdvice(state: GameState): string {
   const next = RECIPES.filter((r) => !hasRecipe(so, r.id) && (!r.requires || hasRecipe(so, r.requires)))
     .map((r) => ({ r, gap: missing(state, r.cost) }))
     .filter((x) => x.gap)[0];
-  if (next) return `Копи на рецепт «${next.r.name}»: не хватает ${next.gap}.`;
+  if (next) {
+    // A fraction no station catches never comes in by itself: say which station to put on.
+    const caught = runLine(so.line.slice(0, slotCount(so)), so.levels).caught;
+    const uncaught = FRACS.find((f) => (next.r.cost[f] ?? 0) > 0 && so.fractions[f].lt(next.r.cost[f]!) && caught[f] === 0);
+    if (uncaught) {
+      const station = STATIONS.find((st) => st.frac === uncaught)!;
+      return `Для «${next.r.name}» нужен ${FRAC_NAMES[uncaught].toLowerCase()}, а его никто не ловит — поставь «${station.name}» на ленту (можно вместо другой станции).`;
+    }
+    return `Копи на рецепт «${next.r.name}»: не хватает ${next.gap}.`;
+  }
   const need = sortNeed(so.sorts);
   return `До пересортировки: ${format(state.recycle.total)} из ${format(need)} вторсырья за цикл.`;
 }

@@ -281,7 +281,7 @@ describe('recipes', () => {
     expect(buyRecipe(s, 'l1')).toBe(true);
     expect(slotCount(s)).toBe(3);
     expect(buyRecipe(s, 'l1')).toBe(false);
-    expect(s.fractions.metal.toNumber()).toBe(1e9 - 150);
+    expect(s.fractions.plastic.toNumber()).toBe(1e9 - 150);
   });
 
   it('alloys open after the whole tree and grow the flow', () => {
@@ -291,6 +291,13 @@ describe('recipes', () => {
     s.recipes = RECIPES.map((r) => r.id);
     expect(buyAlloy(s)).toBe(true);
     expect(s.alloys).toBe(1);
+  });
+});
+
+describe('early recipes', () => {
+  it('before the fourth slot ask only for what the first three stations catch', () => {
+    const early = RECIPES.filter((r) => ['l1', 'l2', 'l3', 'i1', 'i2', 'i3', 'e1', 'e2', 'e3', 'a1'].includes(r.id));
+    for (const r of early) expect(r.cost.glass, r.name).toBeUndefined();
   });
 });
 

@@ -64,6 +64,13 @@ describe('what to do next: Sorting', () => {
     expect(sortingAdvice(s)).toContain('уходит обратно в кучу');
   });
 
+  it('says which station to put on when nothing catches what a recipe needs', () => {
+    const s = sorter();
+    s.sorting.recipes = ['l1', 'l2'];
+    s.sorting.line = ['optic', 'blower', 'briquetter'];
+    expect(sortingAdvice(s)).toContain('«Магнит»');
+  });
+
   it('otherwise says what is missing for the next recipe', () => {
     const s = sorter();
     s.sorting.fractions.metal = D(100);
