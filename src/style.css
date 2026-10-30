@@ -1404,7 +1404,6 @@ button { font: inherit; color: inherit; }
   background: radial-gradient(ellipse at 50% 45%, transparent calc(70% - 35% * var(--near, 0)), rgb(90 0 0 / calc(0.25 + 0.6 * var(--near, 0))) 100%);
 }
 #app[data-hunt='check']::after { animation: heartbeat 0.9s ease-in-out infinite; }
-main.hunt-step { transform: translate(-2px, 2px); }
 
 /* The silence: black over everything, one number counting down. */
 .hush {
@@ -1572,173 +1571,13 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
   line-height: 1.5;
 }
 
-/* It stopped to listen: the screen holds its breath. */
-#app[data-hunt='stop']::after {
-  background: radial-gradient(ellipse at 50% 45%, transparent 20%, rgb(0 0 0 / 0.85) 100%);
-}
-#app[data-hunt='stop'] main { filter: brightness(0.55) saturate(0.6); transition: filter 0.6s; }
-main.hunt-lunge { animation: lunge 0.35s steps(3); }
-@keyframes lunge {
-  0% { transform: translate(-6px, 4px) scale(1.02); filter: brightness(1.8); }
-  50% { transform: translate(5px, -3px); }
-}
 
-/* At the door: an eye opens in the dark, the screen jumps at the knocks. */
-.hush-eye {
-  position: absolute;
-  left: 50%;
-  top: 12%;
-  width: min(80vw, 420px);
-  transform: translateX(-50%) scaleY(calc(0.05 + 0.95 * var(--eye, 0)));
-  opacity: calc(var(--eye, 0) * 0.55);
-  filter: blur(1px) drop-shadow(0 0 18px rgb(200 255 210 / 0.25));
-  pointer-events: none;
-}
-.hush-eye svg { display: block; width: 100%; height: auto; }
-.hush-whisper {
-  margin-top: 12px;
-  color: var(--mid);
-  font-size: 13px;
-  font-style: italic;
-  letter-spacing: 0.08em;
-  opacity: 0;
-  filter: blur(2px);
-}
-.hush.whisper .hush-whisper { animation: hush-whisper 3s ease forwards; }
-@keyframes hush-whisper {
-  30% { opacity: 0.85; filter: blur(0); }
-  100% { opacity: 0.5; filter: blur(0.5px); }
-}
-.hush.knock { animation: knock 1.7s linear; }
-@keyframes knock {
-  0%, 32%, 65% { transform: translateX(0); }
-  3%, 35%, 68% { transform: translate(-5px, 2px); background: rgb(20 0 0 / 0.9); }
-  8%, 40%, 73% { transform: translateX(0); }
-}
-.hush.rattle { animation: rattle 0.7s steps(10); }
-@keyframes rattle {
-  25% { transform: translateX(2px); }
-  50% { transform: translateX(-2px); }
-  75% { transform: translateX(1px); }
-}
-
-/* ---- The one that listens, for the eyes: prints, fog, subtitles ---- */
-.hunt-fx { position: fixed; inset: 0; z-index: 59; pointer-events: none; overflow: hidden; }
-.hunt-prints { position: absolute; inset: 0; }
-#app[data-hunt='hold'] .hunt-prints { opacity: 0.25; }
-.hunt-print {
-  position: absolute;
-  transform: translate(-50%, -50%) rotate(calc(180deg + var(--turn, 0deg))) scaleX(var(--flip, 1));
-  animation: print-in 0.25s ease-out, print-fade 12s ease-in forwards;
-}
-.hunt-print svg { display: block; width: 100%; height: auto; }
-.hunt-print svg * { fill: rgb(40 4 4 / 0.82); stroke: rgb(200 255 210 / 0.22); stroke-width: 0.8; }
-.hunt-print.big { animation: print-in 0.15s ease-out, print-fade 9s ease-in forwards; }
-.hunt-print.big svg * { fill: rgb(70 0 0 / 0.9); }
-.hunt-print.drying, .hunt-smear.drying { transition: opacity 3s; opacity: 0 !important; }
-.hunt-smear {
-  position: absolute;
-  width: 10px;
-  transform: translateX(-50%) rotate(4deg);
-  border-radius: 6px;
-  background: linear-gradient(rgb(40 4 4 / 0), rgb(40 4 4 / 0.55) 40%, rgb(40 4 4 / 0));
-  animation: print-fade 7s ease-in forwards;
-}
-@keyframes print-in {
-  from { opacity: 0; filter: brightness(2); }
-}
-@keyframes print-fade {
-  0%, 55% { opacity: 1; }
-  100% { opacity: 0; }
-}
-/* Stopped to listen: the prints hold, the words come up large. */
-.hunt-fx.listening::before {
-  content: 'ОНО СЛУШАЕТ';
-  position: absolute;
-  left: 50%;
-  top: 42%;
-  transform: translate(-50%, -50%);
-  color: var(--danger);
-  font-size: clamp(30px, 11vw, 64px);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  white-space: nowrap;
-  opacity: 0;
-  animation: listen-in 6s ease forwards;
-}
-@keyframes listen-in {
-  15% { opacity: 0.55; }
-  80% { opacity: 0.4; transform: translate(-50%, -50%) scale(1.06); }
-  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.1); }
-}
-.hunt-fx.lunge::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 50% 80%, rgb(160 0 0 / 0.55), transparent 70%);
-  animation: lunge-flash 0.6s ease-out forwards;
-}
-@keyframes lunge-flash {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-/* Its breath on the glass. */
-.hunt-fog {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  background: radial-gradient(ellipse at 50% 100%, rgb(200 230 205 / 0.35), transparent 60%);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-  -webkit-mask-image: radial-gradient(ellipse at 50% 100%, #000 10%, transparent 70%);
-  mask-image: radial-gradient(ellipse at 50% 100%, #000 10%, transparent 70%);
-}
-.hunt-fog.close {
-  background: radial-gradient(ellipse at 50% 60%, rgb(200 230 205 / 0.28), transparent 70%);
-  -webkit-mask-image: radial-gradient(ellipse at 50% 60%, #000 20%, transparent 75%);
-  mask-image: radial-gradient(ellipse at 50% 60%, #000 20%, transparent 75%);
-}
-.hunt-fog.on { animation: fog 3s ease-in-out; }
-@keyframes fog {
-  35% { opacity: 1; }
-  100% { opacity: 0; }
-}
-/* What is only heard, written at the bottom like subtitles. */
-.hunt-subtitle {
-  position: absolute;
-  left: 50%;
-  bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px) + 18px);
-  transform: translateX(-50%);
-  max-width: calc(100% - 32px);
-  padding: 4px 10px;
-  background: rgb(0 0 0 / 0.75);
-  color: #e8f0e6;
-  font-size: 13px;
-  font-style: italic;
-  letter-spacing: 0.03em;
-  text-align: center;
-}
-/* At the door: cracks from the knocks, a handle that is tried. */
-.hush-cracks { position: absolute; inset: 0; pointer-events: none; }
-.hush-crack { position: absolute; width: 150px; animation: crack-in 0.12s ease-out; }
-.hush-crack svg { display: block; width: 100%; height: auto; }
-@keyframes crack-in {
-  from { opacity: 0; filter: brightness(3); }
-}
-.hush-handle {
-  position: absolute;
-  right: 8%;
-  top: 48%;
-  width: 46px;
-  opacity: 0;
-  transform: translateY(-50%);
-}
-.hush-handle svg { display: block; width: 100%; height: auto; }
-.hush.rattle .hush-handle,
-.hush.whisper .hush-handle { opacity: 0.7; }
-.hush.rattle .hush-handle { animation: handle 0.7s steps(8); }
-@keyframes handle {
-  25% { transform: translateY(-50%) rotate(-14deg); }
-  50% { transform: translateY(-50%) rotate(3deg); }
-  75% { transform: translateY(-50%) rotate(-10deg); }
-}
+/* At the door: the dark screen with camera 03 in the middle of it. */
+.hush-cam { width: min(calc(100vw - 32px), 520px); }
+.hush-cam .feed { height: 230px; }
+#app[data-cams='off'] .hush-cam .feed { height: 230px; }
+#app[data-cams='off'] .hush-cam .feed-canvas { display: block; }
+#app[data-cams='off'] .hush-cam .feed-label,
+#app[data-cams='off'] .hush-cam .feed-rec { top: 6px; transform: none; }
+#app[data-cams='off'] .hush-cam .feed-rec { right: 8px; }
+.hush-cam .feed-fold { display: none; }

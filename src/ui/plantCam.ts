@@ -17,6 +17,8 @@ export interface PlantView {
   noise: number;
   /** The noise slider exists: the meter on the wall shows. */
   loud: boolean;
+  /** The one that listens: walking (how near, 0..1), at the door, or seconds of silence held there. */
+  hunt: { phase: 'idle' | 'walk' | 'check' | 'caught'; near: number; held: number };
 }
 
 interface Bale {
@@ -32,7 +34,7 @@ interface Bit {
   vx: number;
   vy: number;
   life: number;
-  kind: 'pellet' | 'steam' | 'spark';
+  kind: 'pellet' | 'steam' | 'spark' | 'dust';
 }
 
 /** A recording playing on this camera. */
@@ -86,6 +88,20 @@ export class PlantCam extends Camera<PlantView> {
   private lampsOff = 0;
   private playing: Playing | null = null;
   private replay: string | null = null;
+  // ---- The one that listens, as this camera sees it ----
+  /** Wet prints on the floor, from the far end toward the booth. */
+  private prints: { x: number; y: number; age: number }[] = [];
+  private leftFoot = false;
+  /** The picture jolts on a step, harder on the step after a stop. */
+  private jolt = 0;
+  /** It stopped to listen: the lights go out and the plant holds still. */
+  listening = false;
+  /** What the plant's microphone hears, written on the picture. */
+  private audio: { text: string; until: number } | null = null;
+  /** Camera time of the last knock, rattle and whisper at the door. */
+  private beatAt = { knock: -99, rattle: -99, whisper: -99 };
+  /** Camera time it started to leave, or below zero. */
+  private leftAt = -1;
 
   constructor() {
     super('КАМ-03 · ЦЕХ', 'Камера в цехе переработки');
@@ -137,7 +153,53 @@ export class PlantCam extends Camera<PlantView> {
   /** How fast the machines run: the load, or nothing while a recording holds them still. */
   private get speed() {
     if (this.playing && STILL.includes(this.playing.kind)) return 0;
+    if (this.listening) return 0;
     return this.view!.noise;
+  }
+
+  // ---- The one that listens ------------------------------------------------------------
+
+  /** A step: a wet print further along the floor toward the booth, dust off the trusses, a jolt. */
+  huntStep(near: number, pan: number): void {
+    this.leftFoot = !this.leftFoot;
+    const x = this.w - 26 - (this.w - 72) * near;
+    this.prints.push({ x: x + (this.leftFoot ? -3 : 3), y: this.floor - (this.leftFoot ? 3 : 8), age: 0 });
+    this.jolt = Math.max(this.jolt, 0.15 + 0.35 * near);
+    for (let i = 0; i < 4 + near * 8; i++) this.bits.push({ x: rnd(0, this.w), y: 18, vx: rnd(-3, 3), vy: rnd(5, 20), life: rnd(1.5, 2.5), kind: 'dust' });
+    if (Math.random() < 0.5) this.lampsOff = rnd(0.05, 0.2);
+    this.say(`ШАГИ · ${pan < -0.35 ? 'СЛЕВА' : pan > 0.35 ? 'СПРАВА' : 'В ЦЕХУ'}`, 1.6);
+  }
+
+  /** The hard step after a stop. */
+  huntLunge(): void {
+    this.jolt = 1;
+    this.flash();
+    this.glitch(0.5);
+    this.say('УДАР · СОВСЕМ РЯДОМ', 2);
+  }
+
+  /** Knocks, the handle, a whisper: the booth answers on the picture. */
+  huntBeat(kind: 'knock' | 'rattle' | 'whisper'): void {
+    this.beatAt[kind] = this.t;
+    if (kind === 'knock') this.jolt = 0.8;
+    this.say(kind === 'knock' ? 'СТУК В ДВЕРЬ БУДКИ ×3' : kind === 'rattle' ? 'ДЁРГАЮТ РУЧКУ' : 'ШЁПОТ: «Я ЗНАЮ, ЧТО ТЫ ТАМ»', 2.6);
+  }
+
+  /** It leaves: the figure goes, the prints dry. */
+  huntLeave(): void {
+    this.leftAt = this.t;
+    this.say('ШАГИ УДАЛЯЮТСЯ', 3);
+  }
+
+  huntClear(): void {
+    this.prints = [];
+    this.leftAt = -1;
+    this.listening = false;
+  }
+
+  /** What the microphone hears, on the picture for `seconds`. */
+  say(text: string, seconds: number): void {
+    this.audio = { text, until: this.t + seconds };
   }
 
   protected simulate(dt: number): void {
@@ -147,6 +209,10 @@ export class PlantCam extends Camera<PlantView> {
       this.replay = null;
     }
     this.updateZoom(dt);
+    this.jolt = Math.max(0, this.jolt - dt * 3);
+    for (const p of this.prints) p.age += dt * (this.leftAt >= 0 ? 8 : 1);
+    this.prints = this.prints.filter((p) => p.age < 40).slice(-14);
+    if (this.view!.hunt.phase === 'idle' && this.leftAt >= 0 && this.t - this.leftAt > 5) this.huntClear();
     const speed = this.speed;
     this.belt = (this.belt + BALE_SPEED * speed * dt) % 12;
     this.teeth += 6 * speed * dt;
@@ -203,7 +269,7 @@ export class PlantCam extends Camera<PlantView> {
       } else {
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        if (p.kind === 'spark') p.vy += 200 * dt;
+        if (p.kind === 'spark' || p.kind === 'dust') p.vy += (p.kind === 'spark' ? 200 : 30) * dt;
       }
     }
     this.bits = this.bits.filter((p) => p.life > 0 && (p.kind !== 'pellet' || (p.y > 40 && p.x < this.siloX)));
@@ -231,15 +297,23 @@ export class PlantCam extends Camera<PlantView> {
     const v = this.view!;
     const has = (id: string) => v.nodes.includes(id);
     const still = this.speed === 0;
-    // Recordings that stop the plant also bring the lights down.
-    const lit = this.lampsOff > 0 || (still && this.playing) ? 0.25 : 1;
+    // Recordings that stop the plant, and its stops to listen, bring the lights down.
+    const lit = this.listening ? 0.08 : this.lampsOff > 0 || (still && this.playing) ? 0.25 : 1;
     const shake = this.speed > 1 && !this.reducedMotion ? (this.speed - 1) * 1.6 : 0;
     const jx = () => (shake ? rnd(-shake, shake) : 0);
+    const hunt = v.hunt;
 
     ctx.save();
+    if (this.jolt > 0 && !this.reducedMotion) ctx.translate(rnd(-1, 1) * this.jolt * 5, rnd(-1, 1) * this.jolt * 4);
     this.applyZoom();
     this.drawHall(lit);
+    ctx.save();
+    // Knocks shake the booth.
+    const knock = this.t - this.beatAt.knock;
+    if (knock < 1.4 && [0, 0.55, 1.1].some((k) => knock > k && knock < k + 0.18)) ctx.translate(rnd(-2, 2), rnd(-1, 1));
     this.drawBooth(has('o1'), has('o2'));
+    ctx.restore();
+    if (hunt.phase === 'check' || (this.leftAt >= 0 && this.t - this.leftAt < 3)) this.drawVisitor(hunt.held);
     this.drawBelt();
     for (const b of this.bales) this.actor(() => this.box(b.x - 7, b.y - 7, 14, 10, '#6a9f74', 1));
     if (this.is('plantBale')) this.drawStrayBale();
@@ -252,12 +326,15 @@ export class PlantCam extends Camera<PlantView> {
     ctx.restore();
 
     this.drawSilo(v.pointsLog);
+    // On the floor in front of the machines.
+    this.drawPrints();
     this.drawBits();
     if (has('a1')) this.drawArm(has('a2'));
     this.drawBoard(v, has);
     if (v.loud) this.drawMeter(v.noise);
     if (this.is('plantListener')) this.drawListener();
     ctx.restore();
+    this.drawAudio();
 
     if (this.is('plantEcho')) this.drawEcho();
     if (lit < 1) {
@@ -313,8 +390,10 @@ export class PlantCam extends Camera<PlantView> {
 
   /** Eases in on a replayed recording, follows it, and eases out before the end. */
   private updateZoom(dt: number): void {
-    const a = this.replay ? this.anchor() : null;
-    const want = a && this.playing && this.evT < this.playing.seconds - 0.7 ? 2.5 : 1;
+    // A replay closes in on what happened; at the door, the camera finds the booth.
+    const door = this.view!.hunt.phase === 'check' && !this.replay;
+    const a: [number, number] | null = door ? [44, this.floor - 58] : this.replay ? this.anchor() : null;
+    const want = door ? 1.6 : a && this.playing && this.evT < this.playing.seconds - 0.7 ? 2.5 : 1;
     const k = this.reducedMotion ? 1 : Math.min(dt * 3.5, 1);
     this.zoom.scale += (want - this.zoom.scale) * k;
     if (a) {
@@ -457,6 +536,115 @@ export class PlantCam extends Camera<PlantView> {
     this.label('ОХРАНА', 19, fl - 54, C.deep);
   }
 
+  /** Wet bare prints on the floor, fresh ones glinting, old ones drying. */
+  private drawPrints(): void {
+    const { ctx } = this;
+    for (const p of this.prints) {
+      const a = Math.max(0, 1 - p.age / 40);
+      // Dark and wet, with a pale rim where the light catches the edge.
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#010302';
+      ctx.strokeStyle = 'rgb(200 255 210 / 0.55)';
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 3.2, 5.2, -0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      for (let k = 0; k < 4; k++) {
+        ctx.beginPath();
+        ctx.arc(p.x - 3 + k * 2, p.y - 7 + Math.abs(k - 1.5) * 0.6, 0.9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      // A wet glint while fresh.
+      if (p.age < 6) {
+        ctx.globalAlpha = (1 - p.age / 6) * 0.6;
+        ctx.fillStyle = C.light;
+        ctx.fillRect(p.x - 0.5, p.y - 1, 1, 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /**
+   * At the door: a tall shape by the booth. During the silence it leans to the window,
+   * and at the whisper its eyes show behind the glass. It leaves when it is lived through.
+   */
+  private drawVisitor(held: number): void {
+    const { ctx } = this;
+    const fl = this.floor;
+    const going = this.leftAt >= 0 ? Math.min((this.t - this.leftAt) / 3, 1) : 0;
+    const x = 44 + going * (this.w * 0.6);
+    const tall = 104;
+    const lean = Math.min(held / 4, 1) * (1 - going);
+    ctx.save();
+    ctx.globalAlpha = 1 - going * 0.8;
+    ctx.fillStyle = '#000';
+    ctx.strokeStyle = 'rgb(130 214 152 / 0.4)';
+    ctx.lineWidth = 1;
+    const hx = x - lean * 12;
+    const hy = fl - tall + 8 + lean * 18;
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, 6, 8, -lean * 0.6, 0, Math.PI * 2);
+    ctx.moveTo(x - 7, fl - tall + 20);
+    ctx.lineTo(x + 7, fl - tall + 20);
+    ctx.lineTo(x + 4, fl - 46);
+    ctx.lineTo(x + 5, fl);
+    ctx.lineTo(x - 5, fl);
+    ctx.lineTo(x - 4, fl - 46);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // One long arm up to the door handle.
+    const rattle = this.t - this.beatAt.rattle;
+    const reach = rattle < 0.8 ? Math.sin(rattle * 40) * 2 : 0;
+    this.line(x - 7, fl - tall + 24, 30 + reach, fl - 16 + reach, '#000', 2.5);
+    ctx.restore();
+    // The handle, tried from outside.
+    ctx.strokeStyle = C.light;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const angle = rattle < 0.8 ? Math.sin(rattle * 40) * 0.6 : 0;
+    ctx.moveTo(23, fl - 16);
+    ctx.lineTo(23 + Math.cos(angle) * 5, fl - 16 + Math.sin(angle) * 5);
+    ctx.stroke();
+    // Its eyes at the booth window, after the whisper.
+    if (this.t - this.beatAt.whisper < 30 && going === 0) {
+      ctx.fillStyle = C.light;
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 6);
+      ctx.fillRect(hx - 4, hy - 1, 2, 2);
+      ctx.fillRect(hx + 1, hy - 1, 2, 2);
+      ctx.globalAlpha = 1;
+    }
+    // Breath on the glass from outside, in and out.
+    if (held > 0 && going === 0) {
+      ctx.globalAlpha = 0.25 + 0.2 * Math.sin(this.t * 1.6);
+      ctx.fillStyle = C.light;
+      ctx.beginPath();
+      ctx.ellipse(28, fl - 38, 5, 3.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /** The plant's microphone: what it hears, on a strip at the bottom of the picture. */
+  private drawAudio(): void {
+    if (!this.audio || this.t > this.audio.until) return;
+    const { ctx, w, h } = this;
+    ctx.fillStyle = 'rgb(0 0 0 / 0.75)';
+    ctx.fillRect(0, h - 14, w, 14);
+    ctx.fillStyle = HUD_RED;
+    ctx.font = '700 9px "JetBrains Mono Variable", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`АУДИО: ${this.audio.text}`, 8, h - 4);
+    // A level that jumps with what it hears.
+    for (let i = 0; i < 8; i++) {
+      const on = Math.random() < 0.7 - i * 0.07;
+      ctx.fillStyle = on ? HUD_RED : '#2a0c08';
+      ctx.fillRect(w - 50 + i * 5, h - 11, 3, 8);
+    }
+  }
+
   private drawBelt(): void {
     const by = this.beltY;
     const end = this.shredX - 20;
@@ -564,6 +752,11 @@ export class PlantCam extends Camera<PlantView> {
         ctx.beginPath();
         ctx.arc(p.x, p.y, 4 + (3.5 - p.life) * 3, 0, Math.PI * 2);
         ctx.fill();
+        ctx.globalAlpha = 1;
+      } else if (p.kind === 'dust') {
+        ctx.fillStyle = C.green;
+        ctx.globalAlpha = Math.min(p.life, 1) * 0.7;
+        ctx.fillRect(p.x, p.y, 1, 1);
         ctx.globalAlpha = 1;
       } else {
         ctx.fillStyle = C.light;

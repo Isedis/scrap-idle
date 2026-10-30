@@ -2,6 +2,7 @@ import { format, type Decimal } from '../game/num';
 import { BRANCHES, LAYERS, NODES, RECYCLE_AT, REPEATS, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, repeatCost, type NodeDef, type RepeatDef } from '../game/layers';
 import { recycleAdvice } from '../game/advice';
 import { PlantCam, type PlantView } from './plantCam';
+import { nearness } from '../game/hearing';
 import { recycleMult, buyNode, buyRepeat, canRecycle, currentGain, repeatsOpen, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
 
@@ -237,5 +238,6 @@ export function plantView(state: GameState): PlantView {
     threat: state.threat.level,
     noise: state.sorting.open ? state.hearing.noise : 1,
     loud: state.sorting.open,
+    hunt: { phase: state.hearing.phase, near: nearness(state.hearing), held: state.hearing.held },
   };
 }
