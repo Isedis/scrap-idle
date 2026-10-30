@@ -106,18 +106,23 @@ describe('hearing', () => {
     expect(run(h, CHECK_SECONDS)).toEqual(['caught']);
   });
 
-  it('closed, it never fills and never comes: a walk waits for the player at the check', () => {
+  it('closed, nothing moves: leaving the game neither fills nor empties the meter, nor moves the walk or the minute', () => {
     const h = newHearing();
     setNoise(h, 2);
     h.meter = 0.9;
     hearingTick(h, 3600, true, true);
     expect(h.phase).toBe('idle');
-    expect(h.meter).toBe(0);
+    expect(h.meter).toBe(0.9);
     h.phase = 'walk';
     h.walk = h.left = 200;
     hearingTick(h, 3600 * 8, true, true);
-    expect(h.phase).toBe('check');
-    expect(h.left).toBe(CHECK_SECONDS);
+    expect(h.phase).toBe('walk');
+    expect(h.left).toBe(200);
+    h.phase = 'check';
+    h.left = 12;
+    h.held = 4;
+    hearingTick(h, 600, true, true);
+    expect(h).toMatchObject({ phase: 'check', left: 12, held: 4 });
   });
 });
 
@@ -146,6 +151,10 @@ describe('hearing in the game', () => {
     expect(s.trash.sub(before).div(quiet.trash).toNumber()).toBeCloseTo(1, 3);
     expect(s.hearing.noise).toBe(2);
     expect(s.hearing.meter).toBe(0);
+    // A meter half full stays half full through a minute in the background.
+    s.hearing.meter = 0.5;
+    advance(s, 60, true);
+    expect(s.hearing.meter).toBe(0.5);
   });
 
   it('production stops the moment it hears', () => {

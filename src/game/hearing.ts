@@ -4,7 +4,8 @@
  * normal load the thing's hearing fills. Once it has heard, it comes, and nothing stops
  * the walk. At the end the plant has a minute to go silent, and silence has to hold for
  * ten seconds. A sound in those seconds, or no silence in time, costs the whole of
- * Recycling. Closed, the plant runs at normal load, and a walk waits for the player.
+ * Recycling. Closed, the plant runs at normal load and the thing waits as it was: the
+ * meter, the walk and the minute stand still until the player is back.
  * Texts and tone: docs/STORY.md.
  */
 
@@ -65,12 +66,12 @@ export function nearness(h: HearingState): number {
 }
 
 /**
- * Runs the thing for `dt` seconds. Offline the load counts as normal, so the meter only
- * drains, and a walk under way skips to the check that waits for the player.
+ * Runs the thing for `dt` seconds. Offline nothing moves: it does not come for someone who
+ * is not there, and leaving the game does not make it forget what it heard.
  * Returns what changed, for the screen.
  */
 export function hearingTick(h: HearingState, dt: number, open: boolean, offline = false, rand = Math.random): 'heard' | 'check' | 'survived' | 'caught' | null {
-  if (!open || dt <= 0 || h.phase === 'caught') return null;
+  if (!open || offline || dt <= 0 || h.phase === 'caught') return null;
   const noise = effectiveNoise(h, open, offline);
   if (h.phase === 'idle') {
     if (noise > 1) h.meter += ((noise - 1) / (MAX_NOISE - 1) / FILL_SECONDS) * dt;
@@ -82,10 +83,6 @@ export function hearingTick(h: HearingState, dt: number, open: boolean, offline 
     h.walk = WALK_MIN + (WALK_MAX - WALK_MIN) * rand();
     h.left = h.walk;
     return 'heard';
-  }
-  if (offline) {
-    // It does not come for someone who is not there: it waits by the booth.
-    return startCheck(h);
   }
   if (h.phase === 'walk') {
     h.left -= dt;
