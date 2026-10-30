@@ -35,6 +35,11 @@ import {
   sortingGainMult,
   sortingIncome,
   sortingTick,
+  fractionsIncome,
+  hasRecipe,
+  rankIncome,
+  uniqueMult,
+  SORT_INCOME,
   threatSpeed,
   addFractions,
   type Frac,
@@ -137,6 +142,39 @@ export function sharedMult(state: GameState): Decimal {
     .mul(compactMult(state.tracks))
     .mul(achievementMult(state.achievements))
     .mul(sortingIncome(state.sorting));
+}
+
+/** One multiplier in the income, for the breakdown the player can open. */
+export interface IncomePart {
+  label: string;
+  mult: Decimal;
+  /** What it comes from, in a few words. */
+  note: string;
+}
+
+/**
+ * Where the income comes from: the producers' own output, then every multiplier on top.
+ * The parts multiply back to the income exactly; the last one is what differs between
+ * producers (upgrades, milestones, synergies).
+ */
+export function incomeBreakdown(state: GameState): { base: Decimal; parts: IncomePart[] } {
+  const so = state.sorting;
+  const shared: IncomePart[] = [
+    { label: 'Переработка', mult: recycleProductionMult(state.recycle), note: 'вторсырьё за всё время и дерево' },
+    { label: 'Тьма', mult: D(threatMult(state.threat.level, darkPeak(state.tracks, DARK_BONUS))), note: 'больше в темноте, меньше на краю' },
+    { label: 'Дела и события', mult: D(storyMult(state.story)), note: 'открытые дела, ускорения с камеры' },
+    { label: 'Уплотнение', mult: compactMult(state.tracks), note: 'бесконечное улучшение' },
+    { label: 'Достижения', mult: D(achievementMult(state.achievements)), note: '+1% за каждое' },
+    { label: 'Пересортировки', mult: Decimal.pow(SORT_INCOME, so.sorts).mul(rankIncome(so.sorts)), note: '×2 за каждую и разряды' },
+    { label: 'Фракции', mult: fractionsIncome(so.total), note: 'все фракции за игру' },
+    { label: 'Рецепты и находки', mult: D((hasRecipe(so, 'e1') ? 3 : 1) * uniqueMult(so, 'income')), note: 'сортировка' },
+  ];
+  const base = PRODUCERS.reduce((sum, p) => sum.add(p.baseRate.mul(owned(state, p.id))), D(0));
+  const all = shared.reduce((m, p) => m.mul(p.mult), D(1));
+  const rate = ratePerSecond(state);
+  const own = base.gt(0) && all.gt(0) ? rate.div(base.mul(all)) : D(1);
+  const parts = [...shared, { label: 'Улучшения и пороги', mult: own, note: 'свои у каждого производителя' }];
+  return { base, parts: parts.filter((p) => !p.mult.eq(1)) };
 }
 
 /** Output of all units of one producer per second, with every bonus applied. */
@@ -308,6 +346,16 @@ export function buyUpgrade(state: GameState, id: string): boolean {
   state.trash = state.trash.sub(u.cost);
   state.upgrades.push(id);
   return true;
+}
+
+/** Buys every upgrade the trash allows, cheapest first. Returns what was bought. */
+export function buyAllUpgrades(state: GameState): UpgradeDef[] {
+  const bought: UpgradeDef[] = [];
+  for (const u of availableUpgrades(state).sort((a, b) => a.cost.cmp(b.cost))) {
+    if (state.trash.lt(u.cost)) break;
+    if (buyUpgrade(state, u.id)) bought.push(u);
+  }
+  return bought;
 }
 
 /** Upgrades that became available since the last call; marks them as announced. */

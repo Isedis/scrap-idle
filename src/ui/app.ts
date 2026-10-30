@@ -5,6 +5,7 @@ import {
   availableUpgrades,
   buy,
   buyUpgrade,
+  buyAllUpgrades,
   newGame,
   producerRate,
   purchasePlan,
@@ -15,6 +16,7 @@ import {
   lightUp,
   loseShift,
   depthOf,
+  incomeBreakdown,
   automationOpen,
   resort,
   type ScriptNote,
@@ -41,7 +43,8 @@ import { COMPACT_MILESTONE, type TrackDef } from '../game/infinite';
 import { Dread } from './dread';
 import { eventById, unwatched, watch, type EventKind, type Recording } from '../game/story';
 import { RECYCLE_AT, hasNode, milestoneBase, passiveBonus } from '../game/layers';
-import { STAGES, stageIndex, threatActive } from '../game/threat';
+import { DARK_BONUS, STAGES, stageIndex, threatActive, threatMult } from '../game/threat';
+import { darkPeak } from '../game/infinite';
 
 /** How long the floodlight button must be held. */
 const HOLD_MS = 1500;
@@ -121,6 +124,9 @@ export class App {
   private threatEl!: HTMLElement;
   private threatBar!: HTMLElement;
   private stageEl!: HTMLElement;
+  private buyAllButton!: HTMLButtonElement;
+  private toastSoon = false;
+  private incomeEl!: HTMLElement;
   private lightButton!: HTMLButtonElement;
   private lostEl!: HTMLElement;
   private knownStage = 0;
@@ -189,6 +195,11 @@ export class App {
     const header = el('header', 'top');
     // The amount and its unit on one line, the flow and Recycled material on the next: the
     // header stays on every tab, so it is kept to what the player watches all the time.
+    // The amount and the flow are one button: it opens where the income comes from.
+    const figures = el('button', 'figures');
+    figures.type = 'button';
+    figures.id = 'income';
+    figures.setAttribute('aria-expanded', 'false');
     const amount = el('div', 'amount');
     this.trashEl = el('span', 'trash', '0');
     amount.append(this.trashEl, el('span', 'trash-unit', 'кг'));
@@ -197,11 +208,19 @@ export class App {
     this.layerEl = el('span', 'layer-line');
     this.layerEl.hidden = true;
     flows.append(this.rateEl, this.layerEl);
+    figures.append(amount, flows);
+    this.incomeEl = el('div', 'income-panel');
+    this.incomeEl.hidden = true;
+    figures.addEventListener('click', () => {
+      this.incomeEl.hidden = !this.incomeEl.hidden;
+      figures.setAttribute('aria-expanded', String(!this.incomeEl.hidden));
+      this.render();
+    });
     // Lines camera 00 types into the terminal on its own.
     this.consoleEl = el('div', 'console');
     this.consoleEl.hidden = true;
     this.consoleEl.addEventListener('click', () => this.catchLive('typing') || this.catchLive('voice'));
-    header.append(amount, flows, this.buildThreat(), this.consoleEl);
+    header.append(figures, this.incomeEl, this.buildThreat(), this.consoleEl);
 
     this.recyclePanel = new RecyclePanel(
       this.getState,
@@ -661,7 +680,20 @@ export class App {
     const head = el('div', 'panel-head');
     head.append(el('h2', 'panel-title', 'Улучшения'));
     this.upgradeCount = el('span', 'panel-meta');
-    head.append(this.upgradeCount);
+    this.buyAllButton = el('button', 'btn buy-all');
+    this.buyAllButton.type = 'button';
+    this.buyAllButton.id = 'buy-all';
+    this.buyAllButton.hidden = true;
+    this.buyAllButton.addEventListener('click', () => {
+      const bought = buyAllUpgrades(this.getState());
+      if (bought.length === 0) return;
+      for (const u of bought) this.toast(`Куплено: ${u.name}`);
+      this.scene.flash('amber');
+      this.workshop.bought();
+      this.pop(this.rateEl, 'pulse');
+      this.render();
+    });
+    head.append(this.upgradeCount, this.buyAllButton);
     panel.append(this.workshop.root, head);
 
     this.upgradeEmpty = el('p', 'empty', 'Новых улучшений пока нет. Они открываются, когда растёт производство.');
@@ -952,7 +984,14 @@ export class App {
   toast(message: string): void {
     this.toastQueue.push(message);
     if (this.toastQueue.length > TOAST_QUEUE_MAX) this.toastQueue.splice(0, this.toastQueue.length - TOAST_QUEUE_MAX);
-    if (this.toastEl.hidden) this.nextToast();
+    // Shown after the current action, so notices from one burst (a bulk purchase) come as one.
+    if (this.toastEl.hidden && !this.toastSoon) {
+      this.toastSoon = true;
+      queueMicrotask(() => {
+        this.toastSoon = false;
+        if (this.toastEl.hidden) this.nextToast();
+      });
+    }
   }
 
   /** Shows everything that waited as one notice, the same kinds of news folded together. */
@@ -1026,7 +1065,7 @@ export class App {
     saveCamerasFolded(folded);
   }
 
-  /** Runs the recycle and plays it on camera. */
+  /** Runs the recycle and plays it on cameras 01 and 03. */
   private doRecycle(): void {
     const state = this.getState();
     const gain = recycle(state);
@@ -1039,7 +1078,7 @@ export class App {
     this.recyclePanel.camera.slam();
     this.caption(`Переработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
     this.toast(`Получено ${format(gain)} вторсырья. Доход ×${format(passiveBonus(state.recycle.total))}`);
-    this.show('dump');
+    // The player stays on the tab: the press comes down on camera 03, and the tree is right there to spend on.
     this.render();
   }
 
@@ -1135,6 +1174,16 @@ export class App {
       row.button.disabled = !can;
       row.button.style.setProperty('--p', String(progress(state.trash, u.cost)));
     }
+    // How many the button buys in a row, cheapest first, with the trash on hand.
+    let left = state.trash;
+    let inRow = 0;
+    for (const u of [...shop].sort((a, b) => a.cost.cmp(b.cost))) {
+      if (left.lt(u.cost)) break;
+      left = left.sub(u.cost);
+      inRow++;
+    }
+    this.buyAllButton.hidden = inRow < 2;
+    this.buyAllButton.textContent = `Купить ${inRow} подряд`;
     this.tracksPanel.render(state);
     affordable += this.tracksPanel.affordable(state);
     this.upgradeBadge.hidden = affordable === 0;
@@ -1169,6 +1218,23 @@ export class App {
     this.autoButton.setAttribute('aria-pressed', String(state.autobuy));
 
     this.renderThreat(state);
+    if (!this.incomeEl.hidden) this.renderIncome(state);
+  }
+
+  /** Where the income comes from: the producers' own output and every multiplier on top. */
+  private renderIncome(state: GameState): void {
+    const { base, parts } = incomeBreakdown(state);
+    const row = (mult: string, label: string, note: string, cls = '') => {
+      const r = el('div', `income-row ${cls}`);
+      r.append(el('span', 'income-mult', mult), el('span', 'income-label', label), el('span', 'income-note', note));
+      return r;
+    };
+    this.incomeEl.replaceChildren(
+      row(`${format(base)}`, 'Производители', 'кг/с без бонусов'),
+      // Small multipliers keep two decimals: ×1.03 from a case should not read as ×1.0.
+      ...parts.map((p) => row(`×${p.mult.lt(10) ? p.mult.toNumber().toFixed(2) : format(p.mult)}`, p.label, p.note, p.mult.lt(1) ? 'loss' : '')),
+      row(`${format(ratePerSecond(state))}`, 'Итого', 'кг/с', 'total'),
+    );
   }
 
   private renderThreat(state: GameState): void {
@@ -1189,7 +1255,11 @@ export class App {
     }
     this.knownStage = stage;
     this.threatBar.textContent = `угроза ${textBar(level, 10)} ${Math.floor(level * 100)}%`;
-    this.stageEl.textContent = STAGES[stage].name.toUpperCase();
+    // How the dark changes income right now: the reason to wait before the light, or not to.
+    const dark = threatMult(level, darkPeak(state.tracks, DARK_BONUS));
+    this.stageEl.textContent = `${STAGES[stage].name.toUpperCase()} · тьма ×${dark.toFixed(2)}`;
+    this.stageEl.classList.toggle('gain', dark > 1.005);
+    this.stageEl.classList.toggle('loss', dark < 0.995);
     this.root.dataset.threat = String(stage);
     // The light button begs as it gets worse.
     this.lightButton.textContent = stage >= 4 ? 'СВЕТ!!' : stage >= 3 ? 'Свет!' : 'Прожектор';

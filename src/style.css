@@ -9,6 +9,8 @@
   --dim: #3d7a50;
   --mid: #82d698;
   --glow: #7dff9a;
+  /* Colour roles: green is working, bought or information; amber is something to act on
+     (prices, badges, what to do next, notices); red is danger. */
   --amber: #ffbf47;
   --danger: #ff6b57;
   --ink: #04140a;
@@ -68,7 +70,10 @@ body::after {
   padding-block: calc(env(safe-area-inset-top, 0px) + 8px) 8px;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
-  background: linear-gradient(var(--bg) 82%, transparent);
+  /* Solid, so nothing shows through when the income breakdown makes the header taller;
+     the soft edge below keeps the old fade. */
+  background: var(--bg);
+  box-shadow: 0 8px 10px var(--bg);
 }
 
 .amount { display: flex; align-items: baseline; gap: 8px; min-width: 0; max-width: 100%; }
@@ -91,7 +96,7 @@ body::after {
 .flows { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 2px; }
 
 .rate {
-  color: var(--amber);
+  color: var(--glow);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
@@ -311,7 +316,7 @@ body::after {
 }
 
 .p-count {
-  color: var(--amber);
+  color: var(--glow);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -338,7 +343,7 @@ body::after {
 }
 
 .p-effect {
-  color: var(--amber);
+  color: var(--glow);
   font-size: 12px;
   line-height: 1.35;
 }
@@ -375,9 +380,9 @@ body::after {
 }
 
 .mode.auto[aria-pressed='true'] {
-  border-color: var(--amber);
-  color: var(--amber);
-  background: rgb(255 191 71 / 0.12);
+  border-color: var(--glow);
+  color: var(--glow);
+  background: rgb(125 255 154 / 0.14);
   text-shadow: none;
 }
 
@@ -999,9 +1004,9 @@ button { font: inherit; color: inherit; }
 
 /* ---- Endless upgrades ---- */
 .tracks { margin-top: 18px; }
-.tracks .panel-title { color: var(--amber); }
-.track .p-icon { color: var(--amber); font-size: 24px; font-weight: 700; text-shadow: 0 0 8px rgb(255 191 71 / 0.5); }
-.track .p-count { color: var(--amber); }
+.tracks .panel-title { color: var(--glow); }
+.track .p-icon { color: var(--glow); font-size: 24px; font-weight: 700; text-shadow: var(--glow-shadow); }
+.track .p-count { color: var(--glow); }
 
 /* ---- Auto-recycler ---- */
 .r-auto {
@@ -1034,7 +1039,7 @@ button { font: inherit; color: inherit; }
 .a-speed-text { min-width: 0; }
 .a-title { font-weight: 700; }
 .a-text { color: var(--mid); font-size: 12px; line-height: 1.4; }
-.a-note { color: var(--amber); font-size: 12px; font-variant-numeric: tabular-nums; }
+.a-note { color: var(--mid); font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .a-cards { display: grid; gap: 10px; margin-top: 4px; }
 .a-card {
@@ -1090,7 +1095,7 @@ button { font: inherit; color: inherit; }
 }
 .a-line { color: var(--mid); }
 .a-line:first-child { color: var(--glow); }
-.a-times { color: var(--amber); }
+.a-times { color: var(--glow); }
 .a-line.failed { color: var(--danger); font-weight: 700; }
 .a-line.phantom { color: var(--danger); opacity: 0.8; letter-spacing: 0.08em; }
 
@@ -1106,7 +1111,7 @@ button { font: inherit; color: inherit; }
 .s-frac-amount { color: var(--glow); font-size: 16px; font-weight: 700; text-shadow: var(--glow-shadow); font-variant-numeric: tabular-nums; }
 .s-frac-rate { color: var(--mid); font-size: 11px; font-variant-numeric: tabular-nums; }
 
-.s-tails { color: var(--amber); font-size: 12px; }
+.s-tails { color: var(--mid); font-size: 12px; }
 .s-tails.bad { color: var(--danger); }
 
 .s-slots { display: grid; gap: 8px; }
@@ -1124,7 +1129,7 @@ button { font: inherit; color: inherit; }
 
 .s-table, .s-recipes { display: grid; gap: 4px; }
 .s-queue { color: var(--glow); font-size: 15px; letter-spacing: 0.04em; }
-.s-last { padding: 6px 8px; border-left: 2px solid var(--amber); color: var(--amber); font-size: 12px; line-height: 1.4; }
+.s-last { padding: 6px 8px; border-left: 2px solid var(--glow); color: var(--glow); font-size: 12px; line-height: 1.4; }
 .s-last.bad { border-color: var(--danger); color: var(--danger); }
 
 /* Recipes can cost up to four fractions: the price gets a fixed share of the row and wraps inside the button. */
@@ -1139,7 +1144,7 @@ button { font: inherit; color: inherit; }
 .s-rank.next { color: var(--amber); }
 .s-rank.next .s-rank-at::before { content: '▸ '; }
 
-.j-find-effect { margin-top: 2px; color: var(--amber); font-size: 11px; }
+.j-find-effect { margin-top: 2px; color: var(--glow); font-size: 11px; }
 
 /* What to do next, and what a part is for. */
 .s-now {
@@ -1177,7 +1182,7 @@ button { font: inherit; color: inherit; }
 .s-heap.bad { color: var(--danger); }
 .s-line .s-slot { margin-block: 2px; }
 .s-what { color: var(--mid); font-size: 12px; line-height: 1.4; }
-.s-bin { color: var(--amber); font-size: 13px; letter-spacing: 0.06em; min-height: 1.4em; white-space: nowrap; overflow: hidden; }
+.s-bin { color: var(--glow); font-size: 13px; letter-spacing: 0.06em; min-height: 1.4em; white-space: nowrap; overflow: hidden; }
 .s-swap { display: grid; gap: 4px; }
 .s-level { display: grid; justify-items: center; }
 .s-level-hint { font-size: 10px; color: var(--mid); text-transform: none; }
@@ -1266,3 +1271,44 @@ button { font: inherit; color: inherit; }
 /* The motion alert stays tappable on a folded camera: it sits on top of the strip. */
 .feed-motion { z-index: 4; }
 #app[data-cams='off'] .feed-motion { top: 50%; left: 128px; transform: translateY(-50%); }
+
+/* ---- Income breakdown ---- */
+.figures {
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.figures .rate::after { content: ' ▾'; color: var(--mid); font-size: 11px; }
+.figures[aria-expanded='true'] .rate::after { content: ' ▴'; }
+.income-panel {
+  width: 100%;
+  margin-top: 6px;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgb(0 0 0 / 0.35);
+  font-size: 12px;
+}
+.income-row { display: grid; grid-template-columns: 76px minmax(0, auto) 1fr; gap: 8px; align-items: baseline; }
+.income-mult { color: var(--glow); font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.income-label { color: var(--glow); white-space: nowrap; }
+.income-note { color: var(--mid); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.income-row.loss .income-mult { color: var(--danger); }
+.income-row.total { margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--line); }
+.income-row.total .income-mult { color: var(--glow); }
+
+/* The dark's effect on income next to the stage name. */
+.threat-stage.gain { color: var(--glow); }
+.threat-stage.loss { color: var(--danger); }
+.j-more { width: 100%; margin-top: 6px; }
+.buy-all { min-height: 44px; padding: 6px 12px; border-color: var(--amber); color: var(--amber); font-size: 12px; }

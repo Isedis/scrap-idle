@@ -9,6 +9,10 @@ const clock = (ms: number) => {
   const d = new Date(ms);
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 };
+/** Lines of camera 00 kept on screen. */
+const VOICES_SHOWN = 5;
+/** Achievements shown while the grid is closed: the next goals. */
+const ACH_NEXT = 4;
 const caseNo = (n: number) => `ДЕЛО #${String(n).padStart(3, '0')}`;
 
 /** The Journal tab: camera archive, case files, Ignatyev's notes and what camera 00 said. */
@@ -27,6 +31,9 @@ export class JournalPanel {
   private findsHead!: HTMLElement;
   private findsMeta!: HTMLElement;
   private achMeta!: HTMLElement;
+  private achToggle!: HTMLButtonElement;
+  /** The full achievement grid is long: closed, only the next few goals show. */
+  private achOpen = false;
   /** Signature of what is on screen, so lists rebuild only when something changed. */
   private shown = '';
 
@@ -69,12 +76,23 @@ export class JournalPanel {
     this.achMeta = el('span', 'panel-meta');
     achHead.append(el('h2', 'panel-title', 'Достижения'), this.achMeta);
     this.achievements = el('div', 'j-ach');
-    this.root.append(achHead, this.achievements);
+    this.achToggle = el('button', 'btn j-more');
+    this.achToggle.type = 'button';
+    this.achToggle.id = 'achievements-all';
+    this.achToggle.addEventListener('click', () => {
+      this.achOpen = !this.achOpen;
+      this.shown = '';
+      this.render(this.lastState!);
+    });
+    this.root.append(achHead, this.achievements, this.achToggle);
   }
 
+  private lastState: GameState | null = null;
+
   render(state: GameState): void {
+    this.lastState = state;
     const story = state.story;
-    const sig = JSON.stringify([story.records.map((r) => [r.seq, r.watched]), story.cases, story.notes, story.voices.length, state.achievements.length, state.sorting.found.length, state.sorting.open]);
+    const sig = JSON.stringify([story.records.map((r) => [r.seq, r.watched]), story.cases, story.notes, story.voices.length, state.achievements.length, state.sorting.found.length, state.sorting.open, this.achOpen]);
     if (sig === this.shown) return;
     this.shown = sig;
 
@@ -82,14 +100,15 @@ export class JournalPanel {
     this.archive.replaceChildren(...story.records.map((r) => this.recordRow(r)));
 
     this.casesMeta.textContent = `открыто ${story.cases.length}/${CASES.length} · доход ×${(1 + CASE_BONUS * story.cases.length).toFixed(2)}`;
+    // Only the open cases; the closed ones are a single line, not a dozen rows of ???.
+    const closed = CASES.length - story.cases.length;
     this.cases.replaceChildren(
-      ...CASES.map((c) => {
-        const open = story.cases.includes(c.id);
-        const row = el('div', `j-case${open ? '' : ' locked'}`);
-        row.append(el('div', 'j-case-title', `${caseNo(c.caseNo!)} · ${open ? c.title : '???'}`));
-        if (open) row.append(el('div', 'j-text', c.text!));
+      ...CASES.filter((c) => story.cases.includes(c.id)).map((c) => {
+        const row = el('div', 'j-case');
+        row.append(el('div', 'j-case-title', `${caseNo(c.caseNo!)} · ${c.title}`), el('div', 'j-text', c.text!));
         return row;
       }),
+      ...(closed > 0 ? [el('p', 'empty', `Не открыто: ${closed}. Дело открывается, когда смотришь новую запись камеры.`)] : []),
     );
 
     this.notesMeta.textContent = `${story.notes}/${NOTES.length}`;
@@ -114,13 +133,16 @@ export class JournalPanel {
     );
 
     this.voicesHead.hidden = story.voices.length === 0;
-    this.voices.replaceChildren(...story.voices.map((v) => el('div', 'j-voice', v)));
+    // The last few things camera 00 said; the rest scroll away.
+    this.voices.replaceChildren(...story.voices.slice(-VOICES_SHOWN).map((v) => el('div', 'j-voice', v)));
 
     const earned = state.achievements;
     this.achMeta.textContent = `${earned.length}/${ACHIEVEMENTS.length} · доход ×${achievementMult(earned).toFixed(2)}`;
-    // Unearned ones stay dim, with what they take.
+    // Closed: the next few goals. Open: the whole grid, unearned ones dim with what they take.
+    const list = this.achOpen ? ACHIEVEMENTS : ACHIEVEMENTS.filter((a) => !earned.includes(a.id)).slice(0, ACH_NEXT);
+    this.achToggle.textContent = this.achOpen ? 'Свернуть' : `Все достижения (${ACHIEVEMENTS.length})`;
     this.achievements.replaceChildren(
-      ...ACHIEVEMENTS.map((a) => {
+      ...list.map((a) => {
         const got = earned.includes(a.id);
         const row = el('div', `j-ach-item${got ? ' got' : ''}`);
         row.append(el('div', 'j-ach-name', `${got ? '■' : '□'} ${a.name}`), el('div', 'j-ach-text', a.text));

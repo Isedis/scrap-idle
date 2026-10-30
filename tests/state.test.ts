@@ -129,3 +129,21 @@ describe('upgrades', () => {
     expect(buyUpgrade(s, 'no-such')).toBe(false);
   });
 });
+
+describe('buy all upgrades', () => {
+  it('buys cheapest first while the trash lasts', async () => {
+    const { availableUpgrades, buyAllUpgrades, newGame } = await import('../src/game/state');
+    const { D } = await import('../src/game/num');
+    const s = newGame(0);
+    s.owned = { collector: 100, cart: 60 };
+    s.runTrash = D(1e9);
+    const shop = availableUpgrades(s).sort((a, b) => a.cost.cmp(b.cost));
+    expect(shop.length).toBeGreaterThan(2);
+    // Enough for the two cheapest, not the third.
+    s.trash = shop[0].cost.add(shop[1].cost).add(shop[2].cost.div(2));
+    const bought = buyAllUpgrades(s);
+    expect(bought.map((u) => u.id)).toEqual([shop[0].id, shop[1].id]);
+    expect(s.upgrades).toEqual(expect.arrayContaining([shop[0].id, shop[1].id]));
+    expect(buyAllUpgrades(s)).toEqual([]);
+  });
+});
