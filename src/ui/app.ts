@@ -165,6 +165,8 @@ export class App {
   private layerSwitch!: HTMLElement;
   private layerButtons = new Map<'recycle' | 'sorting', HTMLButtonElement>();
   private knownSortOpen = false;
+  /** What the Layers badge called for that the player has already seen on the tab. */
+  private layersSeen = new Set<string>();
   private autoTab!: HTMLButtonElement;
   private autoBadge!: HTMLElement;
   private journalBadge!: HTMLElement;
@@ -1339,7 +1341,11 @@ export class App {
       this.recycleTab.hidden = false;
       if (layer.resets === 0) this.toast('Новая вкладка: Переработка');
     }
-    this.recycleBadge.hidden = !this.recyclePanel.attention(state) && !this.sortingPanel.attention(state);
+    // The badge calls for what is new since the player last looked at the tab.
+    const calls = [...this.recyclePanel.attention(state), ...this.sortingPanel.attention(state)];
+    const looking = !this.recyclePanel.root.hidden || !this.sortingPanel.root.hidden;
+    this.layersSeen = new Set(calls.filter((c) => looking || this.layersSeen.has(c)));
+    this.recycleBadge.hidden = calls.every((c) => this.layersSeen.has(c));
     if (this.autoTab.hidden && automationOpen(state)) {
       this.autoTab.hidden = false;
       this.toast('Новая вкладка: Автоматика');

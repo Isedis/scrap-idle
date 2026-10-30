@@ -207,10 +207,17 @@ export class RecyclePanel {
     }
   }
 
-  /** Whether the tab deserves a badge: recycling is ready or a node is affordable. */
-  attention(state: GameState): boolean {
-    const repeatReady = repeatsOpen(state) && REPEATS.some((r) => state.recycle.points.gte(repeatCost(r, state.recycle.repeats[r.id] ?? 0)));
-    return canRecycle(state) || repeatReady || NODES.some((n) => canBuyNode(state.recycle, n));
+  /**
+   * What on this tab is worth the player's attention, for the badge: a recycle that at least
+   * doubles the material earned so far (the first one always), unless the auto-recycler does
+   * it anyway, and tree nodes that can be bought. Endless nodes are always affordable
+   * sooner or later, so they never call.
+   */
+  attention(state: GameState): string[] {
+    const layer = state.recycle;
+    const auto = state.autoRecycle.on && hasNode(layer, 'a3');
+    const worth = canRecycle(state) && !auto && (layer.resets === 0 || currentGain(state).gte(layer.total));
+    return [...(worth ? ['recycle'] : []), ...NODES.filter((n) => canBuyNode(layer, n)).map((n) => `node:${n.id}`)];
   }
 
   /** Every animation frame while the tab is on screen: the camera. */

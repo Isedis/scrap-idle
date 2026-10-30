@@ -47,7 +47,7 @@ import {
 } from '../game/sorting';
 import { sortingAdvice } from '../game/advice';
 import { BeltCam } from './beltCam';
-import { canResort, ratePerSecond, resortGain, resortShares, type GameState } from '../game/state';
+import { canResort, ratePerSecond, scriptOwned, resortGain, resortShares, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
 
 type View = 'line' | 'table' | 'recipes' | 'reset';
@@ -619,9 +619,12 @@ export class SortingPanel {
   }
 
   /** Something to do right now, for the tab badge. */
-  attention(state: GameState): boolean {
+  /** What on this layer is worth the player's attention, for the badge: a resort the auto-sorter will not do, recipes to buy. */
+  attention(state: GameState): string[] {
     const so = state.sorting;
-    return so.open && (canResort(state) || RECIPES.some((r) => canBuyRecipe(so, r)));
+    if (!so.open) return [];
+    const auto = state.scripts.sortOn && scriptOwned(state, 'sort');
+    return [...(canResort(state) && !auto ? ['resort'] : []), ...RECIPES.filter((r) => canBuyRecipe(so, r)).map((r) => `recipe:${r.id}`)];
   }
 
   /** Shows what the table found last. */
