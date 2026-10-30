@@ -1,4 +1,4 @@
-import { format } from '../game/num';
+import { D, format, type Decimal } from '../game/num';
 import {
   FRACS,
   FRAC_LETTER,
@@ -22,6 +22,7 @@ import {
   hasRecipe,
   impurity,
   flowPerSecond,
+  fractionsIncome,
   inspectSeconds,
   levelCost,
   levelsOf,
@@ -37,6 +38,7 @@ import {
   sortingIncome,
   stationById,
   stationOpen,
+  tailsOf,
   threatSpeed,
   type Frac,
   type LevelKind,
@@ -92,10 +94,15 @@ function draw(mix: Record<string, number>): string {
 const letters = (shares: Record<Frac, number>): Record<string, number> =>
   Object.fromEntries(FRACS.map((f) => [FRAC_LETTER[f], shares[f]]));
 
-const outOf10 = (x: number) => {
-  const n = Math.round(x * 10);
-  return n >= 10 ? 'почти всё' : `${n} из 10`;
-};
+/** A share as a percent, with a decimal once it is small, so every level shows a change. */
+const share = (x: number) => (x < 0.1 ? `${(x * 100).toFixed(1)}%` : `${Math.round(x * 100)}%`);
+
+/** What one level of a station's upgrade means, as shown on its button. */
+function levelEffect(id: StationId, kind: LevelKind, level: number): string {
+  if (id === 'briquetter') return `×${press(level).toFixed(1)}`;
+  if (id === 'crusher') return share(crush(level));
+  return kind === 'speed' ? share(capture(level)) : `брак ${share(impurity(level))}`;
+}
 
 interface RecipeRow {
   def: RecipeDef;
@@ -117,6 +124,7 @@ export class SortingPanel {
   private now!: HTMLElement;
   private meta!: HTMLElement;
   private fracCells = new Map<Frac, { amount: HTMLElement; rate: HTMLElement }>();
+  private income!: HTMLElement;
   // Line.
   private lineList!: HTMLElement;
   private lineFor = '';
@@ -124,7 +132,7 @@ export class SortingPanel {
   private bins: Bin[] = [];
   private beltAt = 0;
   private tails!: HTMLElement;
-  private slotUpdaters: ((s: GameState) => void)[] = [];
+  private slotUpdaters: ((s: GameState, rate: Decimal) => void)[] = [];
   // Table.
   private queue!: HTMLElement;
   private inspectBar!: HTMLElement;
@@ -203,7 +211,8 @@ export class SortingPanel {
     this.views.set('table', this.buildTable());
     this.views.set('recipes', this.buildRecipes());
     this.views.set('reset', this.buildReset());
-    this.body.append(this.camera.root, head, this.now, fracs, tabs, ...this.views.values());
+    this.income = el('div', 's-income');
+    this.body.append(this.camera.root, head, this.now, fracs, this.income, tabs, ...this.views.values());
     this.root.append(this.closed, this.body);
   }
 
@@ -425,41 +434,49 @@ export class SortingPanel {
 
     const what = el('div', 's-what');
     const levels = el('div', 's-levels');
-    const kinds: [LevelKind, string, string][] =
-      id === 'briquetter'
-        ? [['speed', 'Сильнее', 'жмёт крепче']]
-        : id === 'crusher'
-          ? [['purity', 'Мельче', 'меньше хвостов']]
-          : [
-              ['speed', 'Быстрее', `больше ${FRAC_LETTER[def.frac!]}`],
-              ['purity', 'Чище', 'меньше брака'],
-            ];
-    for (const [kind, label, hint] of kinds) {
+    const kinds: [LevelKind, string][] =
+      id === 'briquetter' ? [['speed', 'Сильнее']] : id === 'crusher' ? [['purity', 'Мельче']] : [['speed', 'Быстрее'], ['purity', 'Чище']];
+    for (const [kind, label] of kinds) {
       const b = el('button', 'buy s-level');
       b.type = 'button';
       b.id = `level-${id}-${kind}`;
       const lbl = el('span', 'buy-label');
+      const change = el('span', 's-level-hint');
+      const gain = el('span', 's-level-gain');
       const price = el('span', 'buy-price');
-      b.append(lbl, el('span', 's-level-hint', hint), price);
+      b.append(lbl, change, gain, price);
       b.addEventListener('click', () => {
         if (buyLevel(this.getState().sorting, id, kind)) this.onChange();
       });
       levels.append(b);
-      this.slotUpdaters.push((s) => {
-        const level = levelsOf(s.sorting, id)[kind];
+      this.slotUpdaters.push((s, rate) => {
+        const so = s.sorting;
+        const lvNow = levelsOf(so, id);
+        const level = lvNow[kind];
         const cost = levelCost(level, kind);
-        const have = s.sorting.fractions[def.pays];
+        const have = so.fractions[def.pays];
         lbl.textContent = `${label} · ур. ${level}`;
+        change.textContent = `${levelEffect(id, kind, level)} → ${levelEffect(id, kind, level + 1)}`;
+        // What the next level adds to the whole line, per minute, and to the tails.
+        const next = { ...so, levels: { ...so.levels, [id]: { ...lvNow, [kind]: level + 1 } } };
+        const sum = (r: Record<Frac, Decimal>) => FRACS.reduce((a, f) => a.add(r[f]), D(0));
+        const more = sum(lineRates(next, rate)).sub(sum(lineRates(so, rate))).mul(60);
+        const tailsDrop = tailsOf(so) - tailsOf(next);
+        gain.textContent = more.gt(0.01)
+          ? `+${format(more)}/мин`
+          : tailsDrop > 0.0005
+            ? `хвосты −${(tailsDrop * 100).toFixed(1)}%`
+            : 'станциям ниже';
         price.textContent = `${format(cost)} ${FRAC_LETTER[def.pays]}`;
         b.disabled = have.lt(cost);
         b.style.setProperty('--p', String(progress(have, cost)));
       });
     }
     what.textContent = def.frac
-      ? `Забирает ${outOf10(capture(lv.speed))} «${FRAC_LETTER[def.frac]}». Сбивает в брак ${outOf10(impurity(lv.purity))} чужих букв — станциям ниже их уже не достанется.`
+      ? `Забирает ${share(capture(lv.speed))} букв «${FRAC_LETTER[def.frac]}». Сбивает в брак ${share(impurity(lv.purity))} чужих — станциям ниже их уже не достанется.`
       : id === 'briquetter'
         ? `Прессует всё, что поймали станции выше: их выход ×${press(lv.speed).toFixed(1)}. Ставь ниже тех, кого хочешь усилить.`
-        : `Перемалывает ${outOf10(crush(lv.purity))} того, что едет мимо: меньше уходит в кучу. Станциям ниже достаётся меньше — ставь последней.`;
+        : `Перемалывает ${share(crush(lv.purity))} того, что едет мимо: меньше уходит в кучу. Станциям ниже достаётся меньше — ставь последней.`;
     card.append(head, what, ...(def.frac ? [binEl] : []), levels);
     if (free.length) card.append(chips('Заменить на:'));
     return card;
@@ -502,6 +519,7 @@ export class SortingPanel {
       cell.rate.textContent = `+${format(rates[f].mul(60))}/мин`;
     }
 
+    this.income.textContent = `Всего фракций за игру: ${format(so.total.floor())} → весь доход ×${format(fractionsIncome(so.total))}. Каждая новая поднимает доход, даже если её потратить.`;
     for (const [view, el] of this.views) el.hidden = view !== this.view;
     const marks: Record<View, boolean> = {
       line: so.line.slice(0, slotCount(so)).some((id) => !id),
@@ -528,7 +546,8 @@ export class SortingPanel {
       this.lineFor = sig;
       this.buildLineList(state);
     }
-    for (const update of this.slotUpdaters) update(state);
+    const rate = ratePerSecond(state);
+    for (const update of this.slotUpdaters) update(state, rate);
     this.animate();
     const { tails } = runLine(so.line.slice(0, n), so.levels);
     this.tails.textContent = `${Math.round(tails * 100)}% мусора уходит обратно в кучу — угроза растёт в ${threatSpeed(so).toFixed(2)} раза быстрее.`;

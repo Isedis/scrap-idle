@@ -1234,3 +1234,5 @@ button { font: inherit; color: inherit; }
 
 /* Cameras on the other tabs: a lower strip than camera 01. */
 .feed.cam { height: 160px; margin-bottom: 4px; }
+.s-income { color: var(--mid); font-size: 12px; line-height: 1.4; }
+.s-level-gain { font-size: 10px; color: var(--glow); text-transform: none; }

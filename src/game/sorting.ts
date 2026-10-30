@@ -365,10 +365,13 @@ export function threatSpeed(s: SortingState): number {
   return (1 + TAILS_THREAT * tailsOf(s)) * uniqueMult(s, 'threat');
 }
 
+/** Every fraction ever earned raises all income, spent or not: ×2 at 100, ×11 at 10 000. */
+export const fractionsIncome = (total: Decimal) => total.sqrt().div(10).add(1);
+
 /** Income multiplier from Sorting: resorts, fractions ever earned, recipes, finds and ranks. */
 export function sortingIncome(s: SortingState): Decimal {
   return Decimal.pow(SORT_INCOME, s.sorts)
-    .mul(s.total.sqrt().div(10).add(1))
+    .mul(fractionsIncome(s.total))
     .mul((hasRecipe(s, 'e1') ? 3 : 1) * uniqueMult(s, 'income') * rankIncome(s.sorts));
 }
 

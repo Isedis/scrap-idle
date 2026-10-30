@@ -14,6 +14,7 @@ import {
   capture,
   impurity,
   inspectOne,
+  fractionsIncome,
   lumpFor,
   moveStation,
   newSorting,
@@ -235,6 +236,12 @@ describe('resorting', () => {
     expect(s.scripts.speed).toBe(4);
     expect(s.recycle.total.toNumber()).toBe(1e18);
     expect(s.recycle.points.eq(s.recycle.total.add(100))).toBe(true);
+  });
+
+  it('every fraction ever earned raises income, spent or not', () => {
+    expect(fractionsIncome(D(0)).toNumber()).toBe(1);
+    expect(fractionsIncome(D(100)).toNumber()).toBe(2);
+    expect(fractionsIncome(D(1e4)).toNumber()).toBe(11);
   });
 
   it('every resort doubles income', () => {
