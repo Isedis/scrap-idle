@@ -45,6 +45,8 @@ export interface SceneView {
   total: Decimal;
   /** Recycles done: a recycling complex grows on the horizon. */
   recycles: number;
+  /** Threat 0..1: darkness, interference and the thing in the yard grow with it. */
+  threat: number;
 }
 
 type ItemKind = 0 | 1 | 2 | 3 | 4; // can, bottle, box, tyre, bag
@@ -186,6 +188,11 @@ export class Scene {
   private flashAlpha = 0;
   private flashColor = C.glow;
   private glitchLeft = 0;
+  /** Floodlight glare, 1 right after the switch, fading out. */
+  private glare = 0;
+  /** The figure that shows up in the yard as the threat rises: where, and how long it stays. */
+  private ghost: { x: number; lane: 0 | 1; left: number } | null = null;
+  private ghostIn = 8;
   private reducedMotion: boolean;
   /** How `paint` draws: dim scenery, bright actors, or the dark halo behind actors. */
   private mode: 'scenery' | 'actor' | 'halo' = 'scenery';
@@ -272,6 +279,13 @@ export class Scene {
     this.glitchLeft = Math.max(this.glitchLeft, seconds);
   }
 
+  /** The floodlight: glare over the yard, the figure gone. */
+  floodlight(): void {
+    this.glare = 1;
+    this.ghost = null;
+    this.ghostIn = 10;
+  }
+
   /** Sparks along the yard, for a celebration. */
   burst(): void {
     for (let i = 0; i < 16; i++) {
@@ -346,6 +360,8 @@ export class Scene {
     this.grow = Math.min(Math.log10(view.total.toNumber() + 1) / 15, 1);
     const target = this.h * (0.1 + 0.36 * this.grow);
     this.heapHeight += (target - this.heapHeight) * Math.min(dt * 2, 1);
+    // At the edge the heap breathes.
+    if (view.threat >= 0.9 && !this.reducedMotion) this.heapHeight += Math.sin(this.t * 1.3) * this.h * 0.012 * dt * 60 * (view.threat - 0.85);
 
     // A few actors stand for the whole workforce; once machines arrive, fewer people walk the yard.
     const machines = this.owned('truck') >= 10 || this.owned('sorter') >= 10;
@@ -359,7 +375,11 @@ export class Scene {
     const heapL = this.heapX - this.heapHalf * 0.85;
     const heapR = this.heapX + this.heapHalf * 0.85;
 
+    const threat = this.view?.threat ?? 0;
+    // Under pressure the workers keep stopping to stare at the heap.
+    const freeze = threat >= 0.7 && Math.sin(this.t * 0.7) > 0.2;
     for (const w of this.walkers) {
+      if (freeze) continue;
       w.x += w.dir * w.speed * dt;
       w.phase += dt * w.speed * 0.45;
       if (w.x > this.w + 20) w.dir = -1;
@@ -499,6 +519,23 @@ export class Scene {
 
     this.flashAlpha = Math.max(0, this.flashAlpha - dt * 1.4);
     this.glitchLeft = Math.max(0, this.glitchLeft - dt);
+    this.glare = Math.max(0, this.glare - dt * 0.9);
+
+    // Interference comes more often the higher the threat.
+    if (threat >= 0.25 && Math.random() < dt * threat * threat * 0.6) this.glitch(rnd(0.08, 0.3));
+
+    // The figure: from "Он здесь" on it turns up in the yard now and then, and stands still.
+    if (threat >= 0.5) {
+      if (this.ghost) {
+        this.ghost.left -= dt;
+        if (this.ghost.left <= 0) this.ghost = null;
+      } else if ((this.ghostIn -= dt * (0.5 + threat)) <= 0) {
+        this.ghost = { x: rnd(0.15, 0.85) * this.w, lane: threat >= 0.7 ? 1 : 0, left: rnd(2, 4) };
+        this.ghostIn = rnd(6, 14);
+      }
+    } else {
+      this.ghost = null;
+    }
   }
 
   // ---- Landmarks ----------------------------------------------------------
@@ -595,13 +632,83 @@ export class Scene {
     for (const it of this.items) this.actor(() => this.drawItem(it));
     this.drawParticles();
 
+    if (this.ghost) this.drawGhost(this.ghost.x, this.laneY(this.ghost.lane), this.ghost.lane === 0 ? 0.78 : 1);
+    this.drawDread();
+
     if (this.flashAlpha > 0) {
       ctx.globalAlpha = this.flashAlpha;
       ctx.fillStyle = this.flashColor;
       ctx.fillRect(0, 0, w, h);
       ctx.globalAlpha = 1;
     }
+    if (this.glare > 0) {
+      ctx.globalAlpha = this.glare * 0.75;
+      ctx.fillStyle = C.light;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
+    }
     if (this.glitchLeft > 0) this.drawGlitch();
+  }
+
+  /** A tall dark figure with two faint eyes. It never moves. */
+  private drawGhost(x: number, feet: number, scale: number): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.translate(x, feet);
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#010503';
+    ctx.beginPath();
+    ctx.moveTo(-5, 0);
+    ctx.lineTo(-6, -22);
+    ctx.quadraticCurveTo(-6, -34, 0, -34);
+    ctx.quadraticCurveTo(6, -34, 6, -22);
+    ctx.lineTo(5, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = C.light;
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(this.t * 9);
+    ctx.fillRect(-2.5, -29, 1.5, 1);
+    ctx.fillRect(1, -29, 1.5, 1);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /**
+   * Pressure on the picture: the edges close in as the threat rises, and near the edge
+   * a silhouette rises in front of the lens.
+   */
+  private drawDread(): void {
+    const { ctx, w, h } = this;
+    const threat = this.view?.threat ?? 0;
+    if (threat < 0.25) return;
+    const t = (threat - 0.25) / 0.75;
+    const dark = ctx.createRadialGradient(w / 2, h * 0.55, Math.min(w, h) * (0.75 - 0.45 * t), w / 2, h * 0.55, Math.max(w, h) * 0.75);
+    dark.addColorStop(0, 'rgba(1, 5, 3, 0)');
+    dark.addColorStop(1, `rgba(1, 5, 3, ${0.35 + 0.6 * t})`);
+    ctx.fillStyle = dark;
+    ctx.fillRect(0, 0, w, h);
+    if (threat >= 0.9) {
+      // Head and shoulders rising into the frame, right up against the camera.
+      const rise = Math.min((threat - 0.9) / 0.1, 1);
+      const cx = w * 0.5;
+      const top = h - h * 0.55 * rise;
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.moveTo(cx - w * 0.32, h);
+      ctx.quadraticCurveTo(cx - w * 0.3, top + h * 0.28, cx - w * 0.12, top + h * 0.24);
+      ctx.quadraticCurveTo(cx - w * 0.13, top, cx, top);
+      ctx.quadraticCurveTo(cx + w * 0.13, top, cx + w * 0.12, top + h * 0.24);
+      ctx.quadraticCurveTo(cx + w * 0.3, top + h * 0.28, cx + w * 0.32, h);
+      ctx.closePath();
+      ctx.fill();
+      if (rise > 0.6) {
+        ctx.fillStyle = C.light;
+        ctx.globalAlpha = (rise - 0.6) * 2.5 * (0.7 + 0.3 * Math.sin(this.t * 7));
+        ctx.fillRect(cx - w * 0.045, top + h * 0.1, w * 0.018, h * 0.012);
+        ctx.fillRect(cx + w * 0.027, top + h * 0.1, w * 0.018, h * 0.012);
+        ctx.globalAlpha = 1;
+      }
+    }
   }
 
   /**

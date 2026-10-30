@@ -5,6 +5,7 @@ import {
   buyNode,
   buyUpgrade,
   canRecycle,
+  lightUp,
   newGame,
   purchasePlan,
   ratePerSecond,
@@ -46,6 +47,8 @@ interface Option {
 
 /** Recycle once the gain at least matches what was earned before, or the run drags on past this. */
 const RECYCLE_PATIENCE = 45 * 60;
+/** Threat level at which the bot turns the floodlight on. */
+const LIGHT_AT = 0.5;
 
 /**
  * Plays like an attentive player: always saves for the purchase that pays for
@@ -127,6 +130,8 @@ export function simulate(seconds: number, opts: { recycle?: boolean } = {}): Sim
         continue;
       }
     }
+    // An attentive player rides the dark bonus to its peak and then switches the floodlight on.
+    if (s.threat.level >= LIGHT_AT) lightUp(s);
     const best = options().sort((a, b) => a.payback - b.payback)[0];
     const rate = ratePerSecond(s).toNumber();
     const wait = Math.max(0, (best.cost.toNumber() - s.trash.toNumber()) / rate);

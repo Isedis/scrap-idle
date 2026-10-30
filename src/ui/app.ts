@@ -12,6 +12,8 @@ import {
   takeNewUpgrades,
   canRecycle,
   recycle,
+  lightUp,
+  loseShift,
   type BuyMode,
   type GameState,
 } from '../game/state';
@@ -22,6 +24,20 @@ export { textBar } from './dom';
 import { Scene } from './scene';
 import { RecyclePanel } from './recyclePanel';
 import { RECYCLE_AT, hasNode, milestoneBase, passiveBonus } from '../game/layers';
+import { STAGES, depthMeters, formatDepth, stageIndex, threatActive } from '../game/threat';
+
+/** How long the floodlight button must be held. */
+const HOLD_MS = 1500;
+/** How long the lost-shift screen stays up before the run starts over. */
+const LOST_MS = 4500;
+/** What the terminal says as the threat climbs into each stage. */
+const STAGE_NOTES = [
+  '',
+  'В куче что-то шевелится',
+  'Он здесь. На камере кто-то лишний',
+  'Давление растёт, доход падает. Включите прожектор',
+  'ОНО ПОДНИМАЕТСЯ. СВЕТ!',
+];
 
 type Tab = 'dump' | 'upgrades' | 'recycle' | 'settings';
 
@@ -79,6 +95,13 @@ export class App {
   private recycleBadge!: HTMLElement;
   /** Recycling was announced as ready for this run. */
   private knownRecycleReady = false;
+  private threatEl!: HTMLElement;
+  private threatBar!: HTMLElement;
+  private depthEl!: HTMLElement;
+  private lightButton!: HTMLButtonElement;
+  private lostEl!: HTMLElement;
+  private knownStage = 0;
+  private losing = false;
   private panels = new Map<Tab, HTMLElement>();
   private tabs = new Map<Tab, HTMLButtonElement>();
   private toastEl!: HTMLElement;
@@ -109,6 +132,7 @@ export class App {
     this.knownRevealed = state.revealed.length;
     for (const def of PRODUCERS) this.knownMilestones.set(def.id, milestonesReached(state.owned[def.id] ?? 0));
     this.knownRecycleReady = canRecycle(state);
+    this.knownStage = stageIndex(state.threat.level);
   }
 
   private build(): void {
@@ -119,7 +143,7 @@ export class App {
     this.rateEl = el('div', 'rate', 'поток: +0 кг/с');
     this.layerEl = el('div', 'layer-line');
     this.layerEl.hidden = true;
-    header.append(this.trashEl, unit, this.rateEl, this.layerEl);
+    header.append(this.trashEl, unit, this.rateEl, this.layerEl, this.buildThreat());
 
     this.recyclePanel = new RecyclePanel(
       this.getState,
@@ -157,8 +181,92 @@ export class App {
     this.toastEl.setAttribute('role', 'status');
     this.toastEl.hidden = true;
 
-    this.root.append(header, main, nav, this.toastEl);
+    this.lostEl = el('div', 'lost');
+    this.lostEl.hidden = true;
+    this.lostEl.setAttribute('role', 'alert');
+
+    this.root.append(header, main, nav, this.toastEl, this.lostEl);
     this.show('dump');
+  }
+
+  /** Threat bar, depth of the thing, and the floodlight, pinned in the header. */
+  private buildThreat(): HTMLElement {
+    this.threatEl = el('div', 'threat');
+    this.threatEl.hidden = true;
+    const text = el('div', 'threat-text');
+    this.threatBar = el('div', 'threat-bar');
+    this.depthEl = el('div', 'threat-depth');
+    text.append(this.threatBar, this.depthEl);
+
+    this.lightButton = el('button', 'light', 'Прожектор');
+    this.lightButton.type = 'button';
+    this.lightButton.id = 'light';
+    this.lightButton.setAttribute('aria-label', 'Прожектор: удерживайте, чтобы отогнать угрозу');
+    let started = 0;
+    let raf = 0;
+    const tick = () => {
+      const p = Math.min((performance.now() - started) / HOLD_MS, 1);
+      this.lightButton.style.setProperty('--hold', String(p));
+      if (p >= 1) {
+        stop();
+        this.switchOnLight();
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    const start = (e: Event) => {
+      e.preventDefault();
+      if (started) return;
+      started = performance.now();
+      raf = requestAnimationFrame(tick);
+    };
+    const stop = () => {
+      started = 0;
+      cancelAnimationFrame(raf);
+      this.lightButton.style.setProperty('--hold', '0');
+    };
+    this.lightButton.addEventListener('pointerdown', start);
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) this.lightButton.addEventListener(ev, stop);
+    this.lightButton.addEventListener('keydown', (e) => {
+      if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) start(e);
+    });
+    this.lightButton.addEventListener('keyup', stop);
+    this.lightButton.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    this.threatEl.append(text, this.lightButton);
+    return this.threatEl;
+  }
+
+  private switchOnLight(): void {
+    if (this.losing) return;
+    const state = this.getState();
+    const was = state.threat.level;
+    lightUp(state);
+    this.scene.floodlight();
+    this.knownStage = 0;
+    if (was >= 0.5) this.caption('Свет. Оно отступило');
+  }
+
+  /** The thing reached the edge: black screen, camera 00, then the run starts over. */
+  private loseRun(): void {
+    if (this.losing) return;
+    this.losing = true;
+    this.scene.glitch(2);
+    const lines = ['КАМ-00', 'СИГНАЛ ПОТЕРЯН', 'СМЕНА ПОТЕРЯНА'];
+    this.lostEl.replaceChildren(...lines.map((l, i) => el('div', `lost-line l${i}`, l)));
+    this.lostEl.hidden = false;
+    window.setTimeout(() => {
+      const state = this.getState();
+      loseShift(state);
+      writeSave(state);
+      this.resetKnown();
+      this.toastQueue = [];
+      this.lostEl.hidden = true;
+      this.losing = false;
+      this.show('dump');
+      this.toast('Смена потеряна. Оно забрало всё, что собрано за заход');
+      this.render();
+    }, LOST_MS);
   }
 
   private buildFeed(): HTMLElement {
@@ -472,7 +580,13 @@ export class App {
   /** Every animation frame: only the camera feed. */
   frame(dt: number): void {
     const state = this.getState();
-    this.scene.update(dt, { owned: state.owned, rate: ratePerSecond(state), total: state.runTrash, recycles: state.recycle.resets });
+    this.scene.update(dt, {
+      owned: state.owned,
+      rate: ratePerSecond(state),
+      total: state.runTrash,
+      recycles: state.recycle.resets,
+      threat: state.threat.level,
+    });
   }
 
   /** Runs the recycle and plays it on camera. */
@@ -593,5 +707,30 @@ export class App {
 
     this.autoButton.hidden = !hasNode(layer, 'a1');
     this.autoButton.setAttribute('aria-pressed', String(state.autobuy));
+
+    this.renderThreat(state);
+  }
+
+  private renderThreat(state: GameState): void {
+    const level = state.threat.level;
+    const active = threatActive(state.runTrash) || level > 0 || state.threat.losses > 0;
+    if (active && this.threatEl.hidden) {
+      this.threatEl.hidden = false;
+      // The first time anything stirs, say what to do about it.
+      if (state.threat.losses === 0 && state.recycle.resets === 0) {
+        this.toast('В куче что-то есть. Удерживайте «Прожектор», чтобы отогнать');
+      }
+    }
+    const stage = stageIndex(level);
+    if (stage > this.knownStage) {
+      this.toast(STAGE_NOTES[stage]);
+      if (stage >= 2) this.scene.glitch(0.4);
+      if (stage >= 3) this.pop(this.threatEl, 'alarm');
+    }
+    this.knownStage = stage;
+    this.threatBar.textContent = `угроза ${textBar(level, 10)} ${Math.floor(level * 100)}%`;
+    this.depthEl.textContent = `${STAGES[stage].name.toUpperCase()} · объект на глубине ${formatDepth(depthMeters(state.totalTrash))} ▼`;
+    this.root.dataset.threat = String(stage);
+    if (level >= 1) this.loseRun();
   }
 }

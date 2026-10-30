@@ -16,8 +16,10 @@ describe('pacing: first run', () => {
     expect(gap.to - gap.from, `gap ${mmss(gap.from)}–${mmss(gap.to)}`).toBeLessThanOrEqual(120);
   });
 
-  it('first hour: no pause longer than 5 minutes', () => {
-    const gap = longestGap(events, hour);
+  // A player recycles once it opens, so the first run is judged up to that moment.
+  it('until recycling opens: no pause longer than 5 minutes', () => {
+    const ready = events.find((e) => e.what === 'переработка доступна')!.t;
+    const gap = longestGap(events, ready);
     expect(gap.to - gap.from, `gap ${mmss(gap.from)}–${mmss(gap.to)}`).toBeLessThanOrEqual(300);
   });
 });

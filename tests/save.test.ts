@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { advance, buy, buyUpgrade, newGame } from '../src/game/state';
 import { applyOffline, deserialize, exportSave, importSave, serialize } from '../src/game/save';
 import { newLayer, offlineCapSeconds } from '../src/game/layers';
+import { OFFLINE_EFFICIENCY } from '../src/game/threat';
 
 const OFFLINE_CAP_SECONDS = offlineCapSeconds(newLayer());
 import { D } from '../src/game/num';
@@ -70,7 +71,8 @@ describe('saves', () => {
   it('applies offline progress up to a day', () => {
     const s = newGame(0);
     expect(applyOffline(s, 60_000)).toBe(60);
-    expect(s.trash.toNumber()).toBeCloseTo(60);
+    // Closed, the dump works at half speed.
+    expect(s.trash.toNumber()).toBeCloseTo(60 * OFFLINE_EFFICIENCY);
     const t = newGame(0);
     expect(applyOffline(t, 10 * OFFLINE_CAP_SECONDS * 1000)).toBe(OFFLINE_CAP_SECONDS);
     const u = newGame(5000);

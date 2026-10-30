@@ -13,6 +13,7 @@ import {
   recycleProductionMult,
   type LayerState,
 } from './layers';
+import { OFFLINE_EFFICIENCY, climb, newThreat, threatMult, type ThreatState } from './threat';
 
 export type BuyMode = 'one' | 'ten' | 'max';
 
@@ -37,6 +38,8 @@ export interface GameState {
   recycle: LayerState;
   /** The auto-buyer is switched on (it works only once bought in the tree). */
   autobuy: boolean;
+  /** Something rising under the heap; the floodlight pushes it back. */
+  threat: ThreatState;
   /** Epoch ms of the last simulated moment, used for offline progress. */
   lastTick: number;
 }
@@ -55,6 +58,7 @@ export function newGame(now = Date.now()): GameState {
     buyMode: 'one',
     recycle: newLayer(),
     autobuy: true,
+    threat: newThreat(),
     lastTick: now,
   };
 }
@@ -66,7 +70,9 @@ export function producerRate(state: GameState, id: string): Decimal {
   const def = producerById(id);
   const n = owned(state, id);
   if (!def || n === 0) return D(0);
-  let mult = Decimal.pow(milestoneBase(state.recycle), milestonesReached(n)).mul(recycleProductionMult(state.recycle));
+  let mult = Decimal.pow(milestoneBase(state.recycle), milestonesReached(n))
+    .mul(recycleProductionMult(state.recycle))
+    .mul(threatMult(state.threat.level));
   let bonus = 0;
   for (const uid of state.upgrades) {
     const e = upgradeById(uid)?.effect;
@@ -84,14 +90,30 @@ export function ratePerSecond(state: GameState): Decimal {
   return rate;
 }
 
-/** Advances the game by `seconds`. Production is linear between purchases, so any step size is exact. */
-export function advance(state: GameState, seconds: number): void {
+/** Longest slice of time simulated at one threat level; offline time is cut into at most this many slices. */
+const SLICE_SECONDS = 1;
+const OFFLINE_SLICES = 200;
+
+/**
+ * Advances the game by `seconds`. Income depends on the threat, which climbs as time
+ * passes, so long spans are simulated in slices. Offline, income is halved and the
+ * threat climbs slowly and stops short of the edge.
+ */
+export function advance(state: GameState, seconds: number, offline = false): void {
   if (seconds <= 0) return;
-  const gained = ratePerSecond(state).mul(seconds);
-  state.trash = state.trash.add(gained);
-  state.totalTrash = state.totalTrash.add(gained);
-  state.runTrash = state.runTrash.add(gained);
-  state.runSeconds += seconds;
+  const slice = offline ? Math.max(seconds / OFFLINE_SLICES, SLICE_SECONDS) : SLICE_SECONDS;
+  for (let left = seconds; left > 0; left -= slice) {
+    const dt = Math.min(slice, left);
+    let gained = ratePerSecond(state).mul(dt);
+    if (offline) gained = gained.mul(OFFLINE_EFFICIENCY);
+    state.trash = state.trash.add(gained);
+    state.totalTrash = state.totalTrash.add(gained);
+    state.runTrash = state.runTrash.add(gained);
+    state.runSeconds += dt;
+    state.threat.level = climb(state.threat.level, state.runTrash, dt, offline);
+    // At the edge production stops; the game plays the loss and calls loseShift.
+    if (state.threat.level >= 1) break;
+  }
   revealProducers(state);
 }
 
@@ -198,6 +220,13 @@ export function recycle(state: GameState): Decimal {
   // A run carried over from an old save has no known length and sets no record.
   if (state.runSeconds >= 0) layer.bestSeconds = layer.bestSeconds === null ? state.runSeconds : Math.min(layer.bestSeconds, state.runSeconds);
 
+  startNewRun(state);
+  return gain;
+}
+
+/** Starts the run over, keeping what the Recycling tree says to keep. */
+function startNewRun(state: GameState): void {
+  const layer = state.recycle;
   state.trash = D(hasNode(layer, 's4') ? 1e8 : hasNode(layer, 's2') ? 1e4 : 0);
   state.runTrash = D(0);
   state.runSeconds = 0;
@@ -205,7 +234,20 @@ export function recycle(state: GameState): Decimal {
   if (!hasNode(layer, 's2')) state.revealed = ['collector'];
   // Saved blueprints keep the first tier of every producer upgrade.
   state.upgrades = hasNode(layer, 's3') ? state.upgrades.filter((id) => /-1$/.test(id)) : [];
-  return gain;
+  state.threat.level = 0;
+}
+
+// ---- Threat -------------------------------------------------------------------
+
+/** The floodlight: pushes the threat back to nothing. */
+export function lightUp(state: GameState): void {
+  state.threat.level = 0;
+}
+
+/** The threat reached the edge: the run is lost with nothing in return. Recycling progress stays. */
+export function loseShift(state: GameState): void {
+  state.threat.losses += 1;
+  startNewRun(state);
 }
 
 export function buyNode(state: GameState, id: string): boolean {

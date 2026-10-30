@@ -387,6 +387,122 @@ body::after {
   text-shadow: none;
 }
 
+/* ---- Threat ---- */
+.threat {
+  width: 100%;
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgb(0 0 0 / 0.25);
+}
+
+.threat-text { min-width: 0; display: grid; gap: 1px; }
+.threat-bar { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.threat-depth { font-size: 11px; color: var(--mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Hold to switch on: the fill grows under the label while held. */
+.light {
+  --hold: 0;
+  position: relative;
+  overflow: hidden;
+  min-width: 104px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--glow);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--glow);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.light::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--hold) * 100%);
+  background: rgb(200 255 210 / 0.35);
+}
+
+#app[data-threat='2'] .threat { border-color: var(--mid); }
+#app[data-threat='3'] .threat,
+#app[data-threat='4'] .threat { border-color: var(--danger); }
+#app[data-threat='3'] .threat-bar,
+#app[data-threat='4'] .threat-bar { color: var(--danger); }
+#app[data-threat='3'] .light,
+#app[data-threat='4'] .light { border-color: var(--danger); color: var(--danger); animation: urge 1s steps(2) infinite; }
+
+.threat.alarm { animation: alarm 0.6s ease 2; }
+
+@keyframes alarm {
+  50% { background: rgb(255 107 87 / 0.3); }
+}
+
+@keyframes urge {
+  50% { box-shadow: 0 0 16px rgb(255 107 87 / 0.6); }
+}
+
+/* Pressure on the whole screen: the edges close in, the numbers start to shake. */
+#app[data-threat='3']::before,
+#app[data-threat='4']::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 45%, transparent 45%, rgb(0 0 0 / 0.55) 100%);
+}
+
+#app[data-threat='4']::before {
+  background: radial-gradient(ellipse at 50% 45%, transparent 30%, rgb(10 0 0 / 0.8) 100%);
+  animation: dread 3s ease-in-out infinite;
+}
+
+#app[data-threat='4'] .trash { animation: shake 0.25s steps(2) infinite; }
+
+@keyframes dread {
+  50% { opacity: 0.7; }
+}
+
+@keyframes shake {
+  50% { transform: translate(1px, -1px); }
+}
+
+/* The lost shift: a black screen with camera zero. */
+.lost {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  padding: 24px;
+  background: #000;
+  color: var(--danger);
+  text-align: center;
+}
+
+.lost-line { opacity: 0; animation: lost-in 0.4s ease forwards; letter-spacing: 0.2em; }
+.lost-line.l0 { position: fixed; left: 16px; top: calc(env(safe-area-inset-top, 0px) + 16px); color: var(--mid); font-size: 12px; animation-delay: 0.3s; }
+.lost-line.l1 { font-size: 13px; animation-delay: 1.2s; }
+.lost-line.l2 { font-size: 22px; font-weight: 700; animation-delay: 2.4s; }
+
+@keyframes lost-in {
+  to { opacity: 1; }
+}
+
 /* ---- Recycling ---- */
 .r-stats {
   display: grid;

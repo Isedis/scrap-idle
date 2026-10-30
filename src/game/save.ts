@@ -6,7 +6,7 @@ import { nodeById, newLayer, offlineCapSeconds, type LayerState } from './layers
 
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
-const VERSION = 3;
+const VERSION = 4;
 
 /** Run length for a run whose start is not known; stays negative however long it is played. */
 const UNKNOWN_RUN_SECONDS = -1e12;
@@ -46,6 +46,12 @@ interface SaveV3 extends Omit<SaveV2, 'v'> {
   autobuy: boolean;
 }
 
+/** v4 adds the threat under the heap. */
+interface SaveV4 extends Omit<SaveV3, 'v'> {
+  v: 4;
+  threat: { level: number; losses: number };
+}
+
 const BUY_MODES: readonly BuyMode[] = ['one', 'ten', 'max'];
 
 const saveLayer = (l: LayerState): LayerSave => ({
@@ -71,7 +77,7 @@ function loadLayer(data: Partial<LayerSave> | undefined): LayerState | null {
 }
 
 export function serialize(state: GameState): string {
-  const data: SaveV3 = {
+  const data: SaveV4 = {
     v: VERSION,
     trash: state.trash.toString(),
     totalTrash: state.totalTrash.toString(),
@@ -84,6 +90,7 @@ export function serialize(state: GameState): string {
     runSeconds: state.runSeconds,
     layers: { recycle: saveLayer(state.recycle) },
     autobuy: state.autobuy,
+    threat: { level: state.threat.level, losses: state.threat.losses },
     lastTick: state.lastTick,
   };
   return JSON.stringify(data);
@@ -91,13 +98,13 @@ export function serialize(state: GameState): string {
 
 /** Parses a save; returns null for anything that is not a readable save. */
 export function deserialize(text: string): GameState | null {
-  let data: Partial<SaveV3> | Partial<SaveV2> | Partial<SaveV1>;
+  let data: Partial<SaveV4> | Partial<SaveV3> | Partial<SaveV2> | Partial<SaveV1>;
   try {
     data = JSON.parse(text);
   } catch {
     return null;
   }
-  if (!data || typeof data !== 'object' || ![1, 2, 3].includes(data.v as number)) return null;
+  if (!data || typeof data !== 'object' || ![1, 2, 3, 4].includes(data.v as number)) return null;
 
   const state = newGame(typeof data.lastTick === 'number' ? data.lastTick : Date.now());
   const trash = parseNum(data.trash ?? '0');
@@ -114,7 +121,7 @@ export function deserialize(text: string): GameState | null {
   if (!state.revealed.includes('collector')) state.revealed.unshift('collector');
 
   // A v1 save simply has none of these yet.
-  if (data.v === 2 || data.v === 3) {
+  if (data.v === 2 || data.v === 3 || data.v === 4) {
     const ids = (list: unknown) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string' && upgradeById(id)) : []);
     state.upgrades = [...new Set(ids(data.upgrades))];
     state.seenUpgrades = [...new Set([...ids(data.seenUpgrades), ...state.upgrades])];
@@ -124,7 +131,7 @@ export function deserialize(text: string): GameState | null {
   // Before v3 there was a single run: everything collected so far belongs to it, length unknown.
   state.runTrash = state.totalTrash;
   state.runSeconds = UNKNOWN_RUN_SECONDS;
-  if (data.v === 3) {
+  if (data.v === 3 || data.v === 4) {
     const run = parseNum(data.runTrash ?? '0');
     const recycle = loadLayer(data.layers?.recycle);
     if (!run || !recycle) return null;
@@ -132,6 +139,14 @@ export function deserialize(text: string): GameState | null {
     state.runSeconds = Number.isFinite(data.runSeconds) ? data.runSeconds! : UNKNOWN_RUN_SECONDS;
     state.recycle = recycle;
     state.autobuy = data.autobuy !== false;
+  }
+
+  // Older saves start with nothing stirring.
+  if (data.v === 4) {
+    const t = data.threat;
+    const level = typeof t?.level === 'number' && Number.isFinite(t.level) ? t.level : 0;
+    state.threat.level = Math.min(Math.max(level, 0), 1);
+    state.threat.losses = typeof t?.losses === 'number' && t.losses >= 0 ? Math.floor(t.losses) : 0;
   }
   return state;
 }
@@ -154,7 +169,7 @@ export function importSave(text: string): GameState | null {
 /** Applies the time since the last tick, capped. Returns the seconds simulated. */
 export function applyOffline(state: GameState, now = Date.now()): number {
   const seconds = Math.min(Math.max(0, (now - state.lastTick) / 1000), offlineCapSeconds(state.recycle));
-  advance(state, seconds);
+  advance(state, seconds, true);
   state.lastTick = now;
   return seconds;
 }
