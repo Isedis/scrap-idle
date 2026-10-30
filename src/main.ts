@@ -62,3 +62,18 @@ async function checkForUpdate(): Promise<void> {
 }
 checkForUpdate();
 setInterval(checkForUpdate, CHECK_EVERY_MS);
+
+// iOS Safari ignores user-scalable=no; block its pinch and double-tap zoom directly.
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+let lastTouchEnd = 0;
+document.addEventListener(
+  'touchend',
+  (e) => {
+    const now = Date.now();
+    // Buttons keep every tap (fast repeated buying), and touch-action already stops zoom on them.
+    const control = (e.target as Element | null)?.closest?.('button, input, textarea');
+    if (!control && now - lastTouchEnd < 350) e.preventDefault();
+    lastTouchEnd = now;
+  },
+  { passive: false },
+);

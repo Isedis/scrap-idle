@@ -22,7 +22,11 @@
 
 * { box-sizing: border-box; }
 
-html, body { height: 100%; }
+html, body {
+  height: 100%;
+  /* A game, not a document: no double-tap or pinch zoom getting in the way of taps. */
+  touch-action: manipulation;
+}
 
 body {
   margin: 0;
