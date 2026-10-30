@@ -205,6 +205,8 @@ export class App {
   /** What the player has already been told about, so each event is announced once. */
   private knownRevealed = 0;
   private knownMilestones = new Map<string, number>();
+  /** What was ever announced on this device: producers seen and the best milestone of each. */
+  private announced = loadAnnounced();
 
   constructor(
     private root: HTMLElement,
@@ -219,7 +221,14 @@ export class App {
   private resetKnown(): void {
     const state = this.getState();
     this.knownRevealed = state.revealed.length;
-    for (const def of PRODUCERS) this.knownMilestones.set(def.id, milestonesReached(milestoneUnits(state, def.id)));
+    for (const def of PRODUCERS) {
+      const reached = milestonesReached(milestoneUnits(state, def.id));
+      this.knownMilestones.set(def.id, reached);
+      // A device that never kept the list starts from what is on screen now.
+      this.announced.milestones[def.id] = Math.max(this.announced.milestones[def.id] ?? 0, reached);
+    }
+    for (const id of state.revealed) if (!this.announced.producers.includes(id)) this.announced.producers.push(id);
+    saveAnnounced(this.announced);
     this.knownRecycleReady = canRecycle(state);
     this.knownStage = stageIndex(state.threat.level);
     this.knownSortOpen = state.sorting.open;
@@ -1094,6 +1103,8 @@ export class App {
       armed = 0;
       reset.textContent = 'Сбросить игру';
       wipeSave();
+      // A new game is new to the player again: every producer and milestone is news.
+      this.announced = { producers: [], milestones: {} };
       this.setState(newGame());
       this.resetKnown();
       this.toastQueue = [];
@@ -1243,7 +1254,11 @@ export class App {
 
   /** Announces producers, upgrades and milestones that appeared since the last check. */
   private announce(state: GameState): void {
+    // Every run reveals the producers again: only the first time ever is news.
     for (const id of state.revealed.slice(this.knownRevealed)) {
+      if (this.announced.producers.includes(id)) continue;
+      this.announced.producers.push(id);
+      saveAnnounced(this.announced);
       this.toast(`Новый производитель: ${producerById(id)?.name}`);
       this.glitch(0.35);
     }
@@ -1270,7 +1285,12 @@ export class App {
       const reached = milestonesReached(units);
       if (reached > (this.knownMilestones.get(def.id) ?? 0)) {
         const base = milestoneBase(state.recycle);
-        this.toast(`${def.name}: ${prevMilestone(units)} шт, доход ×${base}`);
+        // Every run passes the same milestones again: a notice only past the best ever.
+        if (reached > (this.announced.milestones[def.id] ?? 0)) {
+          this.announced.milestones[def.id] = reached;
+          saveAnnounced(this.announced);
+          this.toast(`${def.name}: ${prevMilestone(units)} шт, доход ×${base}`);
+        }
         this.scene.flash('green');
         this.scene.burst();
         this.caption(`${def.name} ×${base}`);
@@ -1456,7 +1476,6 @@ export class App {
       level >= 0.9 && { key: 'edge', at: 'dump', text: `Угроза ${pct(level)}! Прожектор → Свалка` },
       h.phase === 'walk' && { key: 'walk', at: 'plant', text: `ОНО ИДЁТ · ${Math.floor(Math.ceil(h.left) / 60)}:${pad2(Math.ceil(h.left) % 60)} · готовьте тишину → Цех` },
       level >= 0.7 && { key: 'threat', at: 'dump', text: `Угроза ${pct(level)} · прожектор → Свалка` },
-      h.phase === 'idle' && h.meter >= 0.7 && { key: 'heard', at: 'plant', text: `Оно слушает ${pct(h.meter)} · убавьте шум → Цех` },
     ];
     // The tabs themselves show where the trouble is, whichever tab is open.
     for (const [at, mark] of this.dangerMarks) {
@@ -1690,5 +1709,36 @@ function markNoiseTold(): void {
     localStorage.setItem(NOISE_KEY, '1');
   } catch {
     // Without storage it is simply told again next time.
+  }
+}
+
+/**
+ * Producers and milestones already announced, kept on the device: every run reaches them
+ * again, and only what is new for the player deserves a notice.
+ */
+const ANNOUNCED_KEY = 'scrap-idle-announced';
+
+interface Announced {
+  producers: string[];
+  milestones: Record<string, number>;
+}
+
+function loadAnnounced(): Announced {
+  try {
+    const data = JSON.parse(localStorage.getItem(ANNOUNCED_KEY) ?? 'null') as Partial<Announced> | null;
+    return {
+      producers: Array.isArray(data?.producers) ? data.producers.filter((id) => typeof id === 'string') : [],
+      milestones: data?.milestones && typeof data.milestones === 'object' ? { ...data.milestones } : {},
+    };
+  } catch {
+    return { producers: [], milestones: {} };
+  }
+}
+
+function saveAnnounced(a: Announced): void {
+  try {
+    localStorage.setItem(ANNOUNCED_KEY, JSON.stringify(a));
+  } catch {
+    // Without storage the notices simply come again next time.
   }
 }
