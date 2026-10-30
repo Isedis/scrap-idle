@@ -1,6 +1,7 @@
 import { format, type Decimal } from '../game/num';
 import { BRANCHES, LAYERS, NODES, RECYCLE_AT, REPEATS, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, repeatCost, type NodeDef, type RepeatDef } from '../game/layers';
 import { recycleAdvice } from '../game/advice';
+import { PlantCam } from './plantCam';
 import { recycleMult, buyNode, buyRepeat, canRecycle, currentGain, repeatsOpen, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
 
@@ -18,6 +19,8 @@ export class RecyclePanel {
   readonly root: HTMLElement;
   private stats!: HTMLElement;
   private now!: HTMLElement;
+  /** Camera 03 over the plant. */
+  readonly camera = new PlantCam();
   private action!: HTMLElement;
   private actionTitle!: HTMLElement;
   private actionBar!: HTMLElement;
@@ -43,6 +46,7 @@ export class RecyclePanel {
     head.append(el('h2', 'panel-title', 'Переработка'));
     this.now = el('div', 's-now');
     this.root.append(
+      this.camera.root,
       head,
       el('p', 's-why', 'Сдаёшь весь мусор и производителей — получаешь вторсырьё. Оно навсегда усиливает доход и тратится на дерево ниже.'),
       this.now,
@@ -207,5 +211,17 @@ export class RecyclePanel {
   attention(state: GameState): boolean {
     const repeatReady = repeatsOpen(state) && REPEATS.some((r) => state.recycle.points.gte(repeatCost(r, state.recycle.repeats[r.id] ?? 0)));
     return canRecycle(state) || repeatReady || NODES.some((n) => canBuyNode(state.recycle, n));
+  }
+
+  /** Every animation frame while the tab is on screen: the camera. */
+  frame(dt: number, state: GameState): void {
+    const run = state.runTrash.add(1).log10().toNumber();
+    this.camera.update(dt, {
+      progress: canRecycle(state) ? 1 : Math.min(run / RECYCLE_AT.log10().toNumber(), 0.99),
+      pointsLog: state.recycle.points.add(1).log10().toNumber(),
+      nodes: state.recycle.nodes,
+      allNodes: NODES.map((n) => n.id),
+      threat: state.threat.level,
+    });
   }
 }

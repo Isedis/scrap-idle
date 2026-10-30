@@ -32,6 +32,7 @@ import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
+import { WorkshopCam } from './workshopCam';
 import { RANKS, describeUnique, uniqueById, FRAC_NAMES } from '../game/sorting';
 import { FAIL_LINES } from '../game/scripts';
 import { checkAchievements, ACH_BONUS } from '../game/achievements';
@@ -126,6 +127,8 @@ export class App {
   private automationPanel!: AutomationPanel;
   private sortingPanel!: SortingPanel;
   private intro = new Intro();
+  /** Camera 05 over the workshop, on the Upgrades tab. */
+  private workshop = new WorkshopCam();
   /** Which layer the Layers tab shows. */
   private layerView: 'recycle' | 'sorting' = 'recycle';
   private layerSwitch!: HTMLElement;
@@ -649,7 +652,7 @@ export class App {
     head.append(el('h2', 'panel-title', 'Улучшения'));
     this.upgradeCount = el('span', 'panel-meta');
     head.append(this.upgradeCount);
-    panel.append(head);
+    panel.append(this.workshop.root, head);
 
     this.upgradeEmpty = el('p', 'empty', 'Новых улучшений пока нет. Они открываются, когда растёт производство.');
     this.upgradeList = el('div', 'producers');
@@ -663,6 +666,7 @@ export class App {
   private onTrack(def: TrackDef): void {
     const state = this.getState();
     this.scene.flash('amber');
+    this.workshop.bought();
     this.pop(this.rateEl, 'pulse');
     if (def.id === 'compact' && state.compacted % COMPACT_MILESTONE === 0) {
       this.typeLine(`УПЛОТНЕНИЕ ×${state.compacted}. ОБЪЕКТ ПОДНЯЛСЯ. ГЛУБИНА ${formatDepth(depthOf(state)).toUpperCase()}`);
@@ -683,6 +687,7 @@ export class App {
     this.resetKnown();
     this.scene.glitch(0.4);
     this.toast(`Автопереработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
+    this.recyclePanel.camera.slam();
     this.automationPanel.note(`recycle: №${state.recycle.resets}, +${format(gain)} ВС`);
     this.render();
   }
@@ -773,6 +778,7 @@ export class App {
         this.scene.glitch(1.2);
         this.pop(this.threatEl, 'alarm');
         this.toast('Автопрожектор не включился. Держите свет сами!');
+        this.automationPanel.camera.failed();
       } else {
         this.scene.floodlight();
         this.knownStage = 0;
@@ -797,6 +803,7 @@ export class App {
     button.addEventListener('click', () => {
       if (buyUpgrade(this.getState(), def.id)) {
         this.toast(`Куплено: ${def.name}`);
+        this.workshop.bought();
         this.scene.flash('amber');
         this.caption(describeUpgrade(def));
         this.pop(this.rateEl, 'pulse');
@@ -964,6 +971,18 @@ export class App {
     const state = this.getState();
     if (!this.losing) this.dread.update(dt, stageIndex(state.threat.level));
     if (!this.sortingPanel.root.hidden) this.sortingPanel.frame(dt, state);
+    if (!this.recyclePanel.root.hidden) this.recyclePanel.frame(dt, state);
+    if (!this.automationPanel.root.hidden) this.automationPanel.frame(dt, state);
+    if (!this.panels.get('upgrades')!.hidden) {
+      this.workshop.update(dt, {
+        bought: state.upgrades.length,
+        total: UPGRADES.length,
+        compact: state.tracks.compact ?? 0,
+        bulk: state.tracks.bulk ?? 0,
+        dark: state.tracks.dark ?? 0,
+        threat: state.threat.level,
+      });
+    }
     this.scene.update(dt, {
       owned: state.owned,
       rate: ratePerSecond(state),
@@ -984,6 +1003,7 @@ export class App {
     this.toastQueue = [];
     this.scene.glitch(1.4);
     this.scene.flash('amber');
+    this.recyclePanel.camera.slam();
     this.caption(`Переработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
     this.toast(`Получено ${format(gain)} вторсырья. Доход ×${format(passiveBonus(state.recycle.total))}`);
     this.show('dump');

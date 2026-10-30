@@ -36,6 +36,7 @@ import { nodeById } from '../game/layers';
 import { recipeById } from '../game/sorting';
 import { stageIndex } from '../game/threat';
 import { el, progress } from './dom';
+import { ServerCam } from './serverCam';
 
 const LOG_MAX = 40;
 /** Purchases are gathered and written as one line per script this often. */
@@ -69,6 +70,9 @@ interface LogLine {
   phantom: boolean;
 }
 
+/** Short names on the racks of camera 04. */
+const RACK_NAMES: Record<ScriptId, string> = { producers: 'PROD', upgrades: 'UPG', endless: 'END', recycle: 'RCY', light: 'LGT', sort: 'SRT' };
+
 /** Whether a script is switched on, and how to flip it. */
 const SWITCHES: Record<ScriptId, [(s: GameState) => boolean, (s: GameState, on: boolean) => void]> = {
   producers: [(s) => s.autobuy, (s, on) => (s.autobuy = on)],
@@ -82,6 +86,8 @@ const SWITCHES: Record<ScriptId, [(s: GameState) => boolean, (s: GameState, on: 
 /** The Automation tab: scripts with their switches and settings, and the log of what they did. */
 export class AutomationPanel {
   readonly root: HTMLElement;
+  /** Camera 04 over the server room. */
+  readonly camera = new ServerCam();
   private cards: Card[] = [];
   /** Refresh pressed states and numbers on every render. */
   private updaters: ((s: GameState) => void)[] = [];
@@ -136,7 +142,7 @@ export class AutomationPanel {
     this.logList = el('div', 'a-log');
     this.logList.setAttribute('aria-live', 'off');
 
-    this.root.append(head, speed, list, logHead, this.logEmpty, this.logList);
+    this.root.append(this.camera.root, head, speed, list, logHead, this.logEmpty, this.logList);
   }
 
   private buildCard(def: ScriptDef): Card {
@@ -374,6 +380,7 @@ export class AutomationPanel {
   /** Writes what the scripts did; repeats of the last line fold into a counter. */
   log(notes: readonly ScriptNote[], state: GameState): void {
     for (const n of notes) {
+      this.camera.pulse(n.script);
       if (n.script === 'light') {
         this.write(`${scriptById(n.script)!.name}: ${n.text}`, false, n.failed === true);
         continue;
@@ -393,12 +400,24 @@ export class AutomationPanel {
     this.pending.clear();
     if (Math.random() < PHANTOM_CHANCE[stageIndex(state.threat.level)]) {
       this.write(PHANTOM_LINES[Math.floor(Math.random() * PHANTOM_LINES.length)], true, false);
+      this.camera.phantom();
     }
   }
 
   /** One line from outside the scripts' own tick, such as an automatic recycle. */
   note(text: string): void {
     this.write(text, false, false);
+    this.camera.pulse(text.startsWith('sort') ? 'sort' : 'recycle');
+  }
+
+  /** Every animation frame while the tab is on screen: the camera. */
+  frame(dt: number, state: GameState): void {
+    this.camera.update(dt, {
+      racks: SCRIPTS.map((d) => ({ id: d.id, name: RACK_NAMES[d.id], installed: scriptOwned(state, d.id), on: SWITCHES[d.id][0](state) })),
+      breaker: scriptOwned(state, 'light'),
+      cooldown: state.scripts.cooldown,
+      threat: state.threat.level,
+    });
   }
 
   private write(text: string, phantom: boolean, failed: boolean): void {
