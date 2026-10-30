@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advance, loseShift, newGame, producerRate, recordAway, storyTick } from '../src/game/state';
-import { BOOST_MULT, CASES, CASE_BONUS, EVENTS, NOTES, PHRASES, eventInterval, newStory, pickEvent, record, watch } from '../src/game/story';
+import { BOOST_MULT, CASES, CASE_BONUS, EVENTS, NIGHT_FACTOR, NOTES, PHRASES, eventInterval, newStory, pickEvent, record, watch } from '../src/game/story';
 import { THREAT_STARTS_AT } from '../src/game/threat';
 import { deserialize, serialize } from '../src/game/save';
 
@@ -31,9 +31,10 @@ describe('events', () => {
     expect(pickEvent(story, 3, { collector: 1, truck: 1 }).id).toBe('driverless');
   });
 
-  it('comes twice as often at night and more often under pressure', () => {
+  it('comes more often at night and under pressure, but never more than about once a minute', () => {
     const mid = () => 0.5;
-    expect(eventInterval(1, true, mid)).toBe(eventInterval(1, false, mid) / 2);
+    expect(eventInterval(1, true, mid)).toBeCloseTo(eventInterval(1, false, mid) * NIGHT_FACTOR);
+    expect(eventInterval(4, true, () => 0)).toBeGreaterThanOrEqual(40);
     expect(eventInterval(4, false, mid)).toBeLessThan(eventInterval(1, false, mid));
   });
 

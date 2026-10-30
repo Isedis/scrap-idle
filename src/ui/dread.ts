@@ -40,7 +40,7 @@ const pick = <T>(list: readonly T[]) => list[Math.floor(Math.random() * list.len
 const PACE = {
   glitch: [0, 7, 2.5, 1, 0.35],
   whisper: [0, 0, 9, 4, 1.6],
-  say: [0, 0, 40, 22, 12],
+  say: [0, 0, 100, 70, 45],
   black: [0, 0, 0, 9, 4],
   tear: [0, 0, 0, 0, 2.5],
   face: [0, 0, 0, 0, 30],

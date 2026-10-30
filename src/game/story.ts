@@ -148,10 +148,23 @@ export function storyMult(story: StoryState): number {
   return (1 + CASE_BONUS * story.cases.length) * (story.boost > 0 ? BOOST_MULT : 1);
 }
 
-/** Seconds between events at a threat stage; at night (00–05 local) twice as often. */
+/**
+ * Seconds between events at a threat stage. Rare enough that each one lands: minutes
+ * apart when calm, about a minute apart at the edge. At night (00–05 local) a third
+ * more often.
+ */
+const INTERVALS: readonly [number, number][] = [
+  [300, 480],
+  [180, 300],
+  [120, 210],
+  [90, 150],
+  [60, 100],
+];
+export const NIGHT_FACTOR = 0.7;
+
 export function eventInterval(stage: number, night: boolean, rand = Math.random): number {
-  const [lo, hi] = [[90, 150], [60, 100], [40, 70], [30, 50], [20, 35]][Math.min(stage, 4)];
-  return (lo + rand() * (hi - lo)) * (night ? 0.5 : 1);
+  const [lo, hi] = INTERVALS[Math.min(stage, 4)];
+  return (lo + rand() * (hi - lo)) * (night ? NIGHT_FACTOR : 1);
 }
 
 export const isNight = (date: Date) => date.getHours() < 5;
