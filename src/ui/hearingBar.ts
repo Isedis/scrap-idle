@@ -1,6 +1,12 @@
 import { HOLD_SECONDS, MAX_NOISE, nearness, type HearingState } from '../game/hearing';
 import { el, textBar } from './dom';
 
+/** m:ss, for how long it still walks. */
+const mss = (s: number) => {
+  const t = Math.max(0, Math.ceil(s));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+};
+
 /**
  * The plant's noise, in the header so it is in reach from every tab: the load, what it
  * pays, and how much the one that listens has heard. Walking, it says so; at the door it
@@ -59,7 +65,7 @@ export class HearingBar {
       this.heard.textContent = h.held > 0 ? 'не трогайте' : `${pct}% · ${HOLD_SECONDS} с тишины`;
     } else if (h.phase === 'walk') {
       this.load.textContent = `шум ${pct}% · ×${h.noise.toFixed(2)}`;
-      this.heard.textContent = `ОНО ИДЁТ ${textBar(nearness(h), 6)}`;
+      this.heard.textContent = `ОНО ИДЁТ ${textBar(nearness(h), 6)} ${mss(h.left)}`;
     } else {
       this.load.textContent = `шум цеха ${pct}% · ×${h.noise.toFixed(2)}`;
       this.heard.textContent = h.noise > 1 || h.meter > 0 ? `слух ${textBar(h.meter, 6)} ${Math.floor(h.meter * 100)}%` : 'тихо';

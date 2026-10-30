@@ -38,8 +38,8 @@ const FILL_SECONDS = 5 * 60;
 /** Seconds for a full meter to empty at normal load or below. */
 const DRAIN_SECONDS = 3 * 60;
 /** How long it walks, seconds. */
-export const WALK_MIN = 3 * 60;
-export const WALK_MAX = 5 * 60;
+export const WALK_MIN = 60;
+export const WALK_MAX = 2 * 60;
 /** The minute to go silent… */
 export const CHECK_SECONDS = 60;
 /** …and the silence that has to hold. */

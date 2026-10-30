@@ -1447,7 +1447,7 @@ export class App {
     const dangers: (Danger | false)[] = [
       h.phase === 'check' && { key: 'check', at: 'plant', text: `ОНО У ДВЕРИ · 0:${pad2(Math.max(0, Math.ceil(h.left)))} · шум на 0 → Цех` },
       level >= 0.9 && { key: 'edge', at: 'dump', text: `Угроза ${pct(level)}! Прожектор → Свалка` },
-      h.phase === 'walk' && { key: 'walk', at: 'plant', text: 'ОНО ИДЁТ · готовьте тишину → Цех' },
+      h.phase === 'walk' && { key: 'walk', at: 'plant', text: `ОНО ИДЁТ · ${Math.floor(Math.ceil(h.left) / 60)}:${pad2(Math.ceil(h.left) % 60)} · готовьте тишину → Цех` },
       level >= 0.7 && { key: 'threat', at: 'dump', text: `Угроза ${pct(level)} · прожектор → Свалка` },
       h.phase === 'idle' && h.meter >= 0.7 && { key: 'heard', at: 'plant', text: `Оно слушает ${pct(h.meter)} · убавьте шум → Цех` },
     ];
