@@ -5,7 +5,7 @@ const C = {
   skyTop: '#041009',
   skyBottom: '#0f2d1c',
   skyline: '#0c2416',
-  skylineWin: '#9fdc7a',
+  skylineWin: '#8fd89c',
   far: '#123321',
   heapBack: '#1f4a30',
   heapFront: '#2f6b45',
@@ -16,22 +16,23 @@ const C = {
   outline: '#03100a',
   glow: '#7dff9a',
   light: '#c8ffd2',
-  lime: '#bfff6a',
-  green: '#4fbf74',
-  deep: '#2f8a52',
-  amber: '#ffc857',
-  cyan: '#7ce0ff',
-  red: '#ff6b57',
+  // Night vision is monochrome: what used to be colours are now brightness levels of one green.
+  lime: '#a8f0b0',
+  green: '#4fa868',
+  deep: '#2f7a4a',
+  amber: '#d8ffdc',
+  cyan: '#6fcf8a',
+  red: '#e8ffe8',
   hub: '#6fae86',
   tyre: '#062012',
-  items: ['#9dff8a', '#7ce0ff', '#ffc857', '#c8ffd2', '#a8e07a'],
+  items: ['#9fe8a8', '#6fcf8a', '#c8ffd2', '#4fa868', '#86dc98'],
 };
 
-/** Big junk on the heap is muted so the heap reads as one mass; the bright colours belong to things that move. */
+/** Big junk on the heap is darker so the heap reads as one mass; the brightest shades belong to things that move. */
 const J = {
-  white: '#8fbf98',
-  box: '#a8893f',
-  bags: ['#5f9fae', '#7fa86a', '#9fb87a'],
+  white: '#7fb08a',
+  box: '#5f8f68',
+  bags: ['#4f8a60', '#6a9f74', '#3f7a52'],
   sofa: '#2a6a40',
   hub: '#4f8a63',
 };
@@ -599,8 +600,8 @@ export class Scene {
     const [x, y] = this.holeCenter();
     const r = this.holeRadius();
     const halo = ctx.createRadialGradient(x, y, r * 0.8, x, y, r * 3);
-    halo.addColorStop(0, 'rgba(255, 200, 87, 0.3)');
-    halo.addColorStop(1, 'rgba(255, 200, 87, 0)');
+    halo.addColorStop(0, 'rgba(170, 240, 180, 0.3)');
+    halo.addColorStop(1, 'rgba(170, 240, 180, 0)');
     ctx.fillStyle = halo;
     ctx.fillRect(x - r * 3, y - r * 3, r * 6, r * 6);
     ctx.save();
@@ -621,7 +622,7 @@ export class Scene {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 200, 87, 0.75)';
+    ctx.strokeStyle = 'rgba(170, 240, 180, 0.75)';
     ctx.lineWidth = 1;
     ctx.stroke();
   }
