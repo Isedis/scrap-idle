@@ -1312,3 +1312,11 @@ button { font: inherit; color: inherit; }
 .threat-stage.loss { color: var(--danger); }
 .j-more { width: 100%; margin-top: 6px; }
 .buy-all { min-height: 44px; padding: 6px 12px; border-color: var(--amber); color: var(--amber); font-size: 12px; }
+
+/* ---- Away screen ---- */
+.away-rows { display: grid; gap: 8px; }
+.away-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; font-size: 13px; }
+.away-label { color: var(--mid); }
+.away-value { color: var(--glow); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.away-note { grid-column: 1 / -1; color: var(--mid); font-size: 11px; }
+.away-row.bad .away-value, .away-row.bad .away-note { color: var(--danger); }

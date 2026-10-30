@@ -214,7 +214,7 @@ export const RECIPES: readonly RecipeDef[] = [
   { id: 'i1', branch: 'inspect', name: 'Лупа', text: 'Осмотр вдвое быстрее', cost: { paper: 120 } },
   { id: 'i2', branch: 'inspect', name: 'Полка', text: 'На столе ещё 2 места', cost: { paper: 600, plastic: 300 }, requires: 'i1' },
   { id: 'i3', branch: 'inspect', name: 'Лампа над столом', text: 'Осмотр вдвое быстрее', cost: { paper: 4000, metal: 2000 }, requires: 'i2' },
-  { id: 'i4', branch: 'inspect', name: 'Опись', text: 'Уникальные отходы находятся каждый второй осмотр', cost: { paper: 3e4 }, requires: 'i3' },
+  { id: 'i4', branch: 'inspect', name: 'Опись', text: 'Уникальные отходы находятся вдвое чаще', cost: { paper: 3e4 }, requires: 'i3' },
   { id: 'e1', branch: 'economy', name: 'Гранулы', text: 'Весь доход ×3', cost: { plastic: 300 } },
   { id: 'e2', branch: 'economy', name: 'Стеклобой', text: 'Вторсырья за переработку ×2', cost: { plastic: 600, metal: 200 }, requires: 'e1' },
   { id: 'e3', branch: 'economy', name: 'Переплавка', text: 'Производители вдвое дешевле', cost: { metal: 2500 }, requires: 'e2' },
@@ -461,10 +461,20 @@ export function moveStation(s: SortingState, slot: number, by: -1 | 1): boolean 
   return true;
 }
 
-/** Whether this inspection finds unique waste: the first one, then every third (every second with the inventory). */
+/**
+ * Inspections it takes to find the k-th unique (0-based): the first right away, then ever
+ * further apart (4th, 10th, 18th… the last near the 460th), so the collection lasts the
+ * whole layer instead of an afternoon. The inventory halves the gaps.
+ */
+export function uniqueAt(k: number, inventory: boolean): number {
+  return 1 + Math.floor((UNIQUE_SPREAD * k ** UNIQUE_CURVE) / (inventory ? 2 : 1));
+}
+const UNIQUE_SPREAD = 3;
+const UNIQUE_CURVE = 1.6;
+
+/** Whether this inspection finds the next unique. */
 function uniqueTurn(s: SortingState): boolean {
-  if (s.inspected === 1) return true;
-  return s.inspected % (hasRecipe(s, 'i4') ? 2 : 3) === 0;
+  return s.inspected >= uniqueAt(s.found.length, hasRecipe(s, 'i4'));
 }
 
 /** What the next item on the table turns out to be. Anomalies only while someone is watching. */

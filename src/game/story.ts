@@ -175,12 +175,27 @@ export const isNight = (date: Date) => date.getHours() < 5;
  */
 export function pickEvent(story: StoryState, stage: number, owned: Record<string, number>, rand = Math.random): EventDef {
   const fits = (e: EventDef) => e.stage <= stage && (!e.needs || (owned[e.needs] ?? 0) > 0);
-  const recorded = new Set(story.records.map((r) => r.event).concat(story.cases));
-  const fresh = EVENTS.find((e) => e.caseNo !== undefined && fits(e) && !recorded.has(e.id));
+  const fresh = freshCase(story, stage, owned);
   if (fresh) return fresh;
   const pool = EVENTS.filter((e) => fits(e) && (e.caseNo === undefined || e.stage === stage));
   return pool[Math.floor(rand() * pool.length)] ?? EVENTS.find((e) => e.id === 'gull')!;
 }
+
+/**
+ * The next story event not yet caught on camera, if one fits. A case may come one stage
+ * early: a player who keeps the light on before the dark gets deep still follows the story.
+ */
+export function freshCase(story: StoryState, stage: number, owned: Record<string, number>): EventDef | undefined {
+  const recorded = new Set(story.records.map((r) => r.event).concat(story.cases));
+  return EVENTS.find((e) => e.caseNo !== undefined && e.stage <= stage + CASE_LOOKAHEAD && (!e.needs || (owned[e.needs] ?? 0) > 0) && !recorded.has(e.id));
+}
+
+/** How many stages ahead of the threat a new case may come. */
+const CASE_LOOKAHEAD = 1;
+/** While a new case is waiting, events come this much sooner. */
+export const FRESH_CASE_FACTOR = 0.5;
+/** The very first event comes this soon after the threat wakes. */
+export const FIRST_EVENT_SECONDS = 120;
 
 /** Puts an event into the archive and leaves its trace. */
 export function record(story: StoryState, event: EventDef, at: number, opts: { away?: boolean; rand?: () => number } = {}): Recording {

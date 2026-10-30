@@ -34,6 +34,8 @@ import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
+import { AwayScreen } from './awayScreen';
+import type { AwayReport } from '../game/away';
 import { WorkshopCam } from './workshopCam';
 import { bundle } from './toasts';
 import { RANKS, describeUnique, uniqueById, FRAC_NAMES } from '../game/sorting';
@@ -136,6 +138,7 @@ export class App {
   private automationPanel!: AutomationPanel;
   private sortingPanel!: SortingPanel;
   private intro = new Intro();
+  private awayScreen = new AwayScreen();
   /** Camera 05 over the workshop, on the Upgrades tab. */
   private workshop = new WorkshopCam();
   /** Which layer the Layers tab shows. */
@@ -320,7 +323,7 @@ export class App {
     this.lostEl.hidden = true;
     this.lostEl.setAttribute('role', 'alert');
 
-    this.root.append(header, main, nav, this.toastEl, this.lostEl, this.intro.root);
+    this.root.append(header, main, nav, this.toastEl, this.lostEl, this.intro.root, this.awayScreen.root);
     // Every camera can fold away to a thin strip; one choice for all of them.
     for (const feed of this.root.querySelectorAll<HTMLElement>('.feed')) this.addCameraFold(feed);
     this.setCamerasFolded(camerasFolded());
@@ -485,6 +488,11 @@ export class App {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     this.typeLine(`ВАС НЕ БЫЛО ${h > 0 ? `${h} Ч ` : ''}${m} МИН. МЫ СЧИТАЛИ.`);
+  }
+
+  /** The screen after a long absence; `then` runs once it is closed. */
+  showAway(report: AwayReport, capped: number | null, then: () => void): void {
+    this.awayScreen.show(report, capped, then);
   }
 
   /** The terminal types a line on its own, letter by letter. */

@@ -121,3 +121,39 @@ describe('archive', () => {
     expect(back.story.seq).toBe(2);
   });
 });
+
+describe('story pace', () => {
+  /** An hour after the threat wakes: the player watches every recording and lights up at half. */
+  const hourOfPlay = (seed: number) => {
+    let x = seed;
+    const rand = () => (x = (x * 16807) % 2147483647) / 2147483647;
+    const real = Math.random;
+    Math.random = rand;
+    try {
+      const s = newGame(0);
+      s.runTrash = THREAT_STARTS_AT;
+      s.owned = { collector: 10, cart: 5, truck: 3 };
+      let firstAt = -1;
+      for (let t = 0; t < 3600; t++) {
+        s.threat.level = Math.min(1, s.threat.level + 1 / 900);
+        if (s.threat.level >= 0.5) s.threat.level = 0;
+        const rec = storyTick(s, 1, day);
+        if (rec) {
+          if (firstAt < 0) firstAt = t;
+          watch(s.story, rec.seq);
+        }
+      }
+      return { cases: s.story.cases.length, firstAt };
+    } finally {
+      Math.random = real;
+    }
+  };
+
+  it('the first event comes within two minutes of the threat waking', () => {
+    expect(hourOfPlay(7).firstAt).toBeLessThanOrEqual(120);
+  });
+
+  it('a player who keeps the light on before the dark gets deep still opens several cases an hour', () => {
+    for (const seed of [3, 7, 11]) expect(hourOfPlay(seed).cases, `seed ${seed}`).toBeGreaterThanOrEqual(4);
+  });
+});

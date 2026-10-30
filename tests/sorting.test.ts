@@ -14,6 +14,7 @@ import {
   capture,
   impurity,
   inspectOne,
+  uniqueAt,
   fractionsIncome,
   lumpFor,
   moveStation,
@@ -144,21 +145,30 @@ describe('inspection table', () => {
     expect(pushed).toBeCloseTo(0.04);
   });
 
-  it('finds unique waste first, then every third item, in order', () => {
+  it('finds unique waste first, then ever further apart, in order', () => {
     const s = newSorting();
-    const kinds = Array.from({ length: 9 }, () => inspectOne(s, rich(1), false).kind);
-    expect(kinds).toEqual(['unique', 'fractions', 'unique', 'fractions', 'fractions', 'unique', 'fractions', 'anomaly', 'unique']);
-    expect(s.found).toEqual(UNIQUES.slice(0, 4).map((u) => u.id));
+    const kinds = Array.from({ length: 10 }, () => inspectOne(s, rich(1), false).kind);
+    expect(kinds).toEqual(['unique', 'fractions', 'fractions', 'unique', 'fractions', 'fractions', 'fractions', 'anomaly', 'fractions', 'unique']);
+    expect(s.found).toEqual(UNIQUES.slice(0, 3).map((u) => u.id));
+  });
+
+  it('the whole collection takes hundreds of inspections, half as many with the inventory', () => {
+    expect([0, 1, 2, 3].map((k) => uniqueAt(k, false))).toEqual([1, 4, 10, 18]);
+    const last = uniqueAt(UNIQUES.length - 1, false);
+    expect(last).toBeGreaterThan(400);
+    expect(uniqueAt(UNIQUES.length - 1, true)).toBeCloseTo(last / 2, -1);
   });
 
   it('no anomalies while away', () => {
     const s = newSorting();
+    s.found = UNIQUES.slice(0, 3).map((u) => u.id);
     s.inspected = 7;
     expect(inspectOne(s, rich(1), true).kind).toBe('fractions');
   });
 
   it('a bale goes to the fraction the line takes least of', () => {
     const s = newSorting();
+    s.found = UNIQUES.slice(0, 3).map((u) => u.id);
     s.inspected = 1;
     const r = inspectOne(s, { plastic: D(5), metal: D(0), glass: D(2), paper: D(1) }, false);
     expect(r).toMatchObject({ kind: 'fractions', frac: 'metal' });
@@ -169,6 +179,7 @@ describe('inspection table', () => {
     const s = ready();
     s.threat.level = 0.9;
     s.sorting.queue = 1;
+    s.sorting.found = UNIQUES.slice(0, 3).map((u) => u.id);
     s.sorting.inspected = 7;
     s.sorting.progress = 0.999;
     advance(s, 1);

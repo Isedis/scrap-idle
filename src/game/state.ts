@@ -58,7 +58,20 @@ import {
   type ScriptId,
   type ScriptsState,
 } from './scripts';
-import { eventById, eventInterval, isNight, newStory, pickEvent, record, storyMult, type Recording, type StoryState } from './story';
+import {
+  FIRST_EVENT_SECONDS,
+  FRESH_CASE_FACTOR,
+  eventById,
+  eventInterval,
+  freshCase,
+  isNight,
+  newStory,
+  pickEvent,
+  record,
+  storyMult,
+  type Recording,
+  type StoryState,
+} from './story';
 
 export type BuyMode = 'one' | 'ten' | 'max';
 
@@ -694,10 +707,15 @@ export function storyTick(state: GameState, dt: number, now = new Date()): Recor
   if (!threatActive(state.runTrash) || state.threat.level >= 1) return null;
   const stage = stageIndex(state.threat.level);
   const story = state.story;
+  // The first thing on camera comes soon after the threat wakes.
+  if (story.seq === 0) story.nextIn = Math.min(story.nextIn, FIRST_EVENT_SECONDS);
   story.nextIn -= dt;
   if (story.nextIn > 0) return null;
-  story.nextIn = eventInterval(stage, isNight(now));
-  return record(story, pickEvent(story, stage, state.owned), now.getTime());
+  const rec = record(story, pickEvent(story, stage, state.owned), now.getTime());
+  // While a new case is waiting to be caught, the camera does not keep the player waiting long.
+  const sooner = freshCase(story, stage, state.owned) ? FRESH_CASE_FACTOR : 1;
+  story.nextIn = eventInterval(stage, isNight(now)) * sooner;
+  return rec;
 }
 
 /** While the game was closed the camera kept recording: up to two events from the absence. */

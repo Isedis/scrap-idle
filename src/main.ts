@@ -3,6 +3,7 @@ import './style.css';
 import { format } from './game/num';
 import { advance, autoRecycleDue, autoSortDue, newGame, revealProducers, runScripts, storyTick, type GameState } from './game/state';
 import { applyOffline, readSave, writeSave } from './game/save';
+import { AWAY_SCREEN_SECONDS, awayReport, awaySnapshot, type AwayReport } from './game/away';
 import { App } from './ui/app';
 import { CHECK_EVERY_MS, latestBuild, reloadInto } from './update';
 
@@ -15,9 +16,12 @@ const OFFLINE_NOTE_SECONDS = 60;
 const BACKGROUND_GAP_SECONDS = 5;
 
 let state: GameState = readSave() ?? newGame();
-const before = state.trash;
+const before = awaySnapshot(state);
+const awayRaw = secondsSince(state.lastTick);
 const away = applyOffline(state);
 revealProducers(state);
+// The report is read before the first render, which takes the inspection table's news.
+const awayFirst = awayReport(before, state, away);
 
 const app = new App(
   document.getElementById('app')!,
@@ -25,16 +29,28 @@ const app = new App(
   (next) => (state = next),
 );
 app.render();
-welcomeBack(away, before);
+welcomeBack(away, awayFirst, awayRaw);
 
-/** Tells the player what happened while the game was closed or in the background. */
-function welcomeBack(seconds: number, trashBefore: typeof before): void {
+function secondsSince(ms: number): number {
+  return Math.max(0, (Date.now() - ms) / 1000);
+}
+
+/**
+ * Tells the player what happened while the game was closed or in the background: a short
+ * absence gets a notice, a long one the away screen.
+ */
+function welcomeBack(seconds: number, report: AwayReport, raw: number): void {
   if (seconds < OFFLINE_NOTE_SECONDS) return;
-  app.toast(`Пока вас не было, собрано ${format(state.trash.sub(trashBefore))} кг`);
-  const caught = state.story.records.filter((r) => r.away && !r.watched).length;
-  if (caught > 0) app.toast(`Камера записала движение: ${caught}. Записи в журнале`);
-  // Once something has stirred, a long absence does not go unnoticed.
-  if (seconds >= 30 * 60 && state.story.records.length > 0) app.greet(seconds);
+  if (seconds < AWAY_SCREEN_SECONDS) {
+    app.toast(`Пока вас не было, собрано ${format(report.trash)} кг`);
+    return;
+  }
+  // The offline limit cut the absence short: say so, the tree can lengthen it.
+  const capped = raw > seconds + 60 ? seconds : null;
+  app.showAway(report, capped, () => {
+    // Once something has stirred, a long absence does not go unnoticed.
+    if (seconds >= 30 * 60 && state.story.records.length > 0) app.greet(seconds);
+  });
 }
 
 let lastRender = 0;
@@ -44,9 +60,10 @@ function frame(): void {
   if (dt > BACKGROUND_GAP_SECONDS) {
     // The phone paused the game in the background: that time runs as if it was closed,
     // so the threat climbs slowly and stops short of the edge.
-    const trashBefore = state.trash;
+    const snapshot = awaySnapshot(state);
+    const raw = secondsSince(state.lastTick);
     const seconds = applyOffline(state, now);
-    welcomeBack(seconds, trashBefore);
+    welcomeBack(seconds, awayReport(snapshot, state, seconds), raw);
     dt = 0;
   } else {
     advance(state, dt);
