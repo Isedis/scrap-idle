@@ -4,7 +4,7 @@ import { format } from './game/num';
 import { activeAutobuyInterval, advance, autoBuy, newGame, revealProducers, type GameState } from './game/state';
 import { applyOffline, readSave, writeSave } from './game/save';
 import { App } from './ui/app';
-import { CHECK_EVERY_MS, findNewBuild, reloadInto } from './update';
+import { CHECK_EVERY_MS, latestBuild, reloadInto } from './update';
 
 const AUTOSAVE_MS = 10_000;
 const RENDER_MS = 100;
@@ -64,16 +64,23 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => writeSave(state));
 
 // A copy opened from the home screen can run for days; look for newer builds.
+const fetchBuild = () => latestBuild((url) => fetch(url, { cache: 'no-store' }));
+
 async function checkForUpdate(): Promise<void> {
   if (!import.meta.env.PROD) return;
-  const build = await findNewBuild(__BUILD_ID__, (url) => fetch(url, { cache: 'no-store' }));
-  if (build) {
-    app.offerUpdate(() => {
-      writeSave(state);
-      reloadInto(build);
-    });
-  }
+  const build = await fetchBuild();
+  if (build && build !== __BUILD_ID__) app.setUpdateAvailable();
 }
+
+// The Settings button: save, then load the newest build if there is one.
+app.onUpdate = async () => {
+  writeSave(state);
+  const build = import.meta.env.PROD ? await fetchBuild() : __BUILD_ID__;
+  if (build === null) return 'offline';
+  if (build === __BUILD_ID__) return 'latest';
+  reloadInto(build);
+  return 'reloading';
+};
 checkForUpdate();
 setInterval(checkForUpdate, CHECK_EVERY_MS);
 

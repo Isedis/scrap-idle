@@ -652,49 +652,21 @@ button { font: inherit; color: inherit; }
 
 .toast::before { content: '> '; }
 
-/* ---- New version strip ---- */
-.update {
-  position: fixed;
-  left: 50%;
-  bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px) + 12px);
-  z-index: 21;
-  width: min(528px, calc(100% - 32px));
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 8px 8px 14px;
-  border: 1px solid var(--amber);
-  border-radius: 4px;
-  background: var(--panel);
+/* ---- Update ---- */
+.update-status {
+  margin: 0;
+  color: var(--mid);
+  font-size: 12px;
+}
+
+.update-status.ready { color: var(--amber); }
+.update-status.ready::before { content: '> '; }
+
+.update-btn.ready {
+  border-color: var(--amber);
   color: var(--amber);
-  box-shadow: 0 0 18px rgb(255 191 71 / 0.25);
-  font-size: 13px;
-  animation: toast-in 0.2s ease;
+  box-shadow: 0 0 14px rgb(255 191 71 / 0.2);
 }
-
-.update-text { min-width: 0; }
-.update-text::before { content: '> '; }
-
-.update-btn {
-  flex: none;
-  min-height: 44px;
-  padding: 8px 14px;
-  border: 0;
-  border-radius: 4px;
-  background: var(--amber);
-  color: var(--ink);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-/* The toast sits above the update strip when both show. */
-.update:not([hidden]) ~ .toast,
-.toast:has(~ .update:not([hidden])) { bottom: calc(var(--tab-h) + env(safe-area-inset-bottom, 0px) + 84px); }
 
 @keyframes toast-in {
   from { opacity: 0; transform: translate(-50%, 8px); }

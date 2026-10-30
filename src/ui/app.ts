@@ -84,7 +84,11 @@ export class App {
   private toastEl!: HTMLElement;
   private toastQueue: string[] = [];
   private toastTimer = 0;
-  private updateEl!: HTMLElement;
+  private settingsBadge!: HTMLElement;
+  private updateStatus!: HTMLElement;
+  private updateButton!: HTMLButtonElement;
+  /** Set by main: checks for a newer build and reloads into it. */
+  onUpdate: () => Promise<'reloading' | 'latest' | 'offline'> = async () => 'latest';
   private scene!: Scene;
   /** What the player has already been told about, so each event is announced once. */
   private knownRevealed = 0;
@@ -143,17 +147,17 @@ export class App {
     this.recycleBadge.hidden = true;
     this.recycleTab.append(this.recycleBadge);
     this.recycleTab.hidden = true;
-    nav.append(this.tabButton('dump', 'Свалка', ICONS.heap), upgradesTab, this.recycleTab, this.tabButton('settings', 'Настройки', ICONS.gear));
+    const settingsTab = this.tabButton('settings', 'Настройки', ICONS.gear);
+    this.settingsBadge = el('span', 'badge', '!');
+    this.settingsBadge.hidden = true;
+    settingsTab.append(this.settingsBadge);
+    nav.append(this.tabButton('dump', 'Свалка', ICONS.heap), upgradesTab, this.recycleTab, settingsTab);
 
     this.toastEl = el('div', 'toast');
     this.toastEl.setAttribute('role', 'status');
     this.toastEl.hidden = true;
 
-    this.updateEl = el('div', 'update');
-    this.updateEl.setAttribute('role', 'status');
-    this.updateEl.hidden = true;
-
-    this.root.append(header, main, nav, this.toastEl, this.updateEl);
+    this.root.append(header, main, nav, this.toastEl);
     this.show('dump');
   }
 
@@ -329,6 +333,28 @@ export class App {
   private buildSettings(): HTMLElement {
     const panel = el('section', 'panel');
     this.panels.set('settings', panel);
+
+    panel.append(el('h2', 'panel-title', 'Обновление'));
+    panel.append(el('p', 'note', `Версия ${__APP_VERSION__}, сборка ${__BUILD_ID__}`));
+    this.updateStatus = el('p', 'update-status', 'Игра сама проверяет обновления каждые 5 минут.');
+    this.updateButton = el('button', 'btn update-btn', 'Обновить');
+    this.updateButton.type = 'button';
+    this.updateButton.id = 'update';
+    this.updateButton.addEventListener('click', async () => {
+      this.updateButton.disabled = true;
+      this.updateButton.textContent = 'Проверяю…';
+      const result = await this.onUpdate();
+      if (result === 'reloading') {
+        this.updateButton.textContent = 'Загрузка…';
+        return;
+      }
+      this.updateButton.disabled = false;
+      this.updateButton.textContent = 'Обновить';
+      this.updateStatus.textContent = result === 'latest' ? 'У вас последняя версия.' : 'Нет связи с сайтом. Попробуйте позже.';
+      this.updateStatus.classList.remove('ready');
+    });
+    panel.append(this.updateStatus, this.updateButton);
+
     panel.append(el('h2', 'panel-title', 'Сохранение'));
     panel.append(el('p', 'note', 'Игра сохраняется сама каждые 10 секунд и при сворачивании.'));
 
@@ -434,19 +460,13 @@ export class App {
     this.toastTimer = window.setTimeout(() => this.nextToast(), TOAST_MS);
   }
 
-  /** Persistent strip offering a newer build; stays until the player taps it. */
-  offerUpdate(onUpdate: () => void): void {
-    if (!this.updateEl.hidden) return;
-    const button = el('button', 'update-btn', 'Обновить');
-    button.type = 'button';
-    button.id = 'update';
-    button.addEventListener('click', () => {
-      button.disabled = true;
-      button.textContent = 'Загрузка…';
-      onUpdate();
-    });
-    this.updateEl.replaceChildren(el('span', 'update-text', 'Доступна новая версия'), button);
-    this.updateEl.hidden = false;
+  /** Marks a newer build as published: a badge on Settings and a note above the button. */
+  setUpdateAvailable(): void {
+    if (!this.settingsBadge.hidden) return;
+    this.settingsBadge.hidden = false;
+    this.updateStatus.textContent = 'Вышла новая версия. Нажмите «Обновить», прогресс сохранится.';
+    this.updateStatus.classList.add('ready');
+    this.updateButton.classList.add('ready');
   }
 
   /** Every animation frame: only the camera feed. */

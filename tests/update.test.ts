@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findNewBuild } from '../src/update';
+import { findNewBuild, latestBuild } from '../src/update';
 
 const reply = (body: unknown, ok = true) => async () => ({ ok, json: async () => body });
 
@@ -23,5 +23,16 @@ describe('findNewBuild', () => {
     let asked = '';
     await findNewBuild('a', async (url) => { asked = url; return { ok: true, json: async () => ({ build: 'a' }) }; });
     expect(asked).toMatch(/^version\.json\?t=\d+$/);
+  });
+});
+
+describe('latestBuild', () => {
+  it('returns the published build even when it is the running one', async () => {
+    expect(await latestBuild(reply({ build: 'abc1234' }))).toBe('abc1234');
+  });
+
+  it('returns null when it cannot tell', async () => {
+    expect(await latestBuild(reply({}, false))).toBeNull();
+    expect(await latestBuild(async () => { throw new Error('offline'); })).toBeNull();
   });
 });
