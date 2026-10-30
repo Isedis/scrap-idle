@@ -31,6 +31,29 @@ describe('events', () => {
     expect(pickEvent(story, 3, { collector: 1, truck: 1 }).id).toBe('driverless');
   });
 
+  it('never repeats: a case is recorded once, ambient events take turns', () => {
+    const story = newStory();
+    const ids: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      const e = pickEvent(story, 4, { collector: 1, truck: 1 }, () => 0);
+      // Watched, as a player would: a case that fell out of the archive unseen may come back.
+      watch(story, record(story, e, i).seq);
+      ids.push(e.id);
+    }
+    const cases = ids.filter((id) => CASES.some((c) => c.id === id));
+    expect(new Set(cases).size).toBe(cases.length);
+    // Three ambient events on camera 01: never the same one twice within three.
+    const ambient = ids.filter((id) => !CASES.some((c) => c.id === id));
+    for (let i = 2; i < ambient.length; i++) expect(new Set(ambient.slice(i - 2, i + 1)).size, ambient.join(' ')).toBe(3);
+  });
+
+  it('camera 03 joins only once the one that listens is there', () => {
+    const story = newStory();
+    for (const c of CASES.filter((c) => !c.plant)) record(story, c, 0);
+    for (let i = 0; i < 10; i++) expect(pickEvent(story, 4, {}, Math.random, false).plant).toBeFalsy();
+    expect(pickEvent(story, 4, {}, Math.random, true).id).toBe('shred');
+  });
+
   it('comes more often at night and under pressure, but never more than about once a minute', () => {
     const mid = () => 0.5;
     expect(eventInterval(1, true, mid)).toBeCloseTo(eventInterval(1, false, mid) * NIGHT_FACTOR);

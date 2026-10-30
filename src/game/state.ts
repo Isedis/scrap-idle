@@ -761,9 +761,10 @@ export function storyTick(state: GameState, dt: number, now = new Date()): Recor
   if (story.seq === 0) story.nextIn = Math.min(story.nextIn, FIRST_EVENT_SECONDS);
   story.nextIn -= dt;
   if (story.nextIn > 0) return null;
-  const rec = record(story, pickEvent(story, stage, state.owned), now.getTime());
+  const plant = state.sorting.open;
+  const rec = record(story, pickEvent(story, stage, state.owned, Math.random, plant), now.getTime());
   // While a new case is waiting to be caught, the camera does not keep the player waiting long.
-  const sooner = freshCase(story, stage, state.owned) ? FRESH_CASE_FACTOR : 1;
+  const sooner = freshCase(story, stage, state.owned, plant) ? FRESH_CASE_FACTOR : 1;
   story.nextIn = eventInterval(stage, isNight(now)) * sooner;
   return rec;
 }
@@ -775,7 +776,7 @@ export function recordAway(state: GameState, seconds: number, now: number): Reco
   const out: Recording[] = [];
   for (let i = 0; i < count; i++) {
     const at = now - seconds * 1000 * Math.random();
-    const event = pickEvent(state.story, stageIndex(state.threat.level), state.owned);
+    const event = pickEvent(state.story, stageIndex(state.threat.level), state.owned, Math.random, state.sorting.open);
     out.push(record(state.story, event, at, { away: true }));
   }
   return out;

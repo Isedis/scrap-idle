@@ -22,7 +22,18 @@ export type EventKind =
   | 'voice'
   | 'gull'
   | 'raccoon'
-  | 'cat';
+  | 'cat'
+  // Camera 03, the plant, once the one that listens is there.
+  | 'plantShred'
+  | 'plantListener'
+  | 'plantBale'
+  | 'plantEcho'
+  | 'plantBooth'
+  | 'plantRat'
+  | 'plantSteam';
+
+/** Kinds played on camera 03 instead of camera 01. */
+export const PLANT_KINDS: readonly EventKind[] = ['plantShred', 'plantListener', 'plantBale', 'plantEcho', 'plantBooth', 'plantRat', 'plantSteam'];
 
 export interface EventDef {
   id: string;
@@ -38,6 +49,8 @@ export interface EventDef {
   needs?: string;
   /** Mark left in the picture until the run ends. */
   trace?: 'fridge' | 'lamp';
+  /** Caught by camera 03 over the plant: only once the one that listens is there. */
+  plant?: boolean;
 }
 
 export const EVENTS: readonly EventDef[] = [
@@ -73,6 +86,19 @@ export const EVENTS: readonly EventDef[] = [
   { id: 'gull', kind: 'gull', stage: 0, title: 'Чайка с сосиской' },
   { id: 'raccoon', kind: 'raccoon', stage: 0, title: 'Енот в пакете' },
   { id: 'cat', kind: 'cat', stage: 0, title: 'Кот на заборе' },
+  // КАМ-03, цех: «Тот, кто слушает»
+  { id: 'shred', kind: 'plantShred', stage: 0, caseNo: 13, title: 'Шредер', plant: true,
+    text: 'Шредер провернулся сам, три оборота. Цех был обесточен. Внутри ничего не было. Из шредера выпало четыре килограмма.' },
+  { id: 'listener', kind: 'plantListener', stage: 1, caseNo: 14, title: 'Слушает', plant: true,
+    text: 'Высокая фигура стоит у силоса, прижав голову к стенке. Стоит сорок минут, пока цех работает. Когда цех остановили, она повернулась к камере. Медленно. Как на звук.' },
+  { id: 'bale', kind: 'plantBale', stage: 1, caseNo: 15, title: 'Тюк', plant: true,
+    text: 'На ленте тюк, который не проходил сортировку. Он теплее остальных. Он едет против хода ленты и останавливается, когда на него смотрят.' },
+  { id: 'echo', kind: 'plantEcho', stage: 2, caseNo: 16, title: 'Эхо', plant: true,
+    text: 'Микрофон цеха записал работу цеха: пресс, шредер, ленту. Цех в это время стоял. Запись кончается вдохом. Чужим.' },
+  { id: 'booth', kind: 'plantBooth', stage: 3, caseNo: 17, title: 'Будка', plant: true,
+    text: 'Дверь будки охраны открыта изнутри. На стекле следы дыхания, снаружи. Будка заперта с 1987 года. Ключ у Игнатьева.' },
+  { id: 'rat', kind: 'plantRat', stage: 0, title: 'Крыса на ленте', plant: true },
+  { id: 'steam', kind: 'plantSteam', stage: 0, title: 'Пар из шредера', plant: true },
 ];
 
 export const eventById = (id: string) => EVENTS.find((e) => e.id === id);
@@ -171,23 +197,29 @@ export const isNight = (date: Date) => date.getHours() < 5;
 
 /**
  * Picks what happens next at this stage: the first story event not yet caught on
- * camera, else a repeat of a story event of this stage or an ambient one.
+ * camera, else an ambient one. Nothing repeats: a story event is recorded once, and
+ * the ambient ones take turns, the longest unseen first. Camera 03 joins once `plant`.
  */
-export function pickEvent(story: StoryState, stage: number, owned: Record<string, number>, rand = Math.random): EventDef {
-  const fits = (e: EventDef) => e.stage <= stage && (!e.needs || (owned[e.needs] ?? 0) > 0);
-  const fresh = freshCase(story, stage, owned);
+export function pickEvent(story: StoryState, stage: number, owned: Record<string, number>, rand = Math.random, plant = false): EventDef {
+  const fresh = freshCase(story, stage, owned, plant);
   if (fresh) return fresh;
-  const pool = EVENTS.filter((e) => fits(e) && (e.caseNo === undefined || e.stage === stage));
-  return pool[Math.floor(rand() * pool.length)] ?? EVENTS.find((e) => e.id === 'gull')!;
+  const pool = EVENTS.filter((e) => e.caseNo === undefined && e.stage <= stage && (plant || !e.plant));
+  // When each was last recorded: never comes first, then the oldest.
+  const last = (e: EventDef) => story.records.find((r) => r.event === e.id)?.seq ?? -1;
+  const oldest = Math.min(...pool.map(last));
+  const due = pool.filter((e) => last(e) === oldest);
+  return due[Math.floor(rand() * due.length)] ?? EVENTS.find((e) => e.id === 'gull')!;
 }
 
 /**
  * The next story event not yet caught on camera, if one fits. A case may come one stage
  * early: a player who keeps the light on before the dark gets deep still follows the story.
  */
-export function freshCase(story: StoryState, stage: number, owned: Record<string, number>): EventDef | undefined {
+export function freshCase(story: StoryState, stage: number, owned: Record<string, number>, plant = false): EventDef | undefined {
   const recorded = new Set(story.records.map((r) => r.event).concat(story.cases));
-  return EVENTS.find((e) => e.caseNo !== undefined && e.stage <= stage + CASE_LOOKAHEAD && (!e.needs || (owned[e.needs] ?? 0) > 0) && !recorded.has(e.id));
+  return EVENTS.find(
+    (e) => e.caseNo !== undefined && e.stage <= stage + CASE_LOOKAHEAD && (!e.needs || (owned[e.needs] ?? 0) > 0) && (plant || !e.plant) && !recorded.has(e.id),
+  );
 }
 
 /** How many stages ahead of the threat a new case may come. */

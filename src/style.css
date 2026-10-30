@@ -1240,6 +1240,7 @@ button { font: inherit; color: inherit; }
 
 /* Cameras on the other tabs: a lower strip than camera 01. */
 .feed.cam { height: 160px; margin-bottom: 4px; }
+.feed.cam.plant { height: 210px; }
 .s-income { color: var(--mid); font-size: 12px; line-height: 1.4; }
 .s-level-gain { font-size: 10px; color: var(--glow); text-transform: none; }
 
@@ -1426,3 +1427,21 @@ main.hunt-step { transform: translate(-2px, 2px); }
 /* It left: what was heard in the silence. */
 .lost.left { background: rgb(0 0 0 / 0.94); color: var(--mid); cursor: pointer; }
 .lost.left .l2 { max-width: 34ch; margin: 0 auto; font-size: 15px; font-weight: 400; line-height: 1.55; letter-spacing: 0.02em; color: var(--glow); }
+
+/* The warning in the header: what needs the player and where; a tap goes there. */
+.alert {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  background: rgb(255 107 87 / 0.12);
+  color: var(--danger);
+  font: 700 12px/1.3 var(--font);
+  letter-spacing: 0.04em;
+  text-align: left;
+  cursor: pointer;
+  animation: urge 1.2s steps(2) infinite;
+}
+.alert.alarm { animation: alarm 0.6s ease 3; }

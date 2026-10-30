@@ -50,7 +50,7 @@ import { Dread } from './dread';
 import { HearingBar } from './hearingBar';
 import { hunt } from './lurker';
 import { heardLine, nearness, setNoise, type HearingPhase } from '../game/hearing';
-import { eventById, unwatched, watch, type EventKind, type Recording } from '../game/story';
+import { PLANT_KINDS, eventById, unwatched, watch, type EventKind, type Recording } from '../game/story';
 import { RECYCLE_AT, hasNode, holdMs, milestoneBase, passiveBonus } from '../game/layers';
 import { STAGES, stageIndex, threatActive, threatMult } from '../game/threat';
 
@@ -179,6 +179,11 @@ export class App {
   private replaying = false;
   private dread!: Dread;
   private hearingBar!: HearingBar;
+  private alertEl!: HTMLButtonElement;
+  /** Where the warning in the header sends the player. */
+  private dangerAt: 'dump' | 'plant' | null = null;
+  /** The warning last shown, so each new one is announced once. */
+  private knownDanger = '';
   /** Phase of the one that listens the screen last showed. */
   private knownPhase: HearingPhase = 'idle';
   /** Seconds to the next footstep, breath, terminal line and flicker while it walks. */
@@ -253,9 +258,16 @@ export class App {
     this.consoleEl.addEventListener('click', () => this.catchLive('typing') || this.catchLive('voice'));
     this.hearingBar = new HearingBar((noise) => {
       setNoise(this.getState().hearing, noise);
+      this.sound.setPlant(this.getState().hearing.noise);
       this.render();
     });
-    header.append(figures, this.incomeEl, this.buildThreat(), this.hearingBar.root, this.consoleEl);
+    // The floodlight and the noise live on their own tabs, by their cameras: in the header
+    // only a warning, which says where to go when one of them needs the player.
+    this.alertEl = el('button', 'alert');
+    this.alertEl.type = 'button';
+    this.alertEl.hidden = true;
+    this.alertEl.addEventListener('click', () => this.goToDanger());
+    header.append(figures, this.incomeEl, this.alertEl, this.consoleEl);
 
     this.recyclePanel = new RecyclePanel(
       this.getState,
@@ -270,6 +282,12 @@ export class App {
       },
     );
     this.panels.set('recycle', this.recyclePanel.root);
+    this.recyclePanel.camera.root.after(this.hearingBar.root);
+    // A tap on camera 03 while something happens there catches it, like on camera 01.
+    this.recyclePanel.camera.root.addEventListener('click', () => {
+      const kind = this.recyclePanel.camera.live;
+      if (kind) this.catchLive(kind);
+    });
 
     this.sortingPanel = new SortingPanel(
       this.getState,
@@ -501,6 +519,10 @@ export class App {
 
   /** Plays an event on camera or in the terminal. Returns how long it lasts, in seconds. */
   private playKind(kind: EventKind, phrase: string | undefined, replay: boolean): number {
+    if (PLANT_KINDS.includes(kind)) {
+      if (kind === 'plantEcho' && !this.recyclePanel.root.hidden) this.sound.echo();
+      return this.recyclePanel.camera.playEvent(kind);
+    }
     if (kind === 'cam00') {
       this.feedLabel.textContent = 'КАМ-00 · ЯМА';
       this.feedLabel.classList.add('cam00');
@@ -569,15 +591,26 @@ export class App {
       this.applyWatch(rec);
       return;
     }
-    this.show('dump');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    this.replaying = true;
     const d = new Date(rec.at);
     const p2 = (n: number) => String(n).padStart(2, '0');
-    this.playbackEl.textContent = `◀◀ ЗАПИСЬ ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
-    this.playbackEl.hidden = false;
-    this.glitch(0.4);
-    const seconds = this.playKind(event.kind, rec.phrase, true);
+    const mark = `◀◀ ЗАПИСЬ ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+    this.replaying = true;
+    let seconds: number;
+    if (PLANT_KINDS.includes(event.kind)) {
+      // Camera 03's recordings play on camera 03.
+      this.layerView = 'recycle';
+      this.show('recycle');
+      this.recyclePanel.camera.root.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      seconds = this.recyclePanel.camera.playEvent(event.kind, mark);
+      if (event.kind === 'plantEcho') this.sound.echo();
+    } else {
+      this.show('dump');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      this.playbackEl.textContent = mark;
+      this.playbackEl.hidden = false;
+      this.glitch(0.4);
+      seconds = this.playKind(event.kind, rec.phrase, true);
+    }
     window.setTimeout(() => {
       this.playbackEl.hidden = true;
       this.replaying = false;
@@ -633,7 +666,7 @@ export class App {
   private buildDump(): HTMLElement {
     const panel = el('section', 'panel');
     this.panels.set('dump', panel);
-    panel.append(this.buildFeed());
+    panel.append(this.buildFeed(), this.buildThreat());
 
     const head = el('div', 'panel-head');
     head.append(el('h2', 'panel-title', 'Производство'));
@@ -1330,6 +1363,7 @@ export class App {
 
     this.renderThreat(state);
     this.renderHearing(state);
+    this.renderAlert(state);
     this.sound.setThreat(state.threat.level);
     if (!this.incomeEl.hidden) this.renderIncome(state);
   }
@@ -1356,9 +1390,10 @@ export class App {
     const open = state.sorting.open;
     if (open && !noiseToldOf()) {
       markNoiseTold();
-      this.toast('Новое: шум цеха в шапке. Выше 100% — больше дохода. Но что-то слушает');
+      this.toast('Новое: шум цеха, во вкладке «Слои» под камерой цеха. Выше 100% — больше дохода. Но что-то слушает');
     }
     this.hearingBar.render(h, open);
+    this.sound.setPlant(open ? h.noise : 0);
     const was = this.knownPhase;
     this.knownPhase = h.phase;
     if (h.phase === was) return;
@@ -1381,6 +1416,56 @@ export class App {
     } else if (h.phase === 'idle' && was === 'check') {
       this.itLeft(h.survived);
     }
+  }
+
+  /**
+   * The warning in the header: what needs the player now and where, the most urgent
+   * first. Hidden on the tab that already has what is needed.
+   */
+  private renderAlert(state: GameState): void {
+    const h = state.hearing;
+    const level = state.threat.level;
+    const pct = (x: number) => `${Math.floor(x * 100)}%`;
+    type Danger = { key: string; at: 'dump' | 'plant'; text: string };
+    // Most urgent first.
+    const dangers: (Danger | false)[] = [
+      h.phase === 'check' && { key: 'check', at: 'plant', text: `ОНО У ДВЕРИ · 0:${pad2(Math.max(0, Math.ceil(h.left)))} · шум на 0 → Цех` },
+      level >= 0.9 && { key: 'edge', at: 'dump', text: `Угроза ${pct(level)}! Прожектор → Свалка` },
+      h.phase === 'walk' && { key: 'walk', at: 'plant', text: 'ОНО ИДЁТ · готовьте тишину → Цех' },
+      level >= 0.7 && { key: 'threat', at: 'dump', text: `Угроза ${pct(level)} · прожектор → Свалка` },
+      h.phase === 'idle' && h.meter >= 0.7 && { key: 'heard', at: 'plant', text: `Оно слушает ${pct(h.meter)} · убавьте шум → Цех` },
+    ];
+    const onDump = !this.panels.get('dump')!.hidden;
+    const onPlant = !this.recyclePanel.root.hidden;
+    // The tab on screen already shows its own danger: the warning points to the other one.
+    const d = dangers.find((x): x is Danger => !!x && !(x.at === 'dump' ? onDump : onPlant));
+    this.dangerAt = d ? d.at : null;
+    this.alertEl.hidden = !d;
+    if (!d) {
+      this.knownDanger = '';
+      return;
+    }
+    this.alertEl.textContent = `⚠ ${d.text}`;
+    // A new kind of danger is announced once, wherever the player is.
+    if (d.key !== this.knownDanger) {
+      this.pop(this.alertEl, 'alarm');
+      navigator.vibrate?.(120);
+    }
+    this.knownDanger = d.key;
+  }
+
+  /** The warning was tapped: straight to the floodlight or to the noise. */
+  private goToDanger(): void {
+    if (this.dangerAt === 'dump') {
+      this.show('dump');
+      this.threatEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    } else if (this.dangerAt === 'plant') {
+      this.layerView = 'recycle';
+      this.show('recycle');
+      // The camera in the middle of the screen: the slider sits just under it.
+      this.recyclePanel.camera.root.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    this.render();
   }
 
   /** Every frame while it walks or waits at the door: steps, breath, music coming apart, the screen. */

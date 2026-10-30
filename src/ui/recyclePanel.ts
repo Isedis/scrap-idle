@@ -222,6 +222,8 @@ export class RecyclePanel {
       nodes: state.recycle.nodes,
       allNodes: NODES.map((n) => n.id),
       threat: state.threat.level,
+      noise: state.sorting.open ? state.hearing.noise : 1,
+      loud: state.sorting.open,
     });
   }
 }

@@ -30,6 +30,11 @@ export class Sound {
   private creakAt = 0;
   /** Everything but the one that listens is silent. */
   private hushed = false;
+  /** The plant's own din: a bed of grinding and a motor's whine, following the load. */
+  private plant: { bed: GainNode; motor: OscillatorNode; whine: OscillatorNode; whineGain: GainNode } | null = null;
+  private plantLoad = 0;
+  /** Context time of the next clank of the shredder. */
+  private clankAt = 0;
 
   constructor() {
     let stored: string | null = null;
@@ -94,6 +99,7 @@ export class Sound {
     this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const data = this.noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    this.buildPlant(ctx, this.master);
     this.music = new Music(ctx, this.master);
     this.music.setOn(this.musicOn);
     this.music.start();
@@ -247,6 +253,84 @@ export class Sound {
     this.tone('triangle', 659, 640, 0.8, 0.06, 0.12);
   }
 
+  // ---- The plant ---------------------------------------------------------------------
+
+  private buildPlant(ctx: AudioContext, out: AudioNode): void {
+    const bed = ctx.createGain();
+    bed.gain.value = 0;
+    bed.connect(out);
+    // Grinding: noise through a low band, wobbling as the drums turn.
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 420;
+    band.Q.value = 0.8;
+    const wobble = ctx.createOscillator();
+    wobble.frequency.value = 3;
+    const depth = ctx.createGain();
+    depth.gain.value = 0.35;
+    const grind = ctx.createGain();
+    grind.gain.value = 0.65;
+    wobble.connect(depth).connect(grind.gain);
+    src.connect(band).connect(grind).connect(bed);
+    // A motor: a low saw whose harmonics a phone can play.
+    const motor = ctx.createOscillator();
+    motor.type = 'sawtooth';
+    motor.frequency.value = 98;
+    const motorTone = ctx.createBiquadFilter();
+    motorTone.type = 'lowpass';
+    motorTone.frequency.value = 700;
+    const motorGain = ctx.createGain();
+    motorGain.gain.value = 0.25;
+    motor.connect(motorTone).connect(motorGain).connect(bed);
+    // Over normal load the bearings start to whine.
+    const whine = ctx.createOscillator();
+    whine.type = 'triangle';
+    whine.frequency.value = 1400;
+    const whineGain = ctx.createGain();
+    whineGain.gain.value = 0;
+    whine.connect(whineGain).connect(bed);
+    for (const node of [src, wobble, motor, whine]) node.start();
+    this.plant = { bed, motor, whine, whineGain };
+    this.setPlant(this.plantLoad);
+  }
+
+  /**
+   * The plant's din at a load (0 silent, 1 normal, 2 double): louder, faster, higher, and
+   * past normal a whine and the shredder's clanks coming quicker. Called on every render.
+   */
+  setPlant(load: number): void {
+    this.plantLoad = load;
+    if (!this.ctx || !this.plant) return;
+    const t = this.ctx.currentTime;
+    const on = this.hushed ? 0 : load;
+    const p = this.plant;
+    p.bed.gain.setTargetAtTime(0.05 * on ** 1.4, t, 0.15);
+    p.motor.frequency.setTargetAtTime(70 + 40 * load, t, 0.3);
+    p.whine.frequency.setTargetAtTime(1100 + 700 * Math.max(0, load - 1), t, 0.3);
+    p.whineGain.gain.setTargetAtTime(this.hushed ? 0 : 0.18 * Math.max(0, load - 1), t, 0.2);
+    if (on > 0 && t >= this.clankAt) {
+      if (this.clankAt > 0) this.clank(on);
+      this.clankAt = t + (1.6 + Math.random()) / on;
+    }
+  }
+
+  /** The shredder biting on something hard. */
+  private clank(load: number): void {
+    const g = 0.03 + 0.04 * load;
+    this.burst(0.05, g, 'bandpass', 1900 + Math.random() * 900, 0, 5);
+    this.tone('square', 130, 80, 0.12, g * 0.6);
+  }
+
+  /** A recording of the plant at work while it stood still, ending on a breath. */
+  echo(): void {
+    for (let i = 0; i < 6; i++) this.burst(0.06, 0.08, 'bandpass', 1900 + Math.random() * 600, i * 0.55 + Math.random() * 0.2, 5);
+    this.tone('square', 180, 60, 0.5, 0.1, 2.2);
+    window.setTimeout(() => this.breath(1, true), 4300);
+  }
+
   // ---- The one that listens --------------------------------------------------------
 
   /** The music drags and comes apart as it comes: 0 for nothing, 1 at the door. */
@@ -262,6 +346,7 @@ export class Sound {
     if (this.hushed === on) return;
     this.hushed = on;
     this.music?.hush(on);
+    this.setPlant(this.plantLoad);
   }
 
   /** A footstep somewhere in the plant: a heavy thud and grit, louder as it comes. */
