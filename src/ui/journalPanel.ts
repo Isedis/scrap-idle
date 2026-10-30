@@ -66,7 +66,11 @@ export class JournalPanel {
   private shown = '';
   private lastState: GameState | null = null;
 
-  constructor(private onWatch: (rec: Recording) => void) {
+  constructor(
+    private onWatch: (rec: Recording) => void,
+    /** Plays a case whose recording has left the archive, from the case's own copy. */
+    private onReplay: (event: EventDef) => void,
+  ) {
     this.root = el('section', 'panel journal');
     this.build();
   }
@@ -289,15 +293,13 @@ export class JournalPanel {
     row.append(title);
     if (expanded) {
       row.append(el('div', 'j-text', c.text!));
-      // The recording, if it is still in the archive.
+      // The archive keeps the last twenty recordings; a case keeps its own copy for good.
       const rec = state.story.records.find((r) => r.event === c.id);
-      if (rec) {
-        const again = el('button', 'btn j-again', '▶ Пересмотреть запись');
-        again.type = 'button';
-        again.disabled = this.monitor.busy;
-        again.addEventListener('click', () => this.onWatch(rec));
-        row.append(again);
-      }
+      const again = el('button', 'btn j-again', '▶ Пересмотреть запись');
+      again.type = 'button';
+      again.disabled = this.monitor.busy;
+      again.addEventListener('click', () => (rec ? this.onWatch(rec) : this.onReplay(c)));
+      row.append(again);
     }
     return row;
   }

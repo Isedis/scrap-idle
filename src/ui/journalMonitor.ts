@@ -25,6 +25,8 @@ export class JournalMonitor {
   private terminal: HTMLElement;
   private paper: HTMLElement;
   private idle: HTMLElement;
+  /** LIVE while idle, REC while a recording plays. */
+  private rec: HTMLElement;
   private plant = new PlantCam();
   private typing = 0;
   /** Which camera is on the desk. */
@@ -42,7 +44,8 @@ export class JournalMonitor {
     this.terminal = el('div', 'j-monitor-terminal');
     this.terminal.hidden = true;
     this.idle = el('div', 'j-monitor-idle', 'АРХИВ · выберите запись');
-    this.yard.append(canvas, this.label, el('div', 'feed-rec', 'LIVE'), this.mark, this.terminal, this.idle);
+    this.rec = el('div', 'feed-rec', 'LIVE');
+    this.yard.append(canvas, this.label, this.rec, this.mark, this.terminal, this.idle);
     this.scene = new Scene(canvas);
     this.plant.root.hidden = true;
     this.paper = el('div', 'feed-paper');
@@ -56,10 +59,11 @@ export class JournalMonitor {
   }
 
   /** Plays a recording; returns how long it lasts, in seconds. */
-  play(rec: Recording, event: EventDef): number {
+  play(rec: Recording, event: EventDef, label?: string): number {
     const d = new Date(rec.at);
-    const mark = `◀◀ ЗАПИСЬ ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+    const mark = label ?? `◀◀ ЗАПИСЬ ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
     this.playing = true;
+    this.rec.textContent = 'REC';
     this.paper.hidden = true;
     this.idle.hidden = true;
     // The desk is the first thing in the journal: up to it, clear of the sticky header.
@@ -110,6 +114,7 @@ export class JournalMonitor {
 
   private stop(): void {
     this.playing = false;
+    this.rec.textContent = 'LIVE';
     this.mark.hidden = true;
     this.terminal.hidden = true;
     this.idle.hidden = false;

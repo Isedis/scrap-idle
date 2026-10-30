@@ -50,7 +50,7 @@ import { Dread } from './dread';
 import { HearingBar } from './hearingBar';
 import { hunt } from './lurker';
 import { heardLine, nearness, setNoise, type HearingPhase } from '../game/hearing';
-import { PLANT_KINDS, eventById, unwatched, watch, type EventKind, type Recording } from '../game/story';
+import { PHRASES, PLANT_KINDS, eventById, unwatched, watch, type EventDef, type EventKind, type Recording } from '../game/story';
 import { RECYCLE_AT, hasNode, holdMs, milestoneBase, passiveBonus } from '../game/layers';
 import { STAGES, stageIndex, threatActive, threatMult } from '../game/threat';
 
@@ -321,7 +321,10 @@ export class App {
     }
 
     const main = el('main', 'panels');
-    this.journalPanel = new JournalPanel((rec) => this.watchRecord(rec));
+    this.journalPanel = new JournalPanel(
+      (rec) => this.watchRecord(rec),
+      (event) => this.replayCase(event),
+    );
     this.panels.set('journal', this.journalPanel.root);
 
     this.automationPanel = new AutomationPanel(this.getState, (message) => {
@@ -605,6 +608,21 @@ export class App {
       this.journalPanel.watched();
       this.render();
     }, seconds * 1000 + 300);
+  }
+
+  /** Plays an open case from its own copy: nothing to hand out, it was watched long ago. */
+  private replayCase(event: EventDef): void {
+    const monitor = this.journalPanel.monitor;
+    if (monitor.busy || this.losing) return;
+    const story = this.getState().story;
+    // What the terminal said is kept with the voices heard.
+    const phrase = event.kind === 'typing' || event.kind === 'voice' ? (story.voices[0] ?? PHRASES[0]) : undefined;
+    const rec: Recording = { seq: 0, event: event.id, at: Date.now(), watched: true, phrase };
+    const seconds = monitor.play(rec, event, `◀◀ АРХИВ ДЕЛА #${String(event.caseNo).padStart(3, '0')}`);
+    if (event.kind === 'plantEcho') this.sound.echo();
+    if (event.kind === 'voice' || event.kind === 'cam00') this.sound.static(0.4);
+    this.render();
+    window.setTimeout(() => this.render(), seconds * 1000 + 400);
   }
 
   /** Hands out what a recording reveals; `onDesk` when it was watched on the journal's monitor. */
