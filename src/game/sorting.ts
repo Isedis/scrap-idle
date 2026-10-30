@@ -18,6 +18,8 @@ export type Frac = 'plastic' | 'metal' | 'glass' | 'paper';
 export const FRACS: readonly Frac[] = ['plastic', 'metal', 'glass', 'paper'];
 export const FRAC_NAMES: Record<Frac, string> = { plastic: 'Пластик', metal: 'Металл', glass: 'Стекло', paper: 'Бумага' };
 export const FRAC_SHORT: Record<Frac, string> = { plastic: 'пл', metal: 'мет', glass: 'ст', paper: 'бум' };
+/** One letter per fraction, as the belt shows them. */
+export const FRAC_LETTER: Record<Frac, string> = { plastic: 'П', metal: 'М', glass: 'С', paper: 'Б' };
 
 /** What the stream from the heap is made of; the rest of it is unidentified. */
 export const STREAM: Record<Frac, number> = { plastic: 0.35, paper: 0.25, metal: 0.15, glass: 0.15 };
@@ -73,8 +75,8 @@ export interface LineResult {
   caught: Record<Frac, number>;
   /** Share of the stream nobody took: it goes back into the heap. */
   tails: number;
-  /** What each slot did, for the screen: share caught and share spoiled. */
-  slots: { caught: number; spoiled: number }[];
+  /** What each slot did, for the screen: share caught, share spoiled, and what rode on past it. */
+  slots: { caught: number; spoiled: number; after: Record<Frac, number> }[];
 }
 
 /** Runs one unit of stream down the line. */
@@ -108,7 +110,7 @@ export function runLine(line: readonly (StationId | null)[], levels: Partial<Rec
         stream[f] *= 1 - c;
       }
     }
-    slots.push({ caught: took, spoiled });
+    slots.push({ caught: took, spoiled, after: { ...stream } });
   }
   const passing = FRACS.reduce((sum, f) => sum + stream[f], 0);
   const total = FRACS.reduce((sum, f) => sum + STREAM[f], 0);
@@ -530,9 +532,9 @@ export function describeUnique(u: UniqueDef): string {
 
 export const uniqueById = (id: string) => UNIQUE_BY_ID.get(id);
 
-/** A price as short text: «150 мет · 80 ст». */
-export function priceText(price: Price, fmt: (n: Decimal) => string): string {
+/** A price as short text: «150 мет · 80 ст», or with other labels, «150 М · 80 С». */
+export function priceText(price: Price, fmt: (n: Decimal) => string, labels: Record<Frac, string> = FRAC_SHORT): string {
   return FRACS.filter((f) => price[f])
-    .map((f) => `${fmt(D(price[f]!))} ${FRAC_SHORT[f]}`)
+    .map((f) => `${fmt(D(price[f]!))} ${labels[f]}`)
     .join(' · ');
 }

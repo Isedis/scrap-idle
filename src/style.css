@@ -1113,24 +1113,13 @@ button { font: inherit; color: inherit; }
 .s-tails { color: var(--amber); font-size: 12px; }
 .s-tails.bad { color: var(--danger); }
 
-.s-scheme {
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: #050f08;
-  color: var(--glow);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-  text-shadow: var(--glow-shadow);
-}
-
 .s-slots { display: grid; gap: 8px; }
 .s-slot { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; }
-.s-slot.empty { border-style: dashed; }
+.s-slot.vacant { border-style: dashed; }
 .s-slot-head { display: flex; align-items: center; gap: 8px; }
 .s-slot-no { color: var(--dim); font-weight: 700; }
 .s-slot-name { flex: 1; min-width: 0; font-weight: 700; }
-.s-slot.empty .s-slot-name { color: var(--dim); }
+.s-slot.vacant .s-slot-name { color: var(--dim); }
 .s-moves { display: flex; gap: 4px; }
 .s-move { min-width: 44px; min-height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 4px; }
 .s-move:disabled { opacity: 0.35; }
@@ -1138,7 +1127,7 @@ button { font: inherit; color: inherit; }
 .s-level { flex: 1; min-width: 120px; }
 
 .s-table, .s-recipes { display: grid; gap: 4px; }
-.s-queue { color: var(--glow); font-size: 14px; letter-spacing: 0.04em; }
+.s-queue { color: var(--glow); font-size: 15px; letter-spacing: 0.04em; }
 .s-last { padding: 6px 8px; border-left: 2px solid var(--amber); color: var(--amber); font-size: 12px; line-height: 1.4; }
 .s-last.bad { border-color: var(--danger); color: var(--danger); }
 
@@ -1153,3 +1142,92 @@ button { font: inherit; color: inherit; }
 .s-rank.next .s-rank-at::before { content: '▸ '; }
 
 .j-find-effect { margin-top: 2px; color: var(--amber); font-size: 11px; }
+
+/* What to do next, and what a part is for. */
+.s-now {
+  padding: 8px 10px;
+  border: 1px solid var(--amber);
+  border-radius: 4px;
+  background: rgb(255 191 71 / 0.08);
+  color: var(--amber);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.s-now::before { content: 'СЕЙЧАС ▸ '; font-weight: 700; }
+.s-why { margin: 0; color: var(--mid); font-size: 12px; line-height: 1.45; }
+.s-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.s-help { min-width: 44px; min-height: 44px; border: 1px solid var(--line); border-radius: 4px; font-size: 16px; }
+.s-tabs .mode { flex: 1; min-height: 44px; position: relative; }
+.s-tabs .mode.marked::after { content: '●'; position: absolute; top: 2px; right: 6px; color: var(--amber); font-size: 9px; }
+.s-view { display: grid; gap: 8px; }
+
+/* The belt: letters ride between the station cards. */
+.s-line { display: grid; gap: 0; }
+.s-belt {
+  padding: 4px 10px;
+  border-left: 2px solid var(--dim);
+  margin-left: 14px;
+  color: var(--glow);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-shadow: var(--glow-shadow);
+}
+.s-belt.last { color: var(--danger); text-shadow: none; opacity: 0.85; }
+.s-heap { padding: 4px 0; color: var(--mid); font-size: 11px; letter-spacing: 0.08em; }
+.s-heap.bad { color: var(--danger); }
+.s-line .s-slot { margin-block: 2px; }
+.s-what { color: var(--mid); font-size: 12px; line-height: 1.4; }
+.s-bin { color: var(--amber); font-size: 13px; letter-spacing: 0.06em; min-height: 1.4em; white-space: nowrap; overflow: hidden; }
+.s-swap { display: grid; gap: 4px; }
+.s-level { display: grid; justify-items: center; }
+.s-level-hint { font-size: 10px; color: var(--mid); text-transform: none; }
+
+/* The reset: what burns, what comes. */
+.s-deal { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.s-deal-col { display: grid; gap: 2px; align-content: start; padding: 8px; border: 1px solid var(--line); border-radius: 4px; font-size: 12px; }
+.s-deal-title { font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+.s-deal-col.lose { color: var(--danger); border-color: rgb(255 107 87 / 0.4); }
+.s-deal-col.get { color: var(--glow); border-color: rgb(125 255 154 / 0.4); }
+
+/* ---- Walk-through ---- */
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(2 8 4 / 0.82);
+}
+.intro[hidden] { display: none; }
+.intro-box {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--glow);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 0 24px rgb(125 255 154 / 0.2);
+}
+.intro-title { color: var(--glow); font-weight: 700; letter-spacing: 0.08em; text-shadow: var(--glow-shadow); }
+.intro-art {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #050f08;
+  color: var(--glow);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  text-shadow: var(--glow-shadow);
+}
+.intro-text { margin: 0; color: var(--mid); font-size: 13px; line-height: 1.5; }
+.intro-dots { color: var(--dim); letter-spacing: 0.2em; text-align: center; }
+.intro-buttons { display: flex; gap: 8px; }
+.intro-buttons .btn { flex: 1; }
+.s-swap .chip { border-style: solid; border-color: var(--dim); color: var(--glow); }

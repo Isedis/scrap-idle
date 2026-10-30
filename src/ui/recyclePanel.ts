@@ -1,5 +1,6 @@
 import { format, type Decimal } from '../game/num';
 import { BRANCHES, LAYERS, NODES, RECYCLE_AT, REPEATS, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, repeatCost, type NodeDef, type RepeatDef } from '../game/layers';
+import { recycleAdvice } from '../game/advice';
 import { recycleMult, buyNode, buyRepeat, canRecycle, currentGain, repeatsOpen, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
 
@@ -16,6 +17,7 @@ const mmss = (s: number) => (s < 0 ? '—' : `${Math.floor(s / 60)}:${String(Mat
 export class RecyclePanel {
   readonly root: HTMLElement;
   private stats!: HTMLElement;
+  private now!: HTMLElement;
   private action!: HTMLElement;
   private actionTitle!: HTMLElement;
   private actionBar!: HTMLElement;
@@ -39,7 +41,12 @@ export class RecyclePanel {
   private build(): void {
     const head = el('div', 'panel-head');
     head.append(el('h2', 'panel-title', 'Переработка'));
-    this.root.append(head);
+    this.now = el('div', 's-now');
+    this.root.append(
+      head,
+      el('p', 's-why', 'Сдаёшь весь мусор и производителей — получаешь вторсырьё. Оно навсегда усиливает доход и тратится на дерево ниже.'),
+      this.now,
+    );
 
     this.stats = el('div', 'r-stats');
     this.root.append(this.stats);
@@ -148,6 +155,7 @@ export class RecyclePanel {
   }
 
   render(state: GameState): void {
+    this.now.textContent = recycleAdvice(state);
     const layer = state.recycle;
     const lines: string[] = [];
     lines.push(`вторсырьё: ${format(layer.points)}`);

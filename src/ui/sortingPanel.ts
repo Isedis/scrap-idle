@@ -1,15 +1,16 @@
 import { format } from '../game/num';
 import {
   FRACS,
+  FRAC_LETTER,
   FRAC_NAMES,
-  FRAC_SHORT,
   RANKS,
   RECIPES,
   RECIPE_BRANCHES,
   SORT_AT,
-  sortNeed,
   STATIONS,
+  STREAM,
   UNIQUES,
+  UNKNOWN_EVERY,
   alloyCost,
   alloysOpen,
   buyAlloy,
@@ -31,6 +32,7 @@ import {
   queueSize,
   runLine,
   slotCount,
+  sortNeed,
   sortingIncome,
   stationById,
   stationOpen,
@@ -40,10 +42,58 @@ import {
   type RecipeDef,
   type StationId,
 } from '../game/sorting';
+import { sortingAdvice } from '../game/advice';
 import { canResort, ratePerSecond, resortGain, resortShares, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
 
-const pct = (x: number) => `${Math.round(x * 100)}%`;
+type View = 'line' | 'table' | 'recipes' | 'reset';
+
+/** Characters on one stretch of belt. */
+const BELT_CELLS = 14;
+/** The belt moves one cell this often, in ms. */
+const BELT_STEP_MS = 220;
+/** Letters a station's bin keeps on show. */
+const BIN_CELLS = 10;
+/** Share of belt cells that carry something, so the gaps make the motion readable. */
+const BELT_DENSITY = 0.55;
+
+/** One stretch of belt, as letters riding along. */
+interface Belt {
+  el: HTMLElement;
+  cells: string[];
+  /** What rides on this stretch: shares of the stream, with '?' for unidentified. */
+  mix: Record<string, number>;
+}
+
+/** A station's bin: the letters it took, and a mark when it spoiled something. */
+interface Bin {
+  el: HTMLElement;
+  cells: string[];
+  frac?: Frac;
+  /** Chance per step to catch, and to spoil, scaled from the line math. */
+  catchChance: number;
+  spoilChance: number;
+}
+
+/** Picks a letter from a mix, or a gap. */
+function draw(mix: Record<string, number>): string {
+  const total = Object.values(mix).reduce((a, b) => a + b, 0);
+  if (Math.random() > BELT_DENSITY * Math.min(1, total / 0.9 + 0.15)) return '·';
+  let r = Math.random() * total;
+  for (const [letter, w] of Object.entries(mix)) {
+    r -= w;
+    if (r <= 0) return letter;
+  }
+  return '·';
+}
+
+const letters = (shares: Record<Frac, number>): Record<string, number> =>
+  Object.fromEntries(FRACS.map((f) => [FRAC_LETTER[f], shares[f]]));
+
+const outOf10 = (x: number) => {
+  const n = Math.round(x * 10);
+  return n >= 10 ? 'почти всё' : `${n} из 10`;
+};
 
 interface RecipeRow {
   def: RecipeDef;
@@ -51,94 +101,147 @@ interface RecipeRow {
   button: HTMLButtonElement;
 }
 
-/** The Sorting view on the Layers tab: the line, the inspection table, recipes and resorting. */
+/** The Sorting view on the Layers tab, in four parts: the line, the table, recipes, the reset. */
 export class SortingPanel {
   readonly root: HTMLElement;
+  private view: View = 'line';
+  private views = new Map<View, HTMLElement>();
+  private viewButtons = new Map<View, HTMLButtonElement>();
   private closed!: HTMLElement;
   private closedBar!: HTMLElement;
   private body!: HTMLElement;
+  private now!: HTMLElement;
   private meta!: HTMLElement;
   private fracCells = new Map<Frac, { amount: HTMLElement; rate: HTMLElement }>();
+  // Line.
+  private lineList!: HTMLElement;
+  private lineFor = '';
+  private belts: Belt[] = [];
+  private bins: Bin[] = [];
+  private beltAt = 0;
   private tails!: HTMLElement;
-  private scheme!: HTMLElement;
-  private slots!: HTMLElement;
-  private slotsFor = '';
+  private slotUpdaters: ((s: GameState) => void)[] = [];
+  // Table.
   private queue!: HTMLElement;
   private inspectBar!: HTMLElement;
   private inspectNote!: HTMLElement;
+  private foundNote!: HTMLElement;
   private lastFind!: HTMLElement;
+  // Recipes.
   private recipeRows: RecipeRow[] = [];
   private alloyBox!: HTMLElement;
   private alloyButton!: HTMLButtonElement;
+  // Reset.
   private resortButton!: HTMLButtonElement;
-  private resortNote!: HTMLElement;
+  private resortGainEl!: HTMLElement;
+  private resortNeed!: HTMLElement;
   private rankRows: HTMLElement[] = [];
   private armed = 0;
-  /** Numbers that change every frame inside the slot cards. */
-  private slotUpdaters: ((s: GameState) => void)[] = [];
 
   constructor(
     private getState: () => GameState,
     private onResort: () => void,
     private onChange: (message?: string) => void,
+    private onHelp: () => void,
   ) {
     this.root = el('section', 'panel sorting');
     this.build();
   }
 
   private build(): void {
-    // Before the line opens: what it takes.
     this.closed = el('div', 'r-door s-closed');
     this.closedBar = el('div', 'r-bar');
     this.closed.append(
       el('div', 'r-door-name', 'Сортировка'),
-      el('div', 'r-door-text', `Линия запустится, когда за один цикл переработки будет заработано ${format(SORT_AT)} вторсырья.`),
+      el('div', 'r-door-text', `Второй слой. Сортировочная линия разбирает мусор на пластик, металл, стекло и бумагу. Запустится, когда за один цикл переработки будет заработано ${format(SORT_AT)} вторсырья.`),
       this.closedBar,
     );
 
     this.body = el('div', 's-body');
     const head = el('div', 'panel-head');
     this.meta = el('span', 'panel-meta');
-    head.append(el('h2', 'panel-title', 'Сортировка'), this.meta);
+    const help = el('button', 'mode s-help', '?');
+    help.type = 'button';
+    help.id = 'sorting-help';
+    help.setAttribute('aria-label', 'Как устроена сортировка');
+    help.addEventListener('click', () => this.onHelp());
+    const titles = el('div', 's-titles');
+    titles.append(el('h2', 'panel-title', 'Сортировка'), this.meta);
+    head.append(titles, help);
+    this.now = el('div', 's-now');
 
     const fracs = el('div', 's-fracs');
     for (const f of FRACS) {
-      const cell = el('div', `s-frac f-${f}`);
+      const cell = el('div', 's-frac');
       const amount = el('div', 's-frac-amount');
       const rate = el('div', 's-frac-rate');
-      cell.append(el('div', 's-frac-name', FRAC_NAMES[f]), amount, rate);
+      cell.append(el('div', 's-frac-name', `${FRAC_LETTER[f]} · ${FRAC_NAMES[f]}`), amount, rate);
       fracs.append(cell);
       this.fracCells.set(f, { amount, rate });
     }
-    this.tails = el('div', 's-tails');
 
-    const lineHead = el('div', 'panel-head');
-    lineHead.append(el('h2', 'panel-title', 'Линия'), el('span', 'panel-meta', 'порядок важен'));
-    this.scheme = el('div', 's-scheme');
-    this.slots = el('div', 's-slots');
+    const tabs = el('div', 'modes s-tabs');
+    tabs.setAttribute('role', 'group');
+    tabs.setAttribute('aria-label', 'Раздел сортировки');
+    for (const [view, label] of [['line', 'Линия'], ['table', 'Стол'], ['recipes', 'Рецепты'], ['reset', 'Сброс']] as const) {
+      const b = el('button', 'mode', label);
+      b.type = 'button';
+      b.id = `sort-view-${view}`;
+      b.addEventListener('click', () => {
+        this.view = view;
+        this.render(this.getState());
+      });
+      this.viewButtons.set(view, b);
+      tabs.append(b);
+    }
 
-    this.body.append(head, fracs, this.tails, lineHead, this.scheme, this.slots, this.buildTable(), this.buildRecipes(), this.buildResort());
+    this.views.set('line', this.buildLine());
+    this.views.set('table', this.buildTable());
+    this.views.set('recipes', this.buildRecipes());
+    this.views.set('reset', this.buildReset());
+    this.body.append(head, this.now, fracs, tabs, ...this.views.values());
     this.root.append(this.closed, this.body);
   }
 
+  /** A one-line answer to "what is this for", on top of each part. */
+  private why(text: string): HTMLElement {
+    return el('p', 's-why', text);
+  }
+
+  private buildLine(): HTMLElement {
+    const box = el('div', 's-view');
+    this.lineList = el('div', 's-line');
+    this.tails = el('div', 's-tails');
+    box.append(
+      this.why('С кучи по ленте едет мусор. Каждая станция снимает свои буквы — это фракции, новая валюта. Что доехало до конца, падает обратно в кучу и кормит его.'),
+      this.lineList,
+      this.tails,
+    );
+    return box;
+  }
+
   private buildTable(): HTMLElement {
-    const box = el('div', 's-table');
-    const head = el('div', 'panel-head');
-    head.append(el('h2', 'panel-title', 'Стол осмотра'));
+    const box = el('div', 's-view');
     this.queue = el('div', 's-queue');
     this.inspectBar = el('div', 'r-bar');
     this.inspectNote = el('div', 'a-text');
+    this.foundNote = el('div', 'a-text');
     this.lastFind = el('div', 's-last');
     this.lastFind.hidden = true;
-    box.append(head, this.queue, this.inspectBar, this.inspectNote, this.lastFind);
+    box.append(
+      this.why(`Раз в ${Math.round(UNKNOWN_EVERY / 60 * 10) / 10} минуты на ленте попадается «?» — неопознанное. Стол осматривает по одному: обычно это тюк фракций, каждый третий — уникальная находка с вечным бонусом. Изредка — то, чего на ленте быть не должно.`),
+      this.queue,
+      this.inspectBar,
+      this.inspectNote,
+      this.lastFind,
+      this.foundNote,
+    );
     return box;
   }
 
   private buildRecipes(): HTMLElement {
-    const box = el('div', 's-recipes');
-    const head = el('div', 'panel-head');
-    head.append(el('h2', 'panel-title', 'Рецепты'), el('span', 'panel-meta', 'платятся фракциями'));
-    box.append(head);
+    const box = el('div', 's-view');
+    box.append(this.why('Рецепты — постоянные улучшения. Платятся фракциями и никогда не сгорают, даже при пересортировке.'));
     for (const branch of RECIPE_BRANCHES) {
       const list = el('div', 'r-branch');
       list.append(el('div', 'r-branch-title', branch.name));
@@ -176,33 +279,36 @@ export class SortingPanel {
     return box;
   }
 
-  private buildResort(): HTMLElement {
-    const box = el('div', 'r-action s-resort');
-    this.resortNote = el('div', 'r-note');
+  private buildReset(): HTMLElement {
+    const box = el('div', 's-view');
+    box.append(this.why('Пересортировка — большой сброс. Сжигаешь всю переработку и получаешь силу, которая остаётся навсегда.'));
+    const deal = el('div', 's-deal');
+    const lose = el('div', 's-deal-col lose');
+    lose.append(el('div', 's-deal-title', 'Сгорит'), ...['вторсырьё', 'дерево переработки', 'бесконечные узлы', 'скрипты автоматики', 'текущий заход'].map((t) => el('div', '', `✕ ${t}`)));
+    const get = el('div', 's-deal-col get');
+    this.resortGainEl = el('div', '');
+    get.append(el('div', 's-deal-title', 'Получишь'), this.resortGainEl, el('div', '', '+ весь доход ×2 навсегда'), el('div', '', '+ новый разряд'));
+    deal.append(lose, get);
+    const keep = el('div', 'a-text', 'Не сгорят: линия, фракции, рецепты, находки, достижения.');
+    this.resortNeed = el('div', 'r-bar');
     this.resortButton = el('button', 'btn r-go', 'Пересортировать');
     this.resortButton.type = 'button';
     this.resortButton.id = 'resort';
     this.resortButton.addEventListener('click', () => this.press());
-    box.append(
-      el('div', 'r-title', 'Пересортировка'),
-      el('div', 'r-keeps', 'Сгорает вся переработка: вторсырьё, дерево, бесконечные узлы, скрипты. Остаются: линия, фракции, рецепты, находки. Разряды возвращают удобства.'),
-      this.resortNote,
-      this.resortButton,
-    );
+
     const ranks = el('div', 's-ranks');
-    ranks.append(el('div', 'r-branch-title', 'Разряды'));
+    ranks.append(el('div', 'r-branch-title', 'Разряды'), el('div', 'a-text', 'Чем больше пересортировок, тем больше переживает сброс.'));
     for (const r of RANKS) {
       const row = el('div', 's-rank');
       row.append(el('span', 's-rank-at', `${r.at}`), el('span', '', r.text));
       ranks.append(row);
       this.rankRows.push(row);
     }
-    const wrap = el('div', 's-resort-wrap');
-    wrap.append(box, ranks);
-    return wrap;
+    box.append(deal, keep, this.resortNeed, this.resortButton, ranks);
+    return box;
   }
 
-  /** Two taps, like recycling: the first arms the button for three seconds. */
+  /** Two taps: the first arms the button for three seconds. */
   private press(): void {
     if (!canResort(this.getState())) return;
     if (!this.armed) {
@@ -222,91 +328,156 @@ export class SortingPanel {
     this.resortButton.classList.remove('armed');
   }
 
-  /** Slot cards: rebuilt when the line or the open stations change. */
-  private buildSlots(state: GameState): void {
+  private belt(mix: Record<string, number>, cls = ''): Belt {
+    const cells = Array.from({ length: BELT_CELLS }, () => draw(mix));
+    const b: Belt = { el: el('div', `s-belt ${cls}`), cells, mix };
+    this.belts.push(b);
+    return b;
+  }
+
+  /** The line top to bottom: heap, belt, station, belt, station… and the tails. */
+  private buildLineList(state: GameState): void {
     const so = state.sorting;
     const n = slotCount(so);
+    const line = so.line.slice(0, n);
+    const result = runLine(line, so.levels);
+    this.belts = [];
+    this.bins = [];
     this.slotUpdaters = [];
-    const cards: HTMLElement[] = [];
+    const parts: HTMLElement[] = [];
+
+    parts.push(el('div', 's-heap', '▼ КУЧА · «?» сразу уходит на стол осмотра'));
+    parts.push(this.belt({ ...letters(STREAM), '?': 0.1 }).el);
+
     for (let i = 0; i < n; i++) {
-      const id = so.line[i] ?? null;
-      const card = el('div', `s-slot${id ? '' : ' empty'}`);
-      const head = el('div', 's-slot-head');
-      head.append(el('span', 's-slot-no', `#${i + 1}`));
-      if (!id) {
-        head.append(el('span', 's-slot-name', 'пусто'));
-        card.append(head);
-      } else {
-        const def = stationById(id)!;
-        head.append(el('span', 's-slot-name', def.name));
-        const moves = el('div', 's-moves');
-        const button = (text: string, label: string, action: () => boolean) => {
-          const b = el('button', 'mode s-move', text);
-          b.type = 'button';
-          b.setAttribute('aria-label', label);
-          b.addEventListener('click', () => {
-            if (action()) this.onChange();
-          });
-          moves.append(b);
-          return b;
-        };
-        button('▲', 'Выше', () => moveStation(this.getState().sorting, i, -1)).disabled = i === 0;
-        button('▼', 'Ниже', () => moveStation(this.getState().sorting, i, 1)).disabled = i === n - 1;
-        button('✕', 'Снять со слота', () => placeStation(this.getState().sorting, i, null));
-        head.append(moves);
-        const what = el('div', 'a-text');
-        const levels = el('div', 's-levels');
-        const kinds: [LevelKind, string][] =
-          id === 'briquetter' ? [['speed', 'Пресс']] : id === 'crusher' ? [['purity', 'Помол']] : [['speed', 'Скорость'], ['purity', 'Чистота']];
-        for (const [kind, label] of kinds) {
-          const b = el('button', 'buy s-level');
-          b.type = 'button';
-          b.id = `level-${id}-${kind}`;
-          const price = el('span', 'buy-price');
-          const lbl = el('span', 'buy-label');
-          b.append(lbl, price);
-          b.addEventListener('click', () => {
-            if (buyLevel(this.getState().sorting, id, kind)) this.onChange();
-          });
-          levels.append(b);
-          this.slotUpdaters.push((s) => {
-            const lv = levelsOf(s.sorting, id)[kind];
-            const cost = levelCost(lv, kind);
-            const have = s.sorting.fractions[def.pays];
-            lbl.textContent = `${label} ${lv}`;
-            price.textContent = `${format(cost)} ${FRAC_SHORT[def.pays]}`;
-            b.disabled = have.lt(cost);
-            b.style.setProperty('--p', String(progress(have, cost)));
-          });
-        }
-        this.slotUpdaters.push((s) => {
-          const lv = levelsOf(s.sorting, id);
-          const slot = runLine(s.sorting.line.slice(0, n), s.sorting.levels).slots[i];
-          what.textContent = def.frac
-            ? `ловит ${pct(capture(lv.speed))} ${FRAC_SHORT[def.frac]} · портит ${pct(impurity(lv.purity))} чужого · берёт ${pct(slot.caught)} ленты`
-            : id === 'briquetter'
-              ? `выход станций выше ×${press(lv.speed).toFixed(1)}`
-              : `перемалывает ${pct(crush(lv.purity))} того, что прошло`;
-        });
-        card.append(head, what, levels);
-      }
-      // What else could stand here.
-      const free = STATIONS.filter((d) => stationOpen(so, d) && !so.line.slice(0, n).includes(d.id));
-      if (free.length > 0) {
-        const chips = el('div', 'a-chips');
-        for (const d of free) {
-          const b = el('button', 'chip', `${id ? '⇄ ' : '+ '}${d.name}`);
-          b.type = 'button';
-          b.addEventListener('click', () => {
-            if (placeStation(this.getState().sorting, i, d.id as StationId)) this.onChange();
-          });
-          chips.append(b);
-        }
-        card.append(chips);
-      }
-      cards.push(card);
+      const id = line[i] ?? null;
+      parts.push(this.stationCard(state, i, id, result.slots[i]));
+      const after = result.slots[i]?.after ?? STREAM;
+      parts.push(this.belt(letters(after), i === n - 1 ? 'last' : '').el);
     }
-    this.slots.replaceChildren(...cards);
+    parts.push(el('div', 's-heap bad', '▼ ОБРАТНО В КУЧУ'));
+    this.lineList.replaceChildren(...parts);
+  }
+
+  private stationCard(state: GameState, i: number, id: StationId | null, slot: { caught: number; spoiled: number } | undefined): HTMLElement {
+    const so = state.sorting;
+    const n = slotCount(so);
+    const card = el('div', `s-slot${id ? '' : ' vacant'}`);
+    const head = el('div', 's-slot-head');
+    head.append(el('span', 's-slot-no', `${i + 1}`));
+    const free = STATIONS.filter((d) => stationOpen(so, d) && !so.line.slice(0, n).includes(d.id));
+    const chips = (label: string) => {
+      const box = el('div', 's-swap');
+      box.append(el('div', 'a-label', label));
+      const row = el('div', 'a-chips');
+      for (const d of free) {
+        const b = el('button', 'chip', d.frac ? `${d.name} · ${FRAC_LETTER[d.frac]}` : d.name);
+        b.type = 'button';
+        b.addEventListener('click', () => {
+          if (placeStation(this.getState().sorting, i, d.id)) this.onChange();
+        });
+        row.append(b);
+      }
+      box.append(row);
+      return box;
+    };
+
+    if (!id) {
+      head.append(el('span', 's-slot-name', 'Пустое место'));
+      card.append(head);
+      if (free.length) card.append(chips('Поставить сюда:'));
+      return card;
+    }
+
+    const def = stationById(id)!;
+    head.append(el('span', 's-slot-name', def.frac ? `${def.name} · ловит ${FRAC_LETTER[def.frac]}` : def.name));
+    const moves = el('div', 's-moves');
+    const move = (text: string, label: string, action: () => boolean, disabled: boolean) => {
+      const b = el('button', 'mode s-move', text);
+      b.type = 'button';
+      b.disabled = disabled;
+      b.setAttribute('aria-label', label);
+      b.addEventListener('click', () => {
+        if (action()) this.onChange();
+      });
+      moves.append(b);
+    };
+    move('▲', 'Поднять выше', () => moveStation(this.getState().sorting, i, -1), i === 0);
+    move('▼', 'Опустить ниже', () => moveStation(this.getState().sorting, i, 1), i === n - 1);
+    move('✕', 'Убрать с ленты', () => placeStation(this.getState().sorting, i, null), false);
+    head.append(moves);
+
+    // The bin shows what the station takes off the belt, live.
+    const lv = levelsOf(so, id);
+    const binEl = el('div', 's-bin');
+    const bin: Bin = {
+      el: binEl,
+      cells: [],
+      frac: def.frac,
+      catchChance: def.frac ? Math.min(0.9, (slot?.caught ?? 0) * 2.2) : 0,
+      spoilChance: Math.min(0.5, (slot?.spoiled ?? 0) * 1.2),
+    };
+    this.bins.push(bin);
+
+    const what = el('div', 's-what');
+    const levels = el('div', 's-levels');
+    const kinds: [LevelKind, string, string][] =
+      id === 'briquetter'
+        ? [['speed', 'Сильнее', 'жмёт крепче']]
+        : id === 'crusher'
+          ? [['purity', 'Мельче', 'меньше хвостов']]
+          : [
+              ['speed', 'Быстрее', `больше ${FRAC_LETTER[def.frac!]}`],
+              ['purity', 'Чище', 'меньше брака'],
+            ];
+    for (const [kind, label, hint] of kinds) {
+      const b = el('button', 'buy s-level');
+      b.type = 'button';
+      b.id = `level-${id}-${kind}`;
+      const lbl = el('span', 'buy-label');
+      const price = el('span', 'buy-price');
+      b.append(lbl, el('span', 's-level-hint', hint), price);
+      b.addEventListener('click', () => {
+        if (buyLevel(this.getState().sorting, id, kind)) this.onChange();
+      });
+      levels.append(b);
+      this.slotUpdaters.push((s) => {
+        const level = levelsOf(s.sorting, id)[kind];
+        const cost = levelCost(level, kind);
+        const have = s.sorting.fractions[def.pays];
+        lbl.textContent = `${label} · ур. ${level}`;
+        price.textContent = `${format(cost)} ${FRAC_LETTER[def.pays]}`;
+        b.disabled = have.lt(cost);
+        b.style.setProperty('--p', String(progress(have, cost)));
+      });
+    }
+    what.textContent = def.frac
+      ? `Забирает ${outOf10(capture(lv.speed))} «${FRAC_LETTER[def.frac]}». Сбивает в брак ${outOf10(impurity(lv.purity))} чужих букв — станциям ниже их уже не достанется.`
+      : id === 'briquetter'
+        ? `Прессует всё, что поймали станции выше: их выход ×${press(lv.speed).toFixed(1)}. Ставь ниже тех, кого хочешь усилить.`
+        : `Перемалывает ${outOf10(crush(lv.purity))} того, что едет мимо: меньше уходит в кучу. Станциям ниже достаётся меньше — ставь последней.`;
+    card.append(head, what, ...(def.frac ? [binEl] : []), levels);
+    if (free.length) card.append(chips('Заменить на:'));
+    return card;
+  }
+
+  /** Moves the letters along. Called from render, so it runs only while the line is on screen. */
+  private animate(): void {
+    const now = performance.now();
+    if (now - this.beltAt < BELT_STEP_MS) return;
+    this.beltAt = now;
+    for (const b of this.belts) {
+      b.cells.pop();
+      b.cells.unshift(draw(b.mix));
+      b.el.textContent = `${b.cells.join(' ')} ▶`;
+    }
+    for (const bin of this.bins) {
+      if (bin.frac && Math.random() < bin.catchChance) bin.cells.push(FRAC_LETTER[bin.frac]);
+      else if (Math.random() < bin.spoilChance) bin.cells.push('✕');
+      else continue;
+      if (bin.cells.length > BIN_CELLS) bin.cells.shift();
+      bin.el.textContent = `⇐ ${bin.cells.join(' ')}`;
+    }
   }
 
   render(state: GameState): void {
@@ -318,41 +489,65 @@ export class SortingPanel {
       this.closedBar.textContent = `${textBar(p)} ${format(state.recycle.total)} / ${format(SORT_AT)}`;
       return;
     }
+    this.now.textContent = sortingAdvice(state);
     this.meta.textContent = `пересортировок ${so.sorts} · доход ×${format(sortingIncome(so))}`;
-
     const rates = lineRates(so, ratePerSecond(state));
     for (const f of FRACS) {
       const cell = this.fracCells.get(f)!;
       cell.amount.textContent = format(so.fractions[f].floor());
-      cell.rate.textContent = `+${format(rates[f])}/с`;
+      cell.rate.textContent = `+${format(rates[f].mul(60))}/мин`;
     }
-    const n = slotCount(so);
-    const line = so.line.slice(0, n);
-    const { tails } = runLine(line, so.levels);
-    this.tails.textContent = `хвосты ${pct(tails)} → угроза растёт ×${threatSpeed(so).toFixed(2)}`;
-    this.tails.classList.toggle('bad', tails > 0.5);
-    this.scheme.textContent = `КУЧА ▶ ${line.map((id) => `[${id ? short(id) : '··'}]`).join(' ▶ ')} ▶ ХВОСТЫ`;
 
-    const sig = `${n}|${line.join()}|${so.recipes.join()}`;
-    if (sig !== this.slotsFor) {
-      this.slotsFor = sig;
-      this.buildSlots(state);
+    for (const [view, el] of this.views) el.hidden = view !== this.view;
+    const marks: Record<View, boolean> = {
+      line: so.line.slice(0, slotCount(so)).some((id) => !id),
+      table: false,
+      recipes: RECIPES.some((r) => canBuyRecipe(so, r)),
+      reset: canResort(state),
+    };
+    for (const [view, b] of this.viewButtons) {
+      b.setAttribute('aria-pressed', String(view === this.view));
+      b.classList.toggle('marked', marks[view]);
+    }
+
+    if (this.view === 'line') this.renderLine(state);
+    else if (this.view === 'table') this.renderTable(state);
+    else if (this.view === 'recipes') this.renderRecipes(state);
+    else this.renderReset(state);
+  }
+
+  private renderLine(state: GameState): void {
+    const so = state.sorting;
+    const n = slotCount(so);
+    const sig = `${n}|${so.line.slice(0, n).join()}|${so.recipes.join()}|${JSON.stringify(so.levels)}`;
+    if (sig !== this.lineFor) {
+      this.lineFor = sig;
+      this.buildLineList(state);
     }
     for (const update of this.slotUpdaters) update(state);
+    this.animate();
+    const { tails } = runLine(so.line.slice(0, n), so.levels);
+    this.tails.textContent = `${Math.round(tails * 100)}% мусора уходит обратно в кучу — угроза растёт в ${threatSpeed(so).toFixed(2)} раза быстрее.`;
+    this.tails.classList.toggle('bad', tails > 0.5);
+  }
 
-    // Inspection table.
+  private renderTable(state: GameState): void {
+    const so = state.sorting;
     const size = queueSize(so);
-    this.queue.textContent = `очередь ${'▣'.repeat(Math.min(so.queue, size))}${'□'.repeat(Math.max(size - so.queue, 0))} · найдено ${so.found.length}/${UNIQUES.length}`;
-    this.inspectBar.textContent = so.queue > 0 ? `осмотр ${textBar(so.progress)} ${Math.floor(so.progress * 100)}%` : 'стол пуст, ждём неопознанное с ленты';
-    this.inspectNote.textContent = `один предмет — ${Math.round(inspectSeconds(so))} с. Не поместился на стол — уходит обратно в кучу.`;
+    this.queue.textContent = `стол: ${Array.from({ length: size }, (_, i) => (i < so.queue ? '[?]' : '[ ]')).join(' ')}`;
+    this.inspectBar.textContent = so.queue > 0 ? `осмотр ${textBar(so.progress)} ${Math.floor(so.progress * 100)}%` : 'стол пуст — ждём «?» с ленты';
+    this.inspectNote.textContent = `Один осмотр — ${Math.round(inspectSeconds(so))} с. Мест на столе: ${size}. Если стол полон, «?» падает обратно в кучу.`;
+    this.foundNote.textContent = `Уникальных находок: ${so.found.length} из ${UNIQUES.length}. Все они — в Журнале.`;
+  }
 
-    // Recipes.
+  private renderRecipes(state: GameState): void {
+    const so = state.sorting;
     for (const row of this.recipeRows) {
       const owned = hasRecipe(so, row.def.id);
       const open = !row.def.requires || hasRecipe(so, row.def.requires);
       row.root.classList.toggle('owned', owned);
       row.root.classList.toggle('closed', !owned && !open);
-      row.button.textContent = owned ? 'Есть' : priceText(row.def.cost, format);
+      row.button.textContent = owned ? 'Есть' : priceText(row.def.cost, format, FRAC_LETTER);
       row.button.disabled = !canBuyRecipe(so, row.def);
     }
     this.alloyBox.hidden = !alloysOpen(so);
@@ -361,22 +556,24 @@ export class SortingPanel {
       this.alloyButton.textContent = `ур. ${so.alloys} · по ${format(cost)} каждой`;
       this.alloyButton.disabled = FRACS.some((f) => so.fractions[f].lt(cost));
     }
+  }
 
-    // Resorting.
+  private renderReset(state: GameState): void {
+    const so = state.sorting;
     const ready = canResort(state);
+    const need = sortNeed(so.sorts);
     this.resortButton.disabled = !ready;
-    if (ready) {
-      const gain = resortGain(state);
-      const shares = resortShares(state);
-      const split = FRACS.filter((f) => shares[f] > 0)
-        .map((f) => `${format(gain.mul(shares[f]).floor())} ${FRAC_SHORT[f]}`)
-        .join(' · ');
-      this.resortNote.textContent = `+${format(gain)} фракций: ${split}. Доход ×2 навсегда.`;
-    } else {
-      const need = sortNeed(so.sorts);
-      this.resortNote.textContent = `нужно ${format(need)} вторсырья за цикл · сейчас ${format(state.recycle.total)} ${textBar(progress(state.recycle.total, need), 8)}`;
-      if (this.armed) this.disarm();
-    }
+    if (!ready && this.armed) this.disarm();
+    const gain = resortGain(state);
+    const shares = resortShares(state);
+    this.resortGainEl.textContent = ready
+      ? `+ ${format(gain)} фракций: ${FRACS.filter((f) => shares[f] > 0)
+          .map((f) => `${format(gain.mul(shares[f]).floor())} ${FRAC_LETTER[f]}`)
+          .join(', ')}`
+      : '+ фракции (чем больше вторсырья за цикл, тем больше)';
+    this.resortNeed.textContent = ready
+      ? 'Готово. Можно пересортировать.'
+      : `Нужно ${format(need)} вторсырья за цикл: ${textBar(progress(state.recycle.total, need), 8)} ${format(state.recycle.total)}`;
     const next = RANKS.find((r) => r.at > so.sorts);
     RANKS.forEach((r, i) => {
       this.rankRows[i].classList.toggle('got', so.sorts >= r.at);
@@ -384,7 +581,7 @@ export class SortingPanel {
     });
   }
 
-  /** Something to spend on right now, for the tab badge. */
+  /** Something to do right now, for the tab badge. */
   attention(state: GameState): boolean {
     const so = state.sorting;
     return so.open && (canResort(state) || RECIPES.some((r) => canBuyRecipe(so, r)));
@@ -396,9 +593,4 @@ export class SortingPanel {
     this.lastFind.textContent = text;
     this.lastFind.classList.toggle('bad', scary);
   }
-}
-
-/** Two-letter label of a station for the line scheme. */
-function short(id: StationId): string {
-  return { optic: 'ОП', magnet: 'МГ', sieve: 'СТ', blower: 'ВЗ', briquetter: 'БР', crusher: 'ДР' }[id];
 }

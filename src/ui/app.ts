@@ -31,6 +31,7 @@ import { JournalPanel } from './journalPanel';
 import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
 import { SortingPanel } from './sortingPanel';
+import { Intro, SORTING_INTRO } from './intro';
 import { RANKS, describeUnique, uniqueById, FRAC_NAMES } from '../game/sorting';
 import { FAIL_LINES } from '../game/scripts';
 import { checkAchievements, ACH_BONUS } from '../game/achievements';
@@ -124,6 +125,7 @@ export class App {
   private tracksPanel!: TracksPanel;
   private automationPanel!: AutomationPanel;
   private sortingPanel!: SortingPanel;
+  private intro = new Intro();
   /** Which layer the Layers tab shows. */
   private layerView: 'recycle' | 'sorting' = 'recycle';
   private layerSwitch!: HTMLElement;
@@ -214,6 +216,7 @@ export class App {
         }
         this.render();
       },
+      () => this.intro.show(SORTING_INTRO),
     );
     this.layerSwitch = el('div', 'modes s-switch');
     this.layerSwitch.setAttribute('role', 'group');
@@ -288,7 +291,7 @@ export class App {
     this.lostEl.hidden = true;
     this.lostEl.setAttribute('role', 'alert');
 
-    this.root.append(header, main, nav, this.toastEl, this.lostEl);
+    this.root.append(header, main, nav, this.toastEl, this.lostEl, this.intro.root);
     this.dread = new Dread(this.root, main, (line) => this.typeLine(line));
     this.sharpButton.setAttribute('aria-pressed', String(this.dread.sharp));
     this.sharpButton.textContent = this.dread.sharp ? 'Резкие моменты: вкл' : 'Резкие моменты: выкл';
@@ -695,10 +698,19 @@ export class App {
     if (so.open && !this.knownSortOpen) {
       this.knownSortOpen = true;
       this.toast('Сортировочная линия запущена. Вкладка «Слои» → «Сортировка»');
+      if (!introSeen()) {
+        markIntroSeen();
+        this.intro.show(SORTING_INTRO);
+      }
       this.typeLine('ЛЕНТА ПОШЛА. ХВОСТЫ УХОДЯТ ОБРАТНО В КУЧУ. ОНО ИХ ЖДЁТ');
       this.scene.glitch(0.8);
     }
     this.drainFinds(state);
+    // The first look at the running line comes with a walk-through.
+    if (so.open && !this.sortingPanel.root.hidden && !introSeen()) {
+      markIntroSeen();
+      this.intro.show(SORTING_INTRO);
+    }
     if (!this.sortingPanel.root.hidden) this.sortingPanel.render(state);
   }
 
@@ -1127,5 +1139,24 @@ export class App {
     // The light button begs as it gets worse.
     this.lightButton.textContent = stage >= 4 ? 'СВЕТ!!' : stage >= 3 ? 'Свет!' : 'Прожектор';
     if (level >= 1) this.loseRun();
+  }
+}
+
+/** Whether the Sorting walk-through was shown on this device; a convenience, so local storage is enough. */
+const INTRO_KEY = 'scrap-idle-intro-sorting';
+
+function introSeen(): boolean {
+  try {
+    return localStorage.getItem(INTRO_KEY) === '1';
+  } catch {
+    return true;
+  }
+}
+
+function markIntroSeen(): void {
+  try {
+    localStorage.setItem(INTRO_KEY, '1');
+  } catch {
+    // Without storage it simply shows again next time.
   }
 }
