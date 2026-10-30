@@ -17,9 +17,29 @@ import {
   NODES,
   type LayerState,
 } from './layers';
-import { DARK_BONUS, OFFLINE_EFFICIENCY, climb, depthMeters, newThreat, stageIndex, threatActive, threatMult, type ThreatState } from './threat';
+import { DARK_BONUS, OFFLINE_CAP, OFFLINE_EFFICIENCY, climb, depthMeters, newThreat, stageIndex, threatActive, threatMult, type ThreatState } from './threat';
 import { COMPACT_DEPTH_DIGITS, TRACKS, bulkMult, compactMult, darkPeak, trackById, trackCost, type TrackLevels } from './infinite';
 import { achievementMult } from './achievements';
+import {
+  FRACS,
+  RANKS,
+  SORT_AT,
+  sortNeed,
+  hasRank,
+  lumpFor,
+  lumpMult,
+  newSorting,
+  runLine,
+  slotCount,
+  sortingCostMult,
+  sortingGainMult,
+  sortingIncome,
+  sortingTick,
+  threatSpeed,
+  addFractions,
+  type Frac,
+  type SortingState,
+} from './sorting';
 import {
   BASE_TICK,
   FAST_TICK,
@@ -75,6 +95,8 @@ export interface GameState {
   autoRecycle: { on: boolean; factor: number };
   /** Automation tab: installed scripts and their settings. */
   scripts: ScriptsState;
+  /** Second prestige layer: the sorting line, the inspection table, recipes. */
+  sorting: SortingState;
   /** Epoch ms of the last simulated moment, used for offline progress. */
   lastTick: number;
 }
@@ -100,37 +122,70 @@ export function newGame(now = Date.now()): GameState {
     achievements: [],
     autoRecycle: { on: false, factor: 1 },
     scripts: newScripts(),
+    sorting: newSorting(),
     lastTick: now,
   };
 }
 
 const owned = (state: GameState, id: string) => state.owned[id] ?? 0;
 
-/** Output of all units of one producer per second, with every bonus applied. */
-export function producerRate(state: GameState, id: string): Decimal {
-  const def = producerById(id);
-  const n = owned(state, id);
-  if (!def || n === 0) return D(0);
-  let mult = Decimal.pow(milestoneBase(state.recycle), milestonesReached(n))
-    .mul(recycleProductionMult(state.recycle))
+/** Multiplier every producer shares: layers, the threat, the story, endless upgrades, achievements. */
+function sharedMult(state: GameState): Decimal {
+  return recycleProductionMult(state.recycle)
     .mul(threatMult(state.threat.level, darkPeak(state.tracks, DARK_BONUS)))
     .mul(storyMult(state.story))
     .mul(compactMult(state.tracks))
-    .mul(achievementMult(state.achievements));
+    .mul(achievementMult(state.achievements))
+    .mul(sortingIncome(state.sorting));
+}
+
+/** Output of all units of one producer per second, with every bonus applied. */
+export function producerRate(state: GameState, id: string, shared: Decimal = sharedMult(state)): Decimal {
+  const def = producerById(id);
+  const n = owned(state, id);
+  if (!def || n === 0) return D(0);
+  const fx = upgradeEffects(state.upgrades);
   let bonus = 0;
-  for (const uid of state.upgrades) {
+  for (const syn of fx.synergies) if (syn.target === id) bonus += syn.perUnit * owned(state, syn.source);
+  return def.baseRate
+    .mul(n)
+    .mul(Decimal.pow(milestoneBase(state.recycle), milestonesReached(n)))
+    .mul(shared)
+    .mul(fx.global)
+    .mul(fx.producer.get(id) ?? 1)
+    .mul(1 + bonus);
+}
+
+/** What the bought upgrades add up to; worked out once per list, since income is asked for all the time. */
+interface UpgradeEffects {
+  /** Length of the list when worked out: the list only grows until it is replaced. */
+  count: number;
+  global: Decimal;
+  producer: Map<string, Decimal>;
+  synergies: { target: string; source: string; perUnit: number }[];
+}
+
+const effectsCache = new WeakMap<readonly string[], UpgradeEffects>();
+
+function upgradeEffects(list: readonly string[]): UpgradeEffects {
+  const cached = effectsCache.get(list);
+  if (cached && cached.count === list.length) return cached;
+  const fx: UpgradeEffects = { count: list.length, global: D(1), producer: new Map(), synergies: [] };
+  for (const uid of list) {
     const e = upgradeById(uid)?.effect;
     if (!e) continue;
-    if (e.kind === 'producer' && e.target === id) mult = mult.mul(e.mult);
-    else if (e.kind === 'global') mult = mult.mul(e.mult);
-    else if (e.kind === 'synergy' && e.target === id) bonus += e.perUnit * owned(state, e.source);
+    if (e.kind === 'producer') fx.producer.set(e.target, (fx.producer.get(e.target) ?? D(1)).mul(e.mult));
+    else if (e.kind === 'global') fx.global = fx.global.mul(e.mult);
+    else if (e.kind === 'synergy') fx.synergies.push({ target: e.target, source: e.source, perUnit: e.perUnit });
   }
-  return def.baseRate.mul(n).mul(mult).mul(1 + bonus);
+  effectsCache.set(list, fx);
+  return fx;
 }
 
 export function ratePerSecond(state: GameState): Decimal {
+  const shared = sharedMult(state);
   let rate = D(0);
-  for (const def of PRODUCERS) rate = rate.add(producerRate(state, def.id));
+  for (const def of PRODUCERS) rate = rate.add(producerRate(state, def.id, shared));
   return rate;
 }
 
@@ -148,14 +203,20 @@ export function advance(state: GameState, seconds: number, offline = false): voi
   const slice = offline ? Math.max(seconds / OFFLINE_SLICES, SLICE_SECONDS) : SLICE_SECONDS;
   for (let left = seconds; left > 0; left -= slice) {
     const dt = Math.min(slice, left);
-    let gained = ratePerSecond(state).mul(dt);
+    const rate = ratePerSecond(state);
+    let gained = rate.mul(dt);
     if (offline) gained = gained.mul(OFFLINE_EFFICIENCY);
     state.trash = state.trash.add(gained);
     state.totalTrash = state.totalTrash.add(gained);
     state.runTrash = state.runTrash.add(gained);
     state.runSeconds += dt;
     if (!offline) state.story.boost = Math.max(0, state.story.boost - dt);
-    state.threat.level = climb(state.threat.level, state.runTrash, dt, offline);
+    // Tails off the sorting line feed the thing: it climbs faster.
+    state.threat.level = climb(state.threat.level, state.runTrash, dt * threatSpeed(state.sorting), offline);
+    const pushed = sortingTick(state.sorting, rate, dt, offline);
+    // What falls back into the heap pushes it up, but never over the edge by itself.
+    if (pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
+    if (!state.sorting.open && state.recycle.total.gte(SORT_AT)) state.sorting.open = true;
     // At the edge production stops; the game plays the loss and calls loseShift.
     if (state.threat.level >= 1) break;
   }
@@ -179,7 +240,7 @@ export function revealProducers(state: GameState): string[] {
 export function purchasePlan(state: GameState, id: string, mode: BuyMode = state.buyMode): { count: number; cost: Decimal } {
   const def = producerById(id)!;
   const n = owned(state, id);
-  const mult = producerCostMult(state.recycle) * bulkMult(state.tracks);
+  const mult = producerCostMult(state.recycle) * bulkMult(state.tracks) * sortingCostMult(state.sorting);
   if (mode === 'max') {
     const count = affordableCount(def, n, state.trash, mult);
     // Nothing affordable: show the price of one so the player sees the goal.
@@ -259,7 +320,8 @@ export function takeNewUpgrades(state: GameState): UpgradeDef[] {
 // ---- Recycling ----------------------------------------------------------------
 
 /** What a recycle would give right now. */
-export const currentGain = (state: GameState) => recycleGain(state.runTrash, gainMult(state.recycle));
+export const recycleMult = (state: GameState) => gainMult(state.recycle) * sortingGainMult(state.sorting);
+export const currentGain = (state: GameState) => recycleGain(state.runTrash, recycleMult(state));
 export const canRecycle = (state: GameState) => currentGain(state).gt(0);
 
 /**
@@ -279,6 +341,82 @@ export function recycle(state: GameState): Decimal {
   startNewRun(state);
   return gain;
 }
+
+// ---- Sorting ----------------------------------------------------------------------
+
+/** Threat pushed up by the inspection table stops here: the floodlight is still in reach. */
+const SORT_PUSH_CAP = 0.95;
+
+export const canResort = (state: GameState) => state.sorting.open && state.recycle.total.gte(sortNeed(state.sorting.sorts));
+export const resortGain = (state: GameState) => (state.sorting.open ? lumpFor(state.recycle.total, lumpMult(state.sorting)) : D(0));
+
+/** How a resort's fractions split: as the line catches them, evenly if it catches nothing. */
+export function resortShares(state: GameState): Record<Frac, number> {
+  const s = state.sorting;
+  const { caught } = runLine(s.line.slice(0, slotCount(s)), s.levels);
+  const sum = FRACS.reduce((a, f) => a + caught[f], 0);
+  const out = {} as Record<Frac, number>;
+  for (const f of FRACS) out[f] = sum > 0 ? caught[f] / sum : 1 / FRACS.length;
+  return out;
+}
+
+/** Tree branches each rank keeps. */
+const RANK_BRANCHES: [number, string][] = [
+  [1, 'automation'],
+  [3, 'start'],
+  [4, 'offline'],
+  [5, 'production'],
+];
+
+/**
+ * Resorting: all of Recycling burns, the scripts too; fractions come in by the line's
+ * shares and the ranks give the comforts back. Returns the fractions gained.
+ */
+export function resort(state: GameState): Decimal {
+  const gain = resortGain(state);
+  if (!canResort(state) || gain.lte(0)) return D(0);
+  const s = state.sorting;
+  const shares = resortShares(state);
+  for (const f of FRACS) addFractions(s, f, gain.mul(shares[f]).floor());
+  s.sorts += 1;
+  s.cycleSeconds = 0;
+  const n = s.sorts;
+
+  const old = state.recycle;
+  const layer = newLayer();
+  layer.resets = old.resets;
+  layer.bestSeconds = old.bestSeconds;
+  const kept = new Set(RANK_BRANCHES.filter(([at]) => hasRank(n, at)).map(([, b]) => b));
+  layer.nodes = NODES.filter((node) => kept.has(node.branch)).map((node) => node.id);
+  if (hasRank(n, 7)) for (const [id, lv] of Object.entries(old.repeats)) if (lv >= 2) layer.repeats[id] = Math.floor(lv / 2);
+  if (hasRank(n, 15)) {
+    layer.total = old.total.mul(0.1).floor();
+    layer.points = layer.total;
+  }
+  if (hasRank(n, 2)) layer.points = layer.points.add(100);
+  state.recycle = layer;
+
+  const sc = state.scripts;
+  if (!hasRank(n, 1)) sc.bought = [];
+  if (!hasRank(n, 10)) {
+    sc.speed = 0;
+    sc.reliability = 0;
+  }
+  sc.peak = 0;
+  startNewRun(state);
+  return gain;
+}
+
+/** Whether the auto-sorter should resort now. */
+export function autoSortDue(state: GameState): boolean {
+  const sc = state.scripts;
+  if (!sc.sortOn || !scriptOwned(state, 'sort') || !canResort(state)) return false;
+  if (sc.sortMode === 'time') return state.sorting.cycleSeconds >= sc.sortMinutes * 60;
+  return resortGain(state).gte(state.sorting.total.mul(sc.sortShare).max(1));
+}
+
+/** Ranks reached, for the screen. */
+export const ranksReached = (state: GameState) => RANKS.filter((r) => hasRank(state.sorting.sorts, r.at));
 
 /** Starts the run over, keeping what the Recycling tree says to keep. */
 function startNewRun(state: GameState): void {
@@ -367,13 +505,14 @@ export function autoRecycleDue(state: GameState): boolean {
 
 /** The peak mode recycles once the rate falls this far below its best. */
 const PEAK_DROP = 0.95;
-const recycleRate = (state: GameState) => recycleGainRaw(state.runTrash, gainMult(state.recycle)) / Math.max(state.runSeconds, 1);
+const recycleRate = (state: GameState) => recycleGainRaw(state.runTrash, recycleMult(state)) / Math.max(state.runSeconds, 1);
 
 // ---- Automation tab -------------------------------------------------------------
 
 /** Whether a script is installed: through its tree node or bought for Recycled material. */
 export function scriptOwned(state: GameState, id: ScriptId): boolean {
   const def = scriptById(id)!;
+  if (def.recipe) return state.sorting.recipes.includes(def.recipe);
   return def.node ? hasNode(state.recycle, def.node) : state.scripts.bought.includes(id);
 }
 

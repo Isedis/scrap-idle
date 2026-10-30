@@ -48,3 +48,21 @@ describe('pacing: recycling', () => {
     expect(runs.filter((r) => r.gain > 0).length).toBeGreaterThanOrEqual(4);
   });
 });
+
+// Six hours with Sorting take minutes to simulate: run with PACE_SORT=1.
+describe.runIf(process.env.PACE_SORT)('pacing: sorting', () => {
+  const { events } = simulate(6 * hour, { recycle: true, sort: true });
+  const hm = (t: number) => `${Math.floor(t / 3600)}:${String(Math.floor((t % 3600) / 60)).padStart(2, '0')}`;
+  for (const e of events.filter((e) => /ПЕРЕСОРТ|пересорт|сортировка|рецепт|сплав/.test(e.what))) console.log(hm(e.t).padStart(6), e.what);
+
+  it('the line opens between 1 and 3 hours in', () => {
+    const open = events.find((e) => e.what === 'сортировка открыта')!.t;
+    expect(open, hm(open)).toBeGreaterThan(hour);
+    expect(open, hm(open)).toBeLessThan(3 * hour);
+  });
+
+  it('resorts cannot be chained: each takes at least 10 minutes of a cycle', () => {
+    const ready = events.filter((e) => e.what.startsWith('пересортировка доступна')).slice(1);
+    for (const e of ready) expect(Number(/цикл (\d+)/.exec(e.what)![1]), e.what).toBeGreaterThanOrEqual(10);
+  });
+}, 1_800_000);

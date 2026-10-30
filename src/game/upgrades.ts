@@ -187,8 +187,10 @@ export const UPGRADES: readonly UpgradeDef[] = [...tierUpgrades(), ...GLOBALS, .
   a.cost.cmp(b.cost),
 );
 
+const UPGRADE_BY_ID = new Map(UPGRADES.map((u) => [u.id, u]));
+
 export function upgradeById(id: string): UpgradeDef | undefined {
-  return UPGRADES.find((u) => u.id === id);
+  return UPGRADE_BY_ID.get(id);
 }
 
 /** One line describing what the upgrade does, for the card. */

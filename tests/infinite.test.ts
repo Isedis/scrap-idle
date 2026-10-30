@@ -126,9 +126,9 @@ describe('auto-recycler', () => {
 });
 
 describe('achievements', () => {
-  it('there are 42 with unique ids', () => {
-    expect(ACHIEVEMENTS).toHaveLength(42);
-    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(42);
+  it('there are 47 with unique ids', () => {
+    expect(ACHIEVEMENTS).toHaveLength(47);
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(47);
   });
 
   it('are earned once and add 1% each', () => {

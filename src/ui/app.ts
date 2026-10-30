@@ -16,6 +16,7 @@ import {
   loseShift,
   depthOf,
   automationOpen,
+  resort,
   type ScriptNote,
   type BuyMode,
   type GameState,
@@ -29,6 +30,8 @@ import { RecyclePanel } from './recyclePanel';
 import { JournalPanel } from './journalPanel';
 import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
+import { SortingPanel } from './sortingPanel';
+import { RANKS, describeUnique, uniqueById, FRAC_NAMES } from '../game/sorting';
 import { FAIL_LINES } from '../game/scripts';
 import { checkAchievements, ACH_BONUS } from '../game/achievements';
 import { COMPACT_MILESTONE, type TrackDef } from '../game/infinite';
@@ -120,6 +123,12 @@ export class App {
   private journalPanel!: JournalPanel;
   private tracksPanel!: TracksPanel;
   private automationPanel!: AutomationPanel;
+  private sortingPanel!: SortingPanel;
+  /** Which layer the Layers tab shows. */
+  private layerView: 'recycle' | 'sorting' = 'recycle';
+  private layerSwitch!: HTMLElement;
+  private layerButtons = new Map<'recycle' | 'sorting', HTMLButtonElement>();
+  private knownSortOpen = false;
   private autoTab!: HTMLButtonElement;
   private autoBadge!: HTMLElement;
   private journalBadge!: HTMLElement;
@@ -165,6 +174,7 @@ export class App {
     for (const def of PRODUCERS) this.knownMilestones.set(def.id, milestonesReached(state.owned[def.id] ?? 0));
     this.knownRecycleReady = canRecycle(state);
     this.knownStage = stageIndex(state.threat.level);
+    this.knownSortOpen = state.sorting.open;
   }
 
   private build(): void {
@@ -194,6 +204,34 @@ export class App {
     );
     this.panels.set('recycle', this.recyclePanel.root);
 
+    this.sortingPanel = new SortingPanel(
+      this.getState,
+      () => this.doResort(false),
+      (message) => {
+        if (message) {
+          this.toast(message);
+          this.scene.flash('amber');
+        }
+        this.render();
+      },
+    );
+    this.layerSwitch = el('div', 'modes s-switch');
+    this.layerSwitch.setAttribute('role', 'group');
+    this.layerSwitch.setAttribute('aria-label', 'Слой');
+    this.layerSwitch.hidden = true;
+    for (const [view, label] of [['recycle', 'Переработка'], ['sorting', 'Сортировка']] as const) {
+      const b = el('button', 'mode', label);
+      b.type = 'button';
+      b.id = `layer-${view}`;
+      b.addEventListener('click', () => {
+        this.layerView = view;
+        this.show('recycle');
+        this.render();
+      });
+      this.layerButtons.set(view, b);
+      this.layerSwitch.append(b);
+    }
+
     const main = el('main', 'panels');
     this.journalPanel = new JournalPanel((rec) => this.watchRecord(rec, false));
     this.panels.set('journal', this.journalPanel.root);
@@ -211,6 +249,7 @@ export class App {
       this.buildDump(),
       this.buildUpgrades(),
       this.recyclePanel.root,
+      this.sortingPanel.root,
       this.automationPanel.root,
       this.journalPanel.root,
       this.buildSettings(),
@@ -495,6 +534,13 @@ export class App {
   private show(tab: Tab): void {
     for (const [t, panel] of this.panels) panel.hidden = t !== tab;
     for (const [t, b] of this.tabs) b.setAttribute('aria-current', t === tab ? 'page' : 'false');
+    // The Layers tab shows one layer at a time, with the switch on top.
+    const sorting = tab === 'recycle' && this.layerView === 'sorting';
+    this.sortingPanel.root.hidden = !sorting;
+    if (sorting) this.recyclePanel.root.hidden = true;
+    const visible = sorting ? this.sortingPanel.root : this.recyclePanel.root;
+    if (this.layerSwitch.parentElement !== visible) visible.prepend(this.layerSwitch);
+    for (const [view, b] of this.layerButtons) b.setAttribute('aria-pressed', String(view === this.layerView));
   }
 
   private buildDump(): HTMLElement {
@@ -636,6 +682,71 @@ export class App {
     this.toast(`Автопереработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
     this.automationPanel.note(`recycle: №${state.recycle.resets}, +${format(gain)} ВС`);
     this.render();
+  }
+
+  /** The switch to Sorting shows up as the line comes into view; then the tab is called Layers. */
+  private renderSorting(state: GameState): void {
+    const so = state.sorting;
+    const near = so.open || state.recycle.total.gte(1e4);
+    if (near && this.layerSwitch.hidden) {
+      this.layerSwitch.hidden = false;
+      this.recycleTab.querySelector('span:not(.badge)')!.textContent = 'Слои';
+    }
+    if (so.open && !this.knownSortOpen) {
+      this.knownSortOpen = true;
+      this.toast('Сортировочная линия запущена. Вкладка «Слои» → «Сортировка»');
+      this.typeLine('ЛЕНТА ПОШЛА. ХВОСТЫ УХОДЯТ ОБРАТНО В КУЧУ. ОНО ИХ ЖДЁТ');
+      this.scene.glitch(0.8);
+    }
+    this.drainFinds(state);
+    if (!this.sortingPanel.root.hidden) this.sortingPanel.render(state);
+  }
+
+  /** What the inspection table turned up since the last look. */
+  private drainFinds(state: GameState): void {
+    const news = state.sorting.news.splice(0);
+    if (news.length === 0) return;
+    const uniques = news.filter((n) => n.kind === 'unique');
+    // Many at once (back from a long absence): one note, the journal has the rest.
+    if (uniques.length > 2) this.toast(`Стол осмотра: уникальных находок ${uniques.length}. Они в журнале`);
+    for (const n of news) {
+      if (n.kind === 'unique') {
+        const u = uniqueById(n.id)!;
+        if (uniques.length <= 2) this.toast(`Находка: ${u.name}. ${describeUnique(u)}`);
+        this.sortingPanel.showFind(`${u.name}: ${u.text} (${describeUnique(u)})`, false);
+        this.caption(u.name);
+      } else if (n.kind === 'anomaly') {
+        if (this.losing) continue;
+        this.typeLine(n.line);
+        this.scene.glitch(1.2);
+        this.pop(this.threatEl, 'alarm');
+        this.sortingPanel.showFind('Стол осмотра: предмет не опознан. Угроза +15%', true);
+      } else {
+        this.sortingPanel.showFind(`Тюк: +${format(n.amount)} ${FRAC_NAMES[n.frac].toLowerCase()}`, false);
+      }
+    }
+  }
+
+  /** Burns Recycling for fractions. The auto-sorter does it without the drama. */
+  private doResort(auto: boolean): void {
+    const state = this.getState();
+    const before = state.sorting.sorts;
+    const gain = resort(state);
+    if (gain.lte(0)) return;
+    writeSave(state);
+    this.resetKnown();
+    this.toastQueue = [];
+    this.scene.glitch(auto ? 0.6 : 2);
+    this.scene.flash('amber');
+    if (!auto) this.typeLine(`ПЕРЕСОРТИРОВКА №${state.sorting.sorts}. ПЕРЕРАБОТКА СОЖЖЕНА. КУЧА ПОМНИТ`);
+    this.toast(`Пересортировка №${state.sorting.sorts}: +${format(gain)} фракций, доход ×2`);
+    for (const r of RANKS.filter((x) => x.at > before && x.at <= state.sorting.sorts)) this.toast(`Разряд ${r.at}: ${r.text}`);
+    if (auto) this.automationPanel.note(`sort: №${state.sorting.sorts}, +${format(gain)} фракций`);
+    this.render();
+  }
+
+  autoSort(): void {
+    this.doResort(true);
   }
 
   /** What the scripts did this frame: the log, and the floodlight on camera. */
@@ -969,12 +1080,13 @@ export class App {
       this.recycleTab.hidden = false;
       if (layer.resets === 0) this.toast('Новая вкладка: Переработка');
     }
-    this.recycleBadge.hidden = !this.recyclePanel.attention(state);
+    this.recycleBadge.hidden = !this.recyclePanel.attention(state) && !this.sortingPanel.attention(state);
     if (this.autoTab.hidden && automationOpen(state)) {
       this.autoTab.hidden = false;
       this.toast('Новая вкладка: Автоматика');
     }
     this.autoBadge.hidden = !this.automationPanel.attention(state);
+    this.renderSorting(state);
     if (!this.automationPanel.root.hidden) this.automationPanel.render(state);
     if (!this.recyclePanel.root.hidden) this.recyclePanel.render(state);
     if (!this.journalPanel.root.hidden) this.journalPanel.render(state);

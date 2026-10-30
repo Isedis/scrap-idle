@@ -1,6 +1,6 @@
 import { format, type Decimal } from '../game/num';
-import { BRANCHES, LAYERS, NODES, RECYCLE_AT, REPEATS, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, gainMult, repeatCost, type NodeDef, type RepeatDef } from '../game/layers';
-import { buyNode, buyRepeat, canRecycle, currentGain, repeatsOpen, type GameState } from '../game/state';
+import { BRANCHES, LAYERS, NODES, RECYCLE_AT, REPEATS, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, repeatCost, type NodeDef, type RepeatDef } from '../game/layers';
+import { recycleMult, buyNode, buyRepeat, canRecycle, currentGain, repeatsOpen, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
 
 interface NodeRow {
@@ -166,7 +166,7 @@ export class RecyclePanel {
       this.actionBar.textContent = `${textBar(p, 16)} ${Math.floor(p * 100)}%`;
       this.actionNote.textContent = `${format(state.runTrash)} / ${format(RECYCLE_AT)} кг за заход`;
     } else {
-      const next: Decimal = nextGainAt(state.runTrash, gainMult(state.recycle));
+      const next: Decimal = nextGainAt(state.runTrash, recycleMult(state));
       this.actionTitle.textContent = `Переработать сейчас: +${format(gain)} вторсырья`;
       this.actionBar.textContent = `${textBar(progress(state.runTrash, next), 16)} до +${format(gain.add(1))}`;
       this.actionNote.textContent = `следующая единица при ${format(next)} кг`;

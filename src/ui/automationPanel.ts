@@ -5,6 +5,9 @@ import {
   LIGHT_LEVELS,
   PHANTOM_LINES,
   RECYCLE_MINUTES,
+  SORT_MINUTES,
+  SORT_SHARES,
+  type SortMode,
   SCRIPTS,
   UPGRADE_SHARES,
   reliabilityCost,
@@ -21,6 +24,7 @@ import {
   buySpeed,
   installScript,
   lightFailChance,
+  resortGain,
   scriptOffered,
   scriptOwned,
   scriptTick,
@@ -29,6 +33,7 @@ import {
   type ScriptNote,
 } from '../game/state';
 import { nodeById } from '../game/layers';
+import { recipeById } from '../game/sorting';
 import { stageIndex } from '../game/threat';
 import { el, progress } from './dom';
 
@@ -71,6 +76,7 @@ const SWITCHES: Record<ScriptId, [(s: GameState) => boolean, (s: GameState, on: 
   endless: [(s) => s.scripts.endlessOn, (s, on) => (s.scripts.endlessOn = on)],
   recycle: [(s) => s.autoRecycle.on, (s, on) => (s.autoRecycle.on = on)],
   light: [(s) => s.scripts.lightOn, (s, on) => (s.scripts.lightOn = on)],
+  sort: [(s) => s.scripts.sortOn, (s, on) => (s.scripts.sortOn = on)],
 };
 
 /** The Automation tab: scripts with their switches and settings, and the log of what they did. */
@@ -243,6 +249,24 @@ export class AutomationPanel {
         box.append(factors, minutes, note);
         break;
       }
+      case 'sort': {
+        const modes: [SortMode, string][] = [['share', 'Награда'], ['time', 'Время']];
+        box.append(this.choice('Когда пересортировывать', modes, (s) => s.scripts.sortMode, (s, v) => (s.scripts.sortMode = v)));
+        const shares = this.choice('Фракций от всех за игру', SORT_SHARES.map((v) => [v, pct(v)] as [number, string]), (s) => s.scripts.sortShare, (s, v) => (s.scripts.sortShare = v));
+        const minutes = this.choice('Длина цикла', SORT_MINUTES.map((m) => [m, m >= 60 ? `${m / 60} ч` : `${m} мин`] as [number, string]), (s) => s.scripts.sortMinutes, (s, v) => (s.scripts.sortMinutes = v));
+        const note = el('div', 'a-note');
+        this.updaters.push((s) => {
+          const mode = s.scripts.sortMode;
+          shares.hidden = mode !== 'share';
+          minutes.hidden = mode !== 'time';
+          note.textContent =
+            mode === 'share'
+              ? `сработает при награде от ${format(s.sorting.total.mul(s.scripts.sortShare).max(1))} (сейчас ${format(resortGain(s))})`
+              : `сработает через ${s.scripts.sortMinutes} мин цикла`;
+        });
+        box.append(shares, minutes, note);
+        break;
+      }
       case 'light': {
         const levels = LIGHT_LEVELS.map((v) => [v, pct(v)] as [number, string]);
         box.append(this.choice('Включать на угрозе', levels, (s) => s.scripts.lightAt, (s, v) => (s.scripts.lightAt = v)));
@@ -309,6 +333,8 @@ export class AutomationPanel {
     }
 
     for (const card of this.cards) {
+      // The sorter stays out of sight until the line opens.
+      card.root.hidden = card.def.recipe !== undefined && !state.sorting.open;
       const owned = scriptOwned(state, card.def.id);
       card.root.classList.toggle('off', !owned);
       card.toggle.hidden = !owned;
@@ -320,7 +346,10 @@ export class AutomationPanel {
         card.toggle.setAttribute('aria-pressed', String(on));
         continue;
       }
-      if (card.def.node) {
+      if (card.def.recipe) {
+        card.lockedNote.textContent = `Ставится рецептом сортировки «${recipeById(card.def.recipe)!.name}».`;
+        card.install.hidden = true;
+      } else if (card.def.node) {
         card.lockedNote.textContent = `Ставится узлом дерева переработки «${nodeById(card.def.node)!.name}».`;
         card.install.hidden = true;
       } else if (!scriptOffered(state, card.def.id)) {

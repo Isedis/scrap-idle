@@ -1,7 +1,7 @@
 import '@fontsource-variable/jetbrains-mono';
 import './style.css';
 import { format } from './game/num';
-import { advance, autoRecycleDue, newGame, revealProducers, runScripts, storyTick, type GameState } from './game/state';
+import { advance, autoRecycleDue, autoSortDue, newGame, revealProducers, runScripts, storyTick, type GameState } from './game/state';
 import { applyOffline, readSave, writeSave } from './game/save';
 import { App } from './ui/app';
 import { CHECK_EVERY_MS, latestBuild, reloadInto } from './update';
@@ -60,6 +60,7 @@ function frame(): void {
   if (notes.length > 0) app.onScripts(notes);
 
   if (autoRecycleDue(state)) app.autoRecycle();
+  if (autoSortDue(state)) app.autoSort();
 
   app.frame(dt);
   if (now - lastRender >= RENDER_MS) {

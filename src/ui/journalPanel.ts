@@ -1,6 +1,7 @@
 import { CASES, CASE_BONUS, NOTES, eventById, unwatched, type Recording } from '../game/story';
 import type { GameState } from '../game/state';
 import { ACHIEVEMENTS, achievementMult } from '../game/achievements';
+import { UNIQUES, describeUnique, uniqueById } from '../game/sorting';
 import { el } from './dom';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -22,6 +23,9 @@ export class JournalPanel {
   private voices!: HTMLElement;
   private voicesHead!: HTMLElement;
   private achievements!: HTMLElement;
+  private finds!: HTMLElement;
+  private findsHead!: HTMLElement;
+  private findsMeta!: HTMLElement;
   private achMeta!: HTMLElement;
   /** Signature of what is on screen, so lists rebuild only when something changed. */
   private shown = '';
@@ -51,6 +55,12 @@ export class JournalPanel {
     this.notes = el('div', 'j-list');
     this.root.append(notesHead, this.notes);
 
+    this.findsHead = el('div', 'panel-head');
+    this.findsMeta = el('span', 'panel-meta');
+    this.findsHead.append(el('h2', 'panel-title', 'Найдено при сортировке'), this.findsMeta);
+    this.finds = el('div', 'j-list');
+    this.root.append(this.findsHead, this.finds);
+
     this.voicesHead = el('h2', 'panel-title', 'КАМ-00');
     this.voices = el('div', 'j-voices');
     this.root.append(this.voicesHead, this.voices);
@@ -64,7 +74,7 @@ export class JournalPanel {
 
   render(state: GameState): void {
     const story = state.story;
-    const sig = JSON.stringify([story.records.map((r) => [r.seq, r.watched]), story.cases, story.notes, story.voices.length, state.achievements.length]);
+    const sig = JSON.stringify([story.records.map((r) => [r.seq, r.watched]), story.cases, story.notes, story.voices.length, state.achievements.length, state.sorting.found.length, state.sorting.open]);
     if (sig === this.shown) return;
     this.shown = sig;
 
@@ -87,6 +97,20 @@ export class JournalPanel {
       ...(story.notes === 0
         ? [el('p', 'empty', 'Пока ни одной. Смотрите, что ветер поднимает с кучи.')]
         : NOTES.slice(0, story.notes).map((n) => el('div', 'j-note', n))),
+    );
+
+    const found = state.sorting.found;
+    this.findsHead.hidden = this.finds.hidden = !state.sorting.open && found.length === 0;
+    this.findsMeta.textContent = `${found.length}/${UNIQUES.length}`;
+    this.finds.replaceChildren(
+      ...(found.length === 0
+        ? [el('p', 'empty', 'Стол осмотра пока ничего не опознал.')]
+        : found.map((id) => {
+            const u = uniqueById(id)!;
+            const row = el('div', 'j-case');
+            row.append(el('div', 'j-case-title', u.name), el('div', 'j-text', u.text), el('div', 'j-find-effect', describeUnique(u)));
+            return row;
+          })),
     );
 
     this.voicesHead.hidden = story.voices.length === 0;

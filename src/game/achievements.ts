@@ -4,6 +4,7 @@ import { UPGRADES } from './upgrades';
 import { NODES } from './layers';
 import { CASES, NOTES, isNight } from './story';
 import { SCRIPTS } from './scripts';
+import { UNIQUES, tailsOf } from './sorting';
 import type { GameState } from './state';
 
 /** Each achievement adds this much to all production, for good. */
@@ -64,6 +65,12 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   // Automation
   { id: 'scripts', name: 'Руки свободны', text: 'Установить все скрипты', check: (s) => SCRIPTS.every((d) => (d.node ? s.recycle.nodes.includes(d.node) : s.scripts.bought.includes(d.id))) },
   { id: 'fail1', name: 'Отказ питания', text: 'Автопрожектор не включился', check: (s) => s.scripts.failures >= 1 },
+  // Sorting
+  { id: 'sort1', name: 'Пересортировка', text: 'Сжечь переработку ради фракций', check: (s) => s.sorting.sorts >= 1 },
+  { id: 'sort10', name: 'Десятый разряд', text: '10 пересортировок', check: (s) => s.sorting.sorts >= 10 },
+  { id: 'clean', name: 'Чистая линия', text: 'Хвосты меньше 10%', check: (s) => s.sorting.open && tailsOf(s.sorting) < 0.1 },
+  { id: 'find12', name: 'Пол-описи', text: `Найти ${UNIQUES.length / 2} уникальных отходов`, check: (s) => s.sorting.found.length >= UNIQUES.length / 2 },
+  { id: 'findAll', name: 'Куча помнит всё', text: 'Найти все уникальные отходы', check: (s) => s.sorting.found.length >= UNIQUES.length },
   // The journal
   { id: 'case1', name: 'Первое дело', text: 'Открыть дело в журнале', check: (s) => s.story.cases.length >= 1 },
   { id: 'ninth', name: 'Девятый в смене', text: 'Открыть дело «Девятый»', check: (s) => s.story.cases.includes('extra') },

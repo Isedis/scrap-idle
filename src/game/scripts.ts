@@ -8,7 +8,7 @@ import type { TrackDef } from './infinite';
  * Recycled material. Speed and the floodlight's reliability level up without end.
  */
 
-export type ScriptId = 'producers' | 'upgrades' | 'endless' | 'recycle' | 'light';
+export type ScriptId = 'producers' | 'upgrades' | 'endless' | 'recycle' | 'light' | 'sort';
 
 export interface ScriptDef {
   id: ScriptId;
@@ -18,6 +18,8 @@ export interface ScriptDef {
   text: string;
   /** Tree node that installs it, for the ones that come from Recycling. */
   node?: string;
+  /** Sorting recipe that installs it. */
+  recipe?: string;
   /** Recycled material to install it, for the rest. */
   cost?: Decimal;
   /** When the install offer shows up, for the bought ones. */
@@ -30,11 +32,13 @@ export const SCRIPTS: readonly ScriptDef[] = [
   { id: 'endless', name: 'buy.endless', title: 'Уплотнитель', text: 'Покупает бесконечные улучшения, самое дешёвое первым.', cost: D(30), hint: 'когда за всю игру собрано 10 млрд кг' },
   { id: 'recycle', name: 'recycle', title: 'Автопереработчик', text: 'Сдаёт всё на переработку сам.', node: 'a3' },
   { id: 'light', name: 'light', title: 'Автопрожектор', text: 'Включает свет сам. Иногда не включает.', cost: D(20), hint: 'после 10 включений прожектора' },
+  { id: 'sort', name: 'sort', title: 'Автосортировщик', text: 'Пересортировывает сам. Сжигает переработку без спроса.', recipe: 'a1' },
 ];
 
 export const scriptById = (id: string) => SCRIPTS.find((s) => s.id === id);
 
 export type RecycleMode = 'gain' | 'time' | 'peak';
+export type SortMode = 'share' | 'time';
 
 export interface ScriptsState {
   /** Scripts installed for Recycled material (the tree ones are owned through their node). */
@@ -59,6 +63,12 @@ export interface ScriptsState {
   lightAt: number;
   /** Times the automatic floodlight failed, over the whole game. */
   failures: number;
+  sortOn: boolean;
+  sortMode: SortMode;
+  /** Resort once the fractions it gives reach this share of all fractions ever earned. */
+  sortShare: number;
+  /** For the time mode: minutes of the sorting cycle. */
+  sortMinutes: number;
   // Not saved: they rebuild within seconds.
   clock: number;
   cooldown: number;
@@ -82,6 +92,10 @@ export function newScripts(): ScriptsState {
     lightOn: true,
     lightAt: 0.9,
     failures: 0,
+    sortOn: false,
+    sortMode: 'share',
+    sortShare: 0.25,
+    sortMinutes: 60,
     clock: 0,
     cooldown: 0,
     peak: 0,
@@ -92,6 +106,9 @@ export const UPGRADE_SHARES = [0.01, 0.1, 0.5, 1] as const;
 export const RECYCLE_MINUTES = [1, 5, 15, 60] as const;
 export const LIGHT_LEVELS = [0.5, 0.75, 0.9] as const;
 export const RECYCLE_MODES: readonly RecycleMode[] = ['gain', 'time', 'peak'];
+export const SORT_MODES: readonly SortMode[] = ['share', 'time'];
+export const SORT_SHARES = [0.1, 0.25, 0.5, 1] as const;
+export const SORT_MINUTES = [10, 30, 60, 120] as const;
 
 /** Tick of the buying scripts without speed levels: as fast as the tree's auto-buyer. */
 export const BASE_TICK = 2;

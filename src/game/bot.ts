@@ -18,8 +18,26 @@ import {
   recycle,
   revealProducers,
   takeNewUpgrades,
+  canResort,
+  resort,
+  resortGain,
   type GameState,
 } from './state';
+import {
+  FRACS,
+  RECIPES,
+  STATIONS,
+  buyAlloy,
+  buyLevel,
+  buyRecipe,
+  canBuyRecipe,
+  levelCost,
+  levelsOf,
+  placeStation,
+  slotCount,
+  stationOpen,
+  type StationId,
+} from './sorting';
 import { milestonesReached, producerById } from './producers';
 import { NODES, REPEATS, canBuyNode, repeatCost } from './layers';
 import { trackCost } from './infinite';
@@ -54,6 +72,8 @@ interface Option {
 
 /** Recycle once the gain at least matches what was earned before, or the run drags on past this. */
 const RECYCLE_PATIENCE = 45 * 60;
+/** With this many times the price on hand, the bot buys a producer in bulk. */
+const RICH = 100;
 /** Threat level at which the bot turns the floodlight on. */
 const LIGHT_AT = 0.5;
 
@@ -62,7 +82,10 @@ const LIGHT_AT = 0.5;
  * itself fastest, recycles when it is worth it and spends Recycled material on the
  * cheapest open tree node. Logs every moment something new appears.
  */
-export function simulate(seconds: number, opts: { recycle?: boolean } = {}): Simulation {
+/** Station order the bot builds: biggest fractions first, the press after them, the crusher last. */
+const BOT_LINE: StationId[] = ['optic', 'blower', 'magnet', 'sieve', 'briquetter', 'crusher'];
+
+export function simulate(seconds: number, opts: { recycle?: boolean; sort?: boolean } = {}): Simulation {
   const s = newGame(0);
   s.buyMode = 'one';
   const events: PaceEvent[] = [];
@@ -100,10 +123,12 @@ export function simulate(seconds: number, opts: { recycle?: boolean } = {}): Sim
     };
     for (const id of s.revealed) {
       const { cost } = purchasePlan(s, id);
+      // Far richer than the price: buy as many as the money allows, as a player would.
+      const rich = s.trash.gte(cost.mul(RICH));
       const extra = gain((c) => (c.owned[id] = (c.owned[id] ?? 0) + 1));
       // Players try a new producer early out of curiosity, so the first unit gets a head start.
       const curiosity = (s.owned[id] ?? 0) === 0 ? 4 : 1;
-      if (extra > 0) list.push({ cost, payback: cost.toNumber() / extra / curiosity, apply: (st) => void buy(st, id) });
+      if (extra > 0) list.push({ cost, payback: cost.toNumber() / extra / curiosity, apply: (st) => void buy(st, id, rich ? 'max' : 'one') });
     }
     for (const t of visibleTracks(s)) {
       const cost = trackCost(t, trackLevel(s, t.id));
@@ -130,8 +155,57 @@ export function simulate(seconds: number, opts: { recycle?: boolean } = {}): Sim
     }
   };
 
+  /** Recipes first (cheapest total), then station levels, then alloys. */
+  const spendSorting = () => {
+    const so = s.sorting;
+    for (;;) {
+      const recipe = RECIPES.filter((x) => canBuyRecipe(so, x)).sort(
+        (a, b) => Object.values(a.cost).reduce((x, y) => x + y, 0) - Object.values(b.cost).reduce((x, y) => x + y, 0),
+      )[0];
+      if (!recipe || !buyRecipe(so, recipe.id)) break;
+      events.push({ t, what: `рецепт: ${recipe.name}` });
+    }
+    // Fill new slots in the bot's order.
+    const wanted = BOT_LINE.filter((id) => stationOpen(so, STATIONS.find((d) => d.id === id)!)).slice(0, slotCount(so));
+    wanted.forEach((id, i) => placeStation(so, i, id));
+    for (let guard = 0; guard < 200; guard++) {
+      const options = wanted.flatMap((id) => (['speed', 'purity'] as const).map((kind) => ({ id, kind, cost: levelCost(levelsOf(so, id)[kind], kind) })));
+      const cheapest = options.sort((a, b) => a.cost.cmp(b.cost)).find((o) => buyLevel(so, o.id, o.kind));
+      if (!cheapest) break;
+    }
+    while (buyAlloy(so)) events.push({ t, what: `сплав ${so.alloys}` });
+  };
+
+  let lastSpend = -Infinity;
+  let sortOpenLogged = false;
+  let sortReadyLogged = false;
   note();
   while (t < seconds) {
+    if (opts.sort && canResort(s) && !sortReadyLogged) {
+      sortReadyLogged = true;
+      events.push({ t, what: `пересортировка доступна (цикл ${Math.round(s.sorting.cycleSeconds / 60)} мин)` });
+    }
+    if (opts.sort && canResort(s)) {
+      const gain = resortGain(s);
+      // Every resort needs ten times more than the last, so the bot takes each one as it comes.
+      if (gain.gt(0)) {
+        resort(s);
+        sortReadyLogged = false;
+        events.push({ t, what: `ПЕРЕСОРТИРОВКА #${s.sorting.sorts}: +${gain.toString()} · ${FRACS.map((f) => s.sorting.fractions[f].floor().toString()).join('/')}` });
+        shown = 0;
+        milestones = {};
+        spendTree();
+        spendSorting();
+        note();
+        continue;
+      }
+    }
+    if (opts.sort && s.sorting.open && t - lastSpend >= 300) {
+      lastSpend = t;
+      if (!sortOpenLogged) events.push({ t, what: 'сортировка открыта' });
+      sortOpenLogged = true;
+      spendSorting();
+    }
     if (opts.recycle && canRecycle(s)) {
       const gain = currentGain(s);
       if (gain.gte(s.recycle.total.max(1)) || s.runSeconds > RECYCLE_PATIENCE) {

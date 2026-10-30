@@ -28,8 +28,10 @@ export const PRODUCERS: readonly ProducerDef[] = [
   { id: 'singularity', name: 'Утилизатор-сингулярность', flavor: 'Мусор входит, ничего не выходит. Даже свет', baseCost: D(1.8e14), baseRate: D(8.2e9) },
 ];
 
+const PRODUCER_BY_ID = new Map(PRODUCERS.map((p) => [p.id, p]));
+
 export function producerById(id: string): ProducerDef | undefined {
-  return PRODUCERS.find((p) => p.id === id);
+  return PRODUCER_BY_ID.get(id);
 }
 
 /** Price of the next unit when `owned` units are already bought; `mult` is a discount from bonuses. */

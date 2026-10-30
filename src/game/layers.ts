@@ -37,7 +37,7 @@ export interface LayerDef {
 
 export const LAYERS: readonly LayerDef[] = [
   { id: 'recycle', name: 'Переработка', currency: 'Вторсырьё', playable: true, teaser: 'Сдай весь мусор на переработку и начни заново сильнее' },
-  { id: 'sorting', name: 'Сортировка', currency: 'Фракции', playable: false, teaser: 'Пластик, металл, стекло и бумага, у каждого свои рецепты' },
+  { id: 'sorting', name: 'Сортировка', currency: 'Фракции', playable: true, teaser: 'Пластик, металл, стекло и бумага, у каждого свои рецепты' },
   { id: 'reform', name: 'Реформа города', currency: 'Районы', playable: false, teaser: 'Город отдаёт районы под твои заводы' },
 ];
 
