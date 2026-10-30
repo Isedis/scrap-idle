@@ -130,7 +130,7 @@ export function newGame(now = Date.now()): GameState {
 const owned = (state: GameState, id: string) => state.owned[id] ?? 0;
 
 /** Multiplier every producer shares: layers, the threat, the story, endless upgrades, achievements. */
-function sharedMult(state: GameState): Decimal {
+export function sharedMult(state: GameState): Decimal {
   return recycleProductionMult(state.recycle)
     .mul(threatMult(state.threat.level, darkPeak(state.tracks, DARK_BONUS)))
     .mul(storyMult(state.story))

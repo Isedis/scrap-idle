@@ -18,6 +18,8 @@ import {
   recycle,
   revealProducers,
   takeNewUpgrades,
+  producerRate,
+  sharedMult,
   canResort,
   resort,
   resortGain,
@@ -38,7 +40,8 @@ import {
   stationOpen,
   type StationId,
 } from './sorting';
-import { milestonesReached, producerById } from './producers';
+import { PRODUCERS, milestonesReached, producerById } from './producers';
+import { upgradeById } from './upgrades';
 import { NODES, REPEATS, canBuyNode, repeatCost } from './layers';
 import { trackCost } from './infinite';
 import type { Decimal } from './num';
@@ -113,30 +116,58 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
   };
 
   const options = (): Option[] => {
-    const base = ratePerSecond(s);
+    // Every option is judged by how much income it adds. Most touch one or two producers,
+    // so only those are worked out again; the rest of the income stays as it is.
+    const shared = sharedMult(s);
+    const rates = new Map(PRODUCERS.map((p) => [p.id, producerRate(s, p.id, shared)]));
+    const base = [...rates.values()].reduce((a, b) => a.add(b));
     const list: Option[] = [];
-    // A shallow copy is enough: only counts and upgrade ids change.
-    const gain = (apply: (c: GameState) => void) => {
-      const copy: GameState = { ...s, owned: { ...s.owned }, upgrades: [...s.upgrades], tracks: { ...s.tracks } };
+    // A shallow copy is enough: only counts, upgrade ids and track levels change. The upgrade
+    // list is copied only when it changes, so income keeps its cached upgrade effects.
+    const copyWith = (apply: (c: GameState) => void, upgrades = false) => {
+      const copy: GameState = { ...s, owned: { ...s.owned }, tracks: { ...s.tracks }, upgrades: upgrades ? [...s.upgrades] : s.upgrades };
       apply(copy);
-      return ratePerSecond(copy).sub(base).toNumber();
+      return copy;
     };
+    /** Extra income from a change that only moves these producers. */
+    const gainIn = (apply: (c: GameState) => void, ids: readonly string[], upgrades = false) => {
+      const copy = copyWith(apply, upgrades);
+      return ids.reduce((sum, id) => sum + producerRate(copy, id, shared).sub(rates.get(id)!).toNumber(), 0);
+    };
+    /** Extra income from a change to the multiplier every producer shares. */
+    const gainShared = (apply: (c: GameState) => void) => base.mul(sharedMult(copyWith(apply)).div(shared)).sub(base).toNumber();
+    /** A producer's units also feed the synergies that name it as their source. */
+    const fedBy = (id: string) => [
+      id,
+      ...s.upgrades.flatMap((uid) => {
+        const e = upgradeById(uid)?.effect;
+        return e?.kind === 'synergy' && e.source === id && e.target !== id ? [e.target] : [];
+      }),
+    ];
     for (const id of s.revealed) {
       const { cost } = purchasePlan(s, id);
       // Far richer than the price: buy as many as the money allows, as a player would.
       const rich = s.trash.gte(cost.mul(RICH));
-      const extra = gain((c) => (c.owned[id] = (c.owned[id] ?? 0) + 1));
+      const extra = gainIn((c) => (c.owned[id] = (c.owned[id] ?? 0) + 1), [...new Set(fedBy(id))]);
       // Players try a new producer early out of curiosity, so the first unit gets a head start.
       const curiosity = (s.owned[id] ?? 0) === 0 ? 4 : 1;
       if (extra > 0) list.push({ cost, payback: cost.toNumber() / extra / curiosity, apply: (st) => void buy(st, id, rich ? 'max' : 'one') });
     }
     for (const t of visibleTracks(s)) {
       const cost = trackCost(t, trackLevel(s, t.id));
-      const extra = gain((c) => (c.tracks[t.id] = trackLevel(c, t.id) + 1));
+      const extra = gainShared((c) => (c.tracks[t.id] = trackLevel(c, t.id) + 1));
       if (extra > 0) list.push({ cost, payback: cost.toNumber() / extra, apply: (st) => void buyTrack(st, t.id) });
     }
     for (const u of availableUpgrades(s)) {
-      const extra = gain((c) => c.upgrades.push(u.id));
+      const e = u.effect;
+      const push = (c: GameState) => void c.upgrades.push(u.id);
+      // A multiplier scales the income it applies to as it is; a synergy moves one producer's bonus.
+      const extra =
+        e.kind === 'global'
+          ? base.toNumber() * (e.mult - 1)
+          : e.kind === 'producer'
+            ? rates.get(e.target)!.toNumber() * (e.mult - 1)
+            : gainIn(push, [e.target], true);
       if (extra > 0) list.push({ cost: u.cost, payback: u.cost.toNumber() / extra, apply: (st) => void buyUpgrade(st, u.id) });
     }
     return list;
