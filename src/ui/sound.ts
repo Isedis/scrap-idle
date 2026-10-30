@@ -1,4 +1,5 @@
 import { Music } from './music';
+import { HuntScore } from './huntScore';
 
 /**
  * Sound, made on the spot with Web Audio: no files to download, and every sound can lean
@@ -33,8 +34,11 @@ export class Sound {
   /** The plant's own din: a bed of grinding and a motor's whine, following the load. */
   private plant: { bed: GainNode; motor: OscillatorNode; whine: OscillatorNode; whineGain: GainNode } | null = null;
   private plantLoad = 0;
-  /** A drone of its own under everything while it is out: two saws a little apart, and a thin whine. */
-  private dread: { gain: GainNode; whine: GainNode } | null = null;
+  /** The score while it is out, in place of the music. */
+  private huntScore: HuntScore | null = null;
+  /** The music gives way: to the silence, to a stop, to its score. */
+  private ducked = false;
+  private hunting = false;
   /** Context time of the next clank of the shredder. */
   private clankAt = 0;
 
@@ -102,7 +106,7 @@ export class Sound {
     const data = this.noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     this.buildPlant(ctx, this.master);
-    this.buildDread(ctx, this.master);
+    this.huntScore = new HuntScore(ctx, this.master);
     this.music = new Music(ctx, this.master);
     this.music.setOn(this.musicOn);
     this.music.start();
@@ -265,45 +269,19 @@ export class Sound {
     this.tone('triangle', 659, 640, 0.8, 0.06, 0.12);
   }
 
-  // ---- Its drone -----------------------------------------------------------------------
+  // ---- Its score -----------------------------------------------------------------------
 
-  private buildDread(ctx: AudioContext, out: AudioNode): void {
-    const gain = ctx.createGain();
-    gain.gain.value = 0;
-    gain.connect(out);
-    const low = ctx.createBiquadFilter();
-    low.type = 'lowpass';
-    low.frequency.value = 900;
-    low.connect(gain);
-    // Two saws a little apart beat against each other: the sound of something wrong.
-    for (const f of [110, 116.5, 155.5]) {
-      const o = ctx.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.value = f;
-      o.connect(low);
-      o.start();
+  /**
+   * Every frame: the score while it is out, in place of the music. `level` rises as it
+   * comes; `stopped` while it listens mid-walk; `silence` in the ten seconds at the door.
+   */
+  score(dt: number, level: number, stopped: boolean, silence: boolean): void {
+    if (!this.huntScore) return;
+    this.huntScore.update(dt, level, stopped, silence);
+    if (this.hunting !== level > 0) {
+      this.hunting = level > 0;
+      this.updateMusic();
     }
-    const whine = ctx.createGain();
-    whine.gain.value = 0;
-    const w = ctx.createOscillator();
-    w.frequency.value = 1870;
-    const lfo = ctx.createOscillator();
-    lfo.frequency.value = 5.3;
-    const depth = ctx.createGain();
-    depth.gain.value = 40;
-    lfo.connect(depth).connect(w.frequency);
-    w.connect(whine).connect(out);
-    w.start();
-    lfo.start();
-    this.dread = { gain, whine };
-  }
-
-  /** Its drone: 0 for nothing, rising as it comes; it goes on through the silence. */
-  setDread(level: number): void {
-    if (!this.ctx || !this.dread) return;
-    const t = this.ctx.currentTime;
-    this.dread.gain.gain.setTargetAtTime(0.035 * level ** 1.5, t, 0.5);
-    this.dread.whine.gain.setTargetAtTime(level > 0.6 ? 0.012 * (level - 0.6) / 0.4 : 0, t, 0.5);
   }
 
   /** Claws along the wall: a screech sweeping down. */
@@ -427,13 +405,18 @@ export class Sound {
   hush(on: boolean): void {
     if (this.hushed === on) return;
     this.hushed = on;
-    this.music?.hush(on);
+    this.updateMusic();
     this.setPlant(this.plantLoad);
   }
 
   /** The music falls away for a moment, as if something stopped to listen. */
   duck(on: boolean): void {
-    if (!this.hushed) this.music?.hush(on);
+    this.ducked = on;
+    this.updateMusic();
+  }
+
+  private updateMusic(): void {
+    this.music?.hush(this.hushed || this.ducked || this.hunting);
   }
 
   /**

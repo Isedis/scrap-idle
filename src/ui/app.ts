@@ -1539,7 +1539,7 @@ export class App {
     const holding = h.phase === 'check' && h.held > 0;
     hunt.near = near;
     this.sound.setHunt(near);
-    this.sound.setDread(near);
+    this.sound.score(dt, near, this.stopFor > 0, holding);
     this.sound.hush(holding);
     this.root.style.setProperty('--near', near.toFixed(3));
     if (h.phase === 'walk' || h.phase === 'check') this.root.dataset.hunt = holding ? 'hold' : h.phase;
@@ -1655,7 +1655,7 @@ export class App {
     hunt.near = 0;
     this.sound.hush(false);
     this.sound.setHunt(0);
-    this.sound.setDread(0);
+    this.sound.score(0, 0, false, false);
     this.sound.heard();
     this.dread.scare();
     this.glitch(2);
