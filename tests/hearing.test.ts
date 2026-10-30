@@ -193,11 +193,18 @@ describe('hearing in the game', () => {
     const s = sortingGame();
     setNoise(s.hearing, 1.7);
     s.hearing.phase = 'walk';
-    s.hearing.walk = 240;
+    s.hearing.walk = 100;
     s.hearing.left = 100;
     s.hearing.survived = 4;
     const back = deserialize(serialize(s))!;
     expect(back.hearing).toEqual(s.hearing);
+
+    // A walk saved longer than a walk now lasts is cut down on load.
+    const long = JSON.parse(serialize(s));
+    long.hearing.walk = long.hearing.left = 280;
+    const cut = deserialize(JSON.stringify(long))!.hearing;
+    expect(cut.walk).toBe(WALK_MAX);
+    expect(cut.left).toBe(WALK_MAX);
 
     const v8 = JSON.parse(serialize(s));
     v8.v = 8;
