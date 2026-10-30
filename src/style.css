@@ -1405,23 +1405,6 @@ button { font: inherit; color: inherit; }
 }
 #app[data-hunt='check']::after { animation: heartbeat 0.9s ease-in-out infinite; }
 
-/* The silence: black over everything, one number counting down. */
-.hush {
-  position: fixed;
-  inset: 0;
-  z-index: 58;
-  display: grid;
-  place-content: center;
-  gap: 10px;
-  pointer-events: none;
-  background: rgb(0 0 0 / 0.9);
-  color: var(--danger);
-  text-align: center;
-  letter-spacing: 0.2em;
-}
-.hush-count { font-size: 96px; font-weight: 700; line-height: 1; text-shadow: 0 0 24px rgb(255 107 87 / 0.6); animation: heartbeat 1.6s ease-in-out infinite; }
-.hush-line { font-size: 14px; }
-.hush-line.small { font-size: 11px; color: var(--mid); opacity: 0.6; }
 
 /* It left: what was heard in the silence. */
 .lost.left { background: rgb(0 0 0 / 0.94); color: var(--mid); cursor: pointer; }
@@ -1572,12 +1555,3 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 }
 
 
-/* At the door: the dark screen with camera 03 in the middle of it. */
-.hush-cam { width: min(calc(100vw - 32px), 520px); }
-.hush-cam .feed { height: 230px; }
-#app[data-cams='off'] .hush-cam .feed { height: 230px; }
-#app[data-cams='off'] .hush-cam .feed-canvas { display: block; }
-#app[data-cams='off'] .hush-cam .feed-label,
-#app[data-cams='off'] .hush-cam .feed-rec { top: 6px; transform: none; }
-#app[data-cams='off'] .hush-cam .feed-rec { right: 8px; }
-.hush-cam .feed-fold { display: none; }

@@ -33,6 +33,8 @@ export class Sound {
   /** The plant's own din: a bed of grinding and a motor's whine, following the load. */
   private plant: { bed: GainNode; motor: OscillatorNode; whine: OscillatorNode; whineGain: GainNode } | null = null;
   private plantLoad = 0;
+  /** A drone of its own under everything while it is out: two saws a little apart, and a thin whine. */
+  private dread: { gain: GainNode; whine: GainNode } | null = null;
   /** Context time of the next clank of the shredder. */
   private clankAt = 0;
 
@@ -100,6 +102,7 @@ export class Sound {
     const data = this.noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     this.buildPlant(ctx, this.master);
+    this.buildDread(ctx, this.master);
     this.music = new Music(ctx, this.master);
     this.music.setOn(this.musicOn);
     this.music.start();
@@ -262,6 +265,76 @@ export class Sound {
     this.tone('triangle', 659, 640, 0.8, 0.06, 0.12);
   }
 
+  // ---- Its drone -----------------------------------------------------------------------
+
+  private buildDread(ctx: AudioContext, out: AudioNode): void {
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    gain.connect(out);
+    const low = ctx.createBiquadFilter();
+    low.type = 'lowpass';
+    low.frequency.value = 900;
+    low.connect(gain);
+    // Two saws a little apart beat against each other: the sound of something wrong.
+    for (const f of [110, 116.5, 155.5]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      o.connect(low);
+      o.start();
+    }
+    const whine = ctx.createGain();
+    whine.gain.value = 0;
+    const w = ctx.createOscillator();
+    w.frequency.value = 1870;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 5.3;
+    const depth = ctx.createGain();
+    depth.gain.value = 40;
+    lfo.connect(depth).connect(w.frequency);
+    w.connect(whine).connect(out);
+    w.start();
+    lfo.start();
+    this.dread = { gain, whine };
+  }
+
+  /** Its drone: 0 for nothing, rising as it comes; it goes on through the silence. */
+  setDread(level: number): void {
+    if (!this.ctx || !this.dread) return;
+    const t = this.ctx.currentTime;
+    this.dread.gain.gain.setTargetAtTime(0.035 * level ** 1.5, t, 0.5);
+    this.dread.whine.gain.setTargetAtTime(level > 0.6 ? 0.012 * (level - 0.6) / 0.4 : 0, t, 0.5);
+  }
+
+  /** Claws along the wall: a screech sweeping down. */
+  scrape(): void {
+    if (!this.ctx || !this.master || !this.noise) return;
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.setValueAtTime(4200, t);
+    f.frequency.exponentialRampToValueAtTime(2300, t + 1.2);
+    f.Q.value = 14;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.1);
+    for (let k = 1; k < 10; k++) g.gain.setValueAtTime(k % 2 ? 0.2 : 0.5, t + k * 0.11);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.25);
+    src.connect(f).connect(g).connect(this.master);
+    src.start(t);
+    src.stop(t + 1.3);
+  }
+
+  /** Seen facing the lens: a hard, wrong chord and a hit. */
+  sting(): void {
+    for (const f of [466, 494, 622, 740]) this.tone('square', f, f * 0.97, 1.3, 0.05, 0, true);
+    this.burst(0.25, 0.45, 'lowpass', 2000, 0, 1, true);
+    this.tone('sine', 90, 40, 0.8, 0.3, 0, true);
+  }
+
   // ---- The plant ---------------------------------------------------------------------
 
   private buildPlant(ctx: AudioContext, out: AudioNode): void {
@@ -409,8 +482,11 @@ export class Sound {
   /** Three knocks on the booth door: dull, slow, even, as Ignatyev wrote. */
   knock(): void {
     for (let i = 0; i < 3; i++) {
-      this.tone('sine', 110, 60, 0.25, 0.35, i * 0.55, true);
-      this.burst(0.07, 0.45, 'bandpass', 700, i * 0.55, 2, true);
+      this.tone('sine', 110, 60, 0.25, 0.45, i * 0.55, true);
+      this.tone('square', 80, 45, 0.35, 0.15, i * 0.55, true);
+      this.burst(0.07, 0.6, 'bandpass', 700, i * 0.55, 2, true);
+      // The wood answers with a rattle of the frame.
+      this.burst(0.25, 0.12, 'bandpass', 2400, i * 0.55 + 0.03, 5, true);
     }
   }
 

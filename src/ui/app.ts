@@ -31,7 +31,7 @@ import { ICONS } from './icons';
 import { el, progress, syncChildren, textBar } from './dom';
 export { textBar } from './dom';
 import { Scene, type SceneView } from './scene';
-import { RecyclePanel, corridorView, plantView } from './recyclePanel';
+import { RecyclePanel, plantView } from './recyclePanel';
 import { JournalPanel } from './journalPanel';
 import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
@@ -300,6 +300,7 @@ export class App {
     );
     this.panels.set('recycle', this.recyclePanel.root);
     this.recyclePanel.camSlot.after(this.hearingBar.root);
+    this.recyclePanel.corridor.onSting = () => this.sound.sting();
     // A tap on camera 03 while something happens there catches it, like on camera 01.
     this.recyclePanel.camera.root.addEventListener('click', () => {
       const kind = this.recyclePanel.camera.live;
@@ -406,7 +407,7 @@ export class App {
     this.lostEl.hidden = true;
     this.lostEl.setAttribute('role', 'alert');
 
-    this.root.append(header, main, nav, this.toastEl, this.hearingBar.hush, this.lostEl, this.intro.root, this.awayScreen.root);
+    this.root.append(header, main, nav, this.toastEl, this.lostEl, this.intro.root, this.awayScreen.root);
     // Every camera can fold away to a thin strip; one choice for all of them.
     // The journal's monitor is where recordings are watched: it never folds.
     for (const feed of this.root.querySelectorAll<HTMLElement>('.feed')) if (!feed.closest('.j-monitor')) this.addCameraFold(feed);
@@ -1183,15 +1184,12 @@ export class App {
     const state = this.getState();
     if (!this.losing) this.dread.update(dt, stageIndex(state.threat.level));
     if (!this.losing) this.huntFrame(dt, state);
-    // In the silence camera 03 is on the dark screen, whatever the tab, folded or not.
-    const silence = state.hearing.phase === 'check' && state.hearing.held > 0;
-    if (silence) this.recyclePanel.corridor.update(dt, corridorView(state));
     // The journal's monitor shows camera 01 live, or the recording it plays, folded or not.
     if (!this.journalPanel.root.hidden) this.journalPanel.monitor.frame(dt, this.yardView(state), plantView(state));
     // Folded cameras draw nothing, which also spares the battery.
     if (this.root.dataset.cams === 'off') return;
     if (!this.sortingPanel.root.hidden) this.sortingPanel.frame(dt, state);
-    if (!this.recyclePanel.root.hidden && !silence) this.recyclePanel.frame(dt, state);
+    if (!this.recyclePanel.root.hidden) this.recyclePanel.frame(dt, state);
     if (!this.automationPanel.root.hidden) this.automationPanel.frame(dt, state);
     if (!this.panels.get('upgrades')!.hidden) {
       this.workshop.update(dt, {
@@ -1539,14 +1537,9 @@ export class App {
     const h = state.hearing;
     const near = h.phase === 'walk' ? nearness(h) : h.phase === 'check' ? 1 : 0;
     const holding = h.phase === 'check' && h.held > 0;
-    // During the silence the screen goes dark around camera 03: the camera moves into it.
-    const cam = this.recyclePanel.corridor.root;
-    if (holding && cam.parentElement !== this.hearingBar.hushCam) {
-      cam.hidden = false;
-      this.hearingBar.hushCam.append(cam);
-    } else if (!holding && cam.parentElement === this.hearingBar.hushCam) this.recyclePanel.camSlot.append(cam);
     hunt.near = near;
     this.sound.setHunt(near);
+    this.sound.setDread(near);
     this.sound.hush(holding);
     this.root.style.setProperty('--near', near.toFixed(3));
     if (h.phase === 'walk' || h.phase === 'check') this.root.dataset.hunt = holding ? 'hold' : h.phase;
@@ -1592,6 +1585,8 @@ export class App {
         this.stopFor = 5 + Math.random() * 3;
         this.hearingBar.listening = true;
         this.recyclePanel.corridor.listening = true;
+        // It draws a breath, right by the microphone.
+        this.sound.breath(1, true);
         this.recyclePanel.corridor.say('ТИШИНА · ОНО ПРИСЛУШИВАЕТСЯ', 8);
         this.sound.duck(true);
         this.typeLine('ОНО ОСТАНОВИЛОСЬ. СЛУШАЕТ');
@@ -1602,7 +1597,7 @@ export class App {
         // Every 4 seconds at first, nearly every second at the end, never quite even.
         c.step = (4 - 3.1 * near) * (0.75 + Math.random() * 0.5);
         this.sound.step(near, pan);
-        this.recyclePanel.corridor.huntStep(near, pan);
+        if (this.recyclePanel.corridor.huntStep(near, pan)) this.sound.scrape();
         this.scene.glitch(0.08 + 0.15 * near);
       }
       if (near > 0.5 && c.breath <= 0) {
@@ -1660,6 +1655,7 @@ export class App {
     hunt.near = 0;
     this.sound.hush(false);
     this.sound.setHunt(0);
+    this.sound.setDread(0);
     this.sound.heard();
     this.dread.scare();
     this.glitch(2);
