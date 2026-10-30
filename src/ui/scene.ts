@@ -73,7 +73,7 @@ const EVENT_SECONDS: Partial<Record<EventKind, number>> = {
   lampTurn: 2.5,
   breathe: 8,
   gull: 5,
-  raccoon: 6,
+  raccoon: 7,
   cat: 7,
 };
 
@@ -670,6 +670,7 @@ export class Scene {
     this.drawStacks();
     this.drawPlants();
     this.drawLamp();
+    this.drawFence();
 
     // Middle plane.
     this.drawHeap();
@@ -835,10 +836,12 @@ export class Scene {
         return [this.driverlessX(p) + 70, this.laneY(1) - 20];
       case 'gull':
         return [-20 + u * (this.w + 40), this.h * 0.25 + Math.sin(p.t * 3) * 6];
-      case 'raccoon':
-        return [this.heapX - this.heapHalf * 0.6 + Math.sin(p.t * 1.2) * 10, this.horizon + 2];
+      case 'raccoon': {
+        const [bx, by] = this.raccoonBag();
+        return p.t < 5 ? [bx, by - 8] : [bx - (p.t - 5) * 40, this.surface(bx - (p.t - 5) * 40) - 3];
+      }
       case 'cat':
-        return [this.w + 10 - u * (this.w + 20), this.laneY(0) - 3];
+        return [this.catX(p.t), this.fenceTop - 6];
       default:
         return null;
     }
@@ -942,33 +945,203 @@ export class Scene {
         });
         break;
       }
-      case 'raccoon': {
-        const [x, y] = a!;
-        ctx.globalAlpha = fade;
-        this.actor(() => {
-          this.ctx.beginPath();
-          this.ctx.ellipse(x, y - 3, 5, 3, 0, 0, Math.PI * 2);
-          this.paint(C.green, 1);
-          this.circle(x + 5, y - 5, 2.2, C.light, 0.8);
-          this.box(x - 9, y - 4, 4, 2, C.deep, 0.6);
-        });
-        ctx.globalAlpha = 1;
+      case 'raccoon':
+        this.drawRaccoon(p.t, fade);
         break;
-      }
-      case 'cat': {
-        const [x, y] = a!;
-        this.actor(() => {
-          this.ctx.beginPath();
-          this.ctx.ellipse(x, y, 4.5, 2.4, 0, 0, Math.PI * 2);
-          this.paint(C.green, 1);
-          this.circle(x - 4.5, y - 2.5, 2, C.green, 0.8);
-          this.box(x + 4, y - 6, 1.2, 5, C.green, 0.6);
-        });
+      case 'cat':
+        this.drawCat(p.t);
         break;
-      }
       default:
         break;
     }
+  }
+
+  // ---- The fence, the cat and the raccoon ---------------------------------------
+
+  /** Top of the yard's fence, right of the heap. */
+  private get fenceTop() {
+    return this.horizon - 16;
+  }
+
+  /** A chain-link fence on concrete posts along the back of the yard, right of the heap. */
+  private drawFence(): void {
+    const { ctx } = this;
+    const x0 = this.heapX + this.heapHalf * 0.6;
+    const top = this.fenceTop;
+    const y = this.horizon;
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = C.deep;
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    for (let x = x0; x < this.w + 16; x += 4) {
+      ctx.moveTo(x, top);
+      ctx.lineTo(x - 16, y);
+      ctx.moveTo(x - 16, top);
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    this.line(x0, top, this.w, top, C.hub, 1.4);
+    this.line(x0, top + 8, this.w, top + 8, C.deep, 1);
+    for (let x = x0; x < this.w; x += 14) this.box(x - 1, top - 1, 2.5, y - top + 1, C.far, 0.8);
+  }
+
+  /** Where the cat is on the fence: comes in from the right, sits, jumps down behind it. */
+  private catX(t: number): number {
+    const stop = this.w * 0.86;
+    return t < 2.2 ? this.w + 12 - (this.w + 12 - stop) * (t / 2.2) : stop;
+  }
+
+  /**
+   * A cat on the fence: walks along the top, sits down, its tail sweeping; turns to the
+   * camera with eyes that catch the light; then drops down behind the fence.
+   */
+  private drawCat(t: number): void {
+    const { ctx } = this;
+    const x = this.catX(t);
+    const jump = t > 5.6 ? (t - 5.6) / 1.4 : 0;
+    const y = this.fenceTop - 1 + jump * jump * 30;
+    const sitting = t >= 2.2 && t < 5.6;
+    const looking = t > 3.4 && t < 5.4;
+    ctx.save();
+    ctx.globalAlpha = 1 - jump;
+    this.actor(() => {
+      const c = this.ctx;
+      if (!sitting) {
+        // Walking left: body, head ahead, tail up behind, legs stepping.
+        const step = Math.sin(t * 10) * 1.5;
+        for (const [lx, ph] of [[-4, 1], [-2, -1], [3, -1], [5, 1]] as const) this.line(x + lx, y - 3, x + lx + step * ph, y, C.green, 1.2);
+        c.beginPath();
+        c.ellipse(x, y - 5, 6.5, 3, 0, 0, Math.PI * 2);
+        this.paint(C.green, 1);
+        this.drawCatHead(x - 7.5, y - 8, false);
+        c.beginPath();
+        c.moveTo(x + 6, y - 6);
+        c.quadraticCurveTo(x + 11, y - 9, x + 9 + Math.sin(t * 4) * 2, y - 15);
+        c.lineWidth = this.mode === 'halo' ? 4.5 : 1.6;
+        c.strokeStyle = this.mode === 'halo' ? '#040e08' : C.green;
+        c.stroke();
+      } else {
+        // Sitting: upright body, tail sweeping along the fence.
+        c.beginPath();
+        c.ellipse(x, y - 6, 4, 6, 0, 0, Math.PI * 2);
+        this.paint(C.green, 1);
+        this.drawCatHead(x - 0.5, y - 14, looking);
+        c.beginPath();
+        c.moveTo(x + 3, y - 1);
+        c.quadraticCurveTo(x + 9, y + 1, x + 11, y - 2 + Math.sin(t * 3) * 3);
+        c.lineWidth = this.mode === 'halo' ? 4.5 : 1.6;
+        c.strokeStyle = this.mode === 'halo' ? '#040e08' : C.green;
+        c.stroke();
+      }
+    });
+    ctx.restore();
+  }
+
+  /** A cat's head with two ears; looking at the camera, its eyes shine. */
+  private drawCatHead(x: number, y: number, looking: boolean): void {
+    this.circle(x, y, 3.2, C.green, 1);
+    this.poly([[x - 3, y - 1.5], [x - 2.6, y - 4.6], [x - 0.6, y - 2.6]], C.green, 0.6);
+    this.poly([[x + 3, y - 1.5], [x + 2.6, y - 4.6], [x + 0.6, y - 2.6]], C.green, 0.6);
+    if (looking && this.mode !== 'halo') {
+      this.ctx.fillStyle = C.light;
+      this.ctx.fillRect(x - 1.8, y - 0.6, 1.4, 1.4);
+      this.ctx.fillRect(x + 0.6, y - 0.6, 1.4, 1.4);
+    }
+  }
+
+  /** Where the bag with the raccoon lies: on the left slope of the heap. */
+  private raccoonBag(): [number, number] {
+    const x = this.heapX - this.heapHalf * 0.6;
+    return [x, this.surface(x) + 2];
+  }
+
+  /**
+   * A raccoon in a bag: the bag shakes, a masked head looks out, the raccoon climbs out
+   * with its striped tail, and runs off down the heap, leaving the bag empty.
+   */
+  private drawRaccoon(t: number, fade: number): void {
+    const { ctx } = this;
+    const [bx, by] = this.raccoonBag();
+    ctx.save();
+    ctx.globalAlpha = fade;
+    // The bag: shaking while something moves inside, slack once it is out.
+    const empty = t > 5;
+    const shake = t < 2 ? Math.sin(t * 18) * 0.15 * (Math.sin(t * 3) > 0 ? 1 : 0.2) : 0;
+    this.actor(() => {
+      const c = this.ctx;
+      c.save();
+      c.translate(bx, by);
+      c.rotate(shake);
+      c.scale(1, empty ? 0.6 : 1);
+      c.beginPath();
+      c.moveTo(-8, 0);
+      c.quadraticCurveTo(-10, -9, -3, -12);
+      c.lineTo(3, -12);
+      c.quadraticCurveTo(10, -9, 8, 0);
+      c.closePath();
+      this.paint(C.items[1], 1);
+      // The knot, torn open.
+      this.poly([[-2, -12], [-4, -15], [0, -13], [4, -16], [2, -12]], C.items[1], 0.8);
+      c.restore();
+    });
+    if (t >= 2 && t < 5) {
+      // Looking out, then climbing out over the edge.
+      const rise = Math.min((t - 2) / 0.6, 1) * 4 + (t > 3.5 ? Math.min((t - 3.5) / 1.2, 1) * 6 : 0);
+      const hx = bx;
+      const hy = by - 12 - rise;
+      if (t > 3.5) this.drawRaccoonBody(bx + 3, by - 12 - rise + 6, Math.min((t - 3.5) / 1.2, 1), false);
+      this.drawRaccoonHead(hx, hy, t);
+    } else if (t >= 5) {
+      // Running off down the slope.
+      const x = bx - (t - 5) * 40;
+      const y = this.surface(x) - 3;
+      this.drawRaccoonBody(x + 5, y, 1, true, t);
+      this.drawRaccoonHead(x, y - 2, t);
+    }
+    ctx.restore();
+  }
+
+  private drawRaccoonBody(x: number, y: number, shown: number, running: boolean, t = 0): void {
+    this.actor(() => {
+      const c = this.ctx;
+      if (running) for (const [lx, ph] of [[-3, 1], [3, -1]] as const) this.line(x + lx, y, x + lx + Math.sin(t * 14) * 2 * ph, y + 3, C.green, 1.2);
+      c.beginPath();
+      c.ellipse(x, y, 6 * shown, 3.5, 0, 0, Math.PI * 2);
+      this.paint(C.green, 1);
+      // A striped tail.
+      for (let k = 0; k < 4; k++) this.circle(x + 6 + k * 2.4, y - 1 - k * 0.6, 1.6, k % 2 ? '#1c3a26' : C.light, 0.5);
+    });
+  }
+
+  /** The masked face: small round ears, a dark mask round two bright eyes, a pale pointed snout. */
+  private drawRaccoonHead(x: number, y: number, t: number): void {
+    this.actor(() => {
+      this.circle(x - 2.8, y - 3, 1.4, C.green, 0.8);
+      this.circle(x + 2.8, y - 3, 1.4, C.green, 0.8);
+      const c = this.ctx;
+      c.beginPath();
+      c.ellipse(x, y, 4, 3.2, 0, 0, Math.PI * 2);
+      this.paint(C.lime, 1);
+      // The snout, pointing at the camera.
+      this.poly([[x - 1.6, y + 1], [x + 1.6, y + 1], [x, y + 3.6]], C.light, 0.6);
+      if (this.mode === 'halo') return;
+      // The mask: two dark patches joined across the face.
+      c.fillStyle = '#04120a';
+      c.beginPath();
+      c.ellipse(x - 1.8, y - 0.2, 1.8, 1.2, -0.3, 0, Math.PI * 2);
+      c.ellipse(x + 1.8, y - 0.2, 1.8, 1.2, 0.3, 0, Math.PI * 2);
+      c.fill();
+      c.fillRect(x - 1, y - 0.8, 2, 0.9);
+      const blink = Math.sin(t * 2.3) > 0.95;
+      c.fillStyle = C.light;
+      if (!blink) {
+        c.fillRect(x - 2.2, y - 0.7, 1, 1);
+        c.fillRect(x + 1.3, y - 0.7, 1, 1);
+      }
+      c.fillStyle = '#04120a';
+      c.fillRect(x - 0.6, y + 2.8, 1.2, 0.9);
+    });
   }
 
   /** The fridge on the heap: door swinging open, light inside. `open` 0..1. */
@@ -1112,6 +1285,24 @@ export class Scene {
     this.ctx.beginPath();
     this.ctx.arc(x, y, r, 0, Math.PI * 2);
     this.paint(fill, line);
+  }
+
+  private poly(points: [number, number][], fill: string, line = 1.2): void {
+    this.ctx.beginPath();
+    points.forEach(([x, y], i) => (i ? this.ctx.lineTo(x, y) : this.ctx.moveTo(x, y)));
+    this.ctx.closePath();
+    this.paint(fill, line);
+  }
+
+  /** A stroke: legs and tails, thicker and dark in the halo pass. */
+  private line(x1: number, y1: number, x2: number, y2: number, color: string, width = 1): void {
+    const { ctx } = this;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.lineWidth = this.mode === 'halo' ? width + 3 : width;
+    ctx.strokeStyle = this.mode === 'halo' ? HALO : color;
+    ctx.stroke();
   }
 
   private drawStars(): void {

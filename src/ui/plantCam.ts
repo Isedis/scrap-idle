@@ -44,6 +44,8 @@ interface Playing {
 }
 
 const BALE_SPEED = 22;
+/** The review desk's marks, the same red as on camera 01. */
+const HUD_RED = '#ff6b57';
 
 /** How long each recording on this camera plays, seconds. */
 export const PLANT_SECONDS: Partial<Record<EventKind, number>> = {
@@ -144,6 +146,7 @@ export class PlantCam extends Camera<PlantView> {
       this.playing = null;
       this.replay = null;
     }
+    this.updateZoom(dt);
     const speed = this.speed;
     this.belt = (this.belt + BALE_SPEED * speed * dt) % 12;
     this.teeth += 6 * speed * dt;
@@ -233,6 +236,8 @@ export class PlantCam extends Camera<PlantView> {
     const shake = this.speed > 1 && !this.reducedMotion ? (this.speed - 1) * 1.6 : 0;
     const jx = () => (shake ? rnd(-shake, shake) : 0);
 
+    ctx.save();
+    this.applyZoom();
     this.drawHall(lit);
     this.drawBooth(has('o1'), has('o2'));
     this.drawBelt();
@@ -252,17 +257,117 @@ export class PlantCam extends Camera<PlantView> {
     this.drawBoard(v, has);
     if (v.loud) this.drawMeter(v.noise);
     if (this.is('plantListener')) this.drawListener();
+    ctx.restore();
+
     if (this.is('plantEcho')) this.drawEcho();
+    if (lit < 1) {
+      ctx.fillStyle = `rgb(0 0 0 / ${0.45 * (1 - lit)})`;
+      ctx.fillRect(0, 0, w, h);
+    }
+    this.drawReticle();
     if (this.replay) {
       ctx.fillStyle = 'rgb(0 0 0 / 0.6)';
       ctx.fillRect(w / 2 - 70, h - 16, 140, 13);
       this.label(this.replay, w / 2, h - 6, C.light);
     }
-    if (lit < 1) {
-      ctx.fillStyle = `rgb(0 0 0 / ${0.45 * (1 - lit)})`;
-      ctx.fillRect(0, 0, w, h);
-    }
     this.vignette(v.threat);
+  }
+
+  // ---- Replay zoom: like camera 01, the review desk closes in on what happened ---------
+
+  /** Where each recording happens, or null for one without a spot. */
+  private anchor(): [number, number] | null {
+    const t = this.evT;
+    const fl = this.floor;
+    switch (this.playing?.kind) {
+      case 'plantShred':
+        return [this.shredX, fl - 18];
+      case 'plantListener':
+        return [this.siloX - 18, fl - 96];
+      case 'plantBale': {
+        const from = this.shredX - 26;
+        return [from - (from - 70) * Math.min(t / 4, 1), this.beltY - 10];
+      }
+      case 'plantBooth':
+        return [19, fl - 32];
+      case 'plantRat':
+        return [this.ratX(t), this.beltY - 4];
+      case 'plantSteam':
+        return [this.shredX, fl - 62];
+      default:
+        return null;
+    }
+  }
+
+  /** What changed in the picture, written on the review desk. */
+  private static readonly FINDINGS: Partial<Record<EventKind, string>> = {
+    plantShred: 'ВРАЩЕНИЕ БЕЗ ПИТАНИЯ',
+    plantListener: 'ПОСТОРОННИЙ У СИЛОСА',
+    plantBale: 'ДВИЖЕНИЕ ПРОТИВ ЛЕНТЫ',
+    plantBooth: 'ДВЕРЬ ОТКРЫТА ИЗНУТРИ',
+    plantRat: 'ЖИВОТНОЕ НА ЛЕНТЕ',
+    plantSteam: 'ВЫБРОС ПАРА',
+  };
+
+  private zoom = { scale: 1, x: 0, y: 0 };
+
+  /** Eases in on a replayed recording, follows it, and eases out before the end. */
+  private updateZoom(dt: number): void {
+    const a = this.replay ? this.anchor() : null;
+    const want = a && this.playing && this.evT < this.playing.seconds - 0.7 ? 2.5 : 1;
+    const k = this.reducedMotion ? 1 : Math.min(dt * 3.5, 1);
+    this.zoom.scale += (want - this.zoom.scale) * k;
+    if (a) {
+      if (this.zoom.scale < 1.02) [this.zoom.x, this.zoom.y] = a;
+      this.zoom.x += (a[0] - this.zoom.x) * k;
+      this.zoom.y += (a[1] - this.zoom.y) * k;
+    }
+  }
+
+  /** Translation that puts the zoom point in the middle, without showing past the edges. */
+  private zoomOffset(): [number, number] {
+    const { scale, x, y } = this.zoom;
+    const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+    return [clamp(this.w / 2 - x * scale, this.w - this.w * scale, 0), clamp(this.h / 2 - y * scale, this.h - this.h * scale, 0)];
+  }
+
+  private applyZoom(): void {
+    if (this.zoom.scale <= 1.001) return;
+    const [ox, oy] = this.zoomOffset();
+    this.ctx.translate(ox, oy);
+    this.ctx.scale(this.zoom.scale, this.zoom.scale);
+  }
+
+  /** Corner brackets around the object, the zoom readout and what changed. */
+  private drawReticle(): void {
+    const a = this.replay ? this.anchor() : null;
+    if (!a || this.zoom.scale < 1.3) return;
+    const { ctx } = this;
+    const [ox, oy] = this.zoomOffset();
+    const sx = a[0] * this.zoom.scale + ox;
+    const sy = a[1] * this.zoom.scale + oy;
+    const r = 14 * this.zoom.scale;
+    const c = r * 0.45;
+    ctx.strokeStyle = HUD_RED;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = Math.sin(this.evT * 8) > -0.3 ? 0.95 : 0.5;
+    ctx.beginPath();
+    for (const [dx, dy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const x = sx + dx * r;
+      const y = sy + dy * r;
+      ctx.moveTo(x, y - dy * c);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x - dx * c, y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = HUD_RED;
+    ctx.font = '10px "JetBrains Mono Variable", monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`ZOOM ×${this.zoom.scale.toFixed(1)}`, 8, this.h - 22);
+    const finding = this.playing && PlantCam.FINDINGS[this.playing.kind];
+    if (finding) ctx.fillText(finding, 8, 34);
+    ctx.fillText('ОБЪЕКТ', Math.min(sx + r + 4, this.w - 44), Math.max(sy - r + 8, 12));
   }
 
   // ---- The hall -----------------------------------------------------------------------
@@ -558,12 +663,16 @@ export class PlantCam extends Camera<PlantView> {
     if (t > 4) this.label('?', x, y - 12, C.light);
   }
 
+  /** Runs, stops to sniff, runs on. */
+  private ratX(t: number): number {
+    const run = t < 1.5 ? t : t < 2.6 ? 1.5 : t - 1.1;
+    return 40 + run * 50;
+  }
+
   private drawRat(): void {
     const { ctx } = this;
     const t = this.evT;
-    // Runs, stops to sniff, runs on.
-    const run = t < 1.5 ? t : t < 2.6 ? 1.5 : t - 1.1;
-    const x = 40 + run * 50;
+    const x = this.ratX(t);
     const y = this.beltY - 3;
     this.actor(() => {
       ctx.beginPath();

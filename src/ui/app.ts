@@ -551,7 +551,7 @@ export class App {
       return (text.length * TYPE_MS_PER_CHAR) / 1000 + 1.5;
     }
     this.scene.playEvent(kind, replay);
-    const seconds: Partial<Record<EventKind, number>> = { lampTurn: 2.5, lampBlink: 3, eyes: 4.5, fridge: 5, gull: 5, bag: 6, note: 6, raccoon: 6, extra: 7, cat: 7, breathe: 8, driverless: 9 };
+    const seconds: Partial<Record<EventKind, number>> = { lampTurn: 2.5, lampBlink: 3, eyes: 4.5, fridge: 5, gull: 5, bag: 6, note: 6, raccoon: 7, extra: 7, cat: 7, breathe: 8, driverless: 9 };
     return seconds[kind] ?? 5;
   }
 
