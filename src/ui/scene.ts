@@ -111,10 +111,21 @@ interface Junk {
 /** Screen background the dim bodies fade toward, and the brightest phosphor. */
 const PHOSPHOR_BG = [6, 20, 12];
 const PHOSPHOR_HI = [216, 255, 220];
-const phosphorCache = new Map<string, { body: string; edge: string }>();
 
-/** Splits a colour into a dim body and a bright edge for the vector-terminal look. */
-function phosphor(hex: string): { body: string; edge: string } {
+interface Phosphor {
+  /** Fill for scenery: mostly sunk into the background. */
+  body: string;
+  /** Fill for actors: brighter so they stand out. */
+  actorBody: string;
+  /** Edge for actors: the brightest lines on screen. */
+  edge: string;
+  /** Edge for scenery: dimmer, so it never competes with actors. */
+  dimEdge: string;
+}
+const phosphorCache = new Map<string, Phosphor>();
+
+/** Splits a colour into bodies and edges for the vector-terminal look. */
+function phosphor(hex: string): Phosphor {
   let out = phosphorCache.get(hex);
   if (out) return out;
   const n = parseInt(hex.slice(1), 16);
@@ -122,13 +133,18 @@ function phosphor(hex: string): { body: string; edge: string } {
   const mix = (a: number[], b: number[], t: number) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(' ')})`;
   const luma = (rgb[0] * 0.3 + rgb[1] * 0.59 + rgb[2] * 0.11) / 255;
   out = {
-    body: mix(rgb, PHOSPHOR_BG, 0.72),
-    // Dark parts (tyres, outlines) still get a visible mid-green edge.
-    edge: luma < 0.25 ? '#4fa868' : mix(rgb, PHOSPHOR_HI, 0.3),
+    body: mix(rgb, PHOSPHOR_BG, 0.78),
+    actorBody: mix(rgb, PHOSPHOR_BG, 0.55),
+    // Dark parts (tyres) still get a visible edge.
+    edge: luma < 0.25 ? '#6fcf8a' : mix(rgb, PHOSPHOR_HI, 0.4),
+    dimEdge: luma < 0.25 ? '#2f6b45' : mix(rgb, PHOSPHOR_BG, 0.4),
   };
   phosphorCache.set(hex, out);
   return out;
 }
+
+/** Dark outline drawn around actors so they separate from the busy background. */
+const HALO = 'rgb(4 14 8)';
 
 const MAX_ITEMS = 24;
 const MAX_PARTICLES = 160;
@@ -168,6 +184,8 @@ export class Scene {
   private flashColor = C.glow;
   private glitchLeft = 0;
   private reducedMotion: boolean;
+  /** How `paint` draws: dim scenery, bright actors, or the dark halo behind actors. */
+  private mode: 'scenery' | 'actor' | 'halo' = 'scenery';
 
   constructor(private canvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
@@ -567,10 +585,10 @@ export class Scene {
     if (this.owned('press') > 0) this.drawPress();
 
     // Back lane first, then trucks, then the front lane, so nearer things overlap farther ones.
-    for (const wk of this.walkers) if (wk.lane === 0) this.drawWalker(wk);
-    for (const tr of this.trucks) this.drawTruck(tr);
-    for (const wk of this.walkers) if (wk.lane === 1) this.drawWalker(wk);
-    for (const it of this.items) this.drawItem(it);
+    for (const wk of this.walkers) if (wk.lane === 0) this.actor(() => this.drawWalker(wk));
+    for (const tr of this.trucks) this.actor(() => this.drawTruck(tr));
+    for (const wk of this.walkers) if (wk.lane === 1) this.actor(() => this.drawWalker(wk));
+    for (const it of this.items) this.actor(() => this.drawItem(it));
     this.drawParticles();
 
     if (this.flashAlpha > 0) {
@@ -583,22 +601,42 @@ export class Scene {
   }
 
   /**
-   * Draws the current path the way a vector terminal would: a dim body and a bright
-   * phosphor edge. `line` 0 means a plain solid fill.
+   * Draws the current path the way a vector terminal would: a dim body and a phosphor
+   * edge. Scenery is dimmer than actors; in the halo pass only a thick dark outline is
+   * drawn. `line` 0 means a plain solid fill.
    */
   private paint(fill: string, line = 1.2): void {
     const { ctx } = this;
+    if (this.mode === 'halo') {
+      if (line <= 0) return;
+      ctx.strokeStyle = HALO;
+      ctx.lineWidth = line + 3.5;
+      ctx.stroke();
+      ctx.fillStyle = HALO;
+      ctx.fill();
+      return;
+    }
     if (line <= 0) {
       ctx.fillStyle = fill;
       ctx.fill();
       return;
     }
-    const { body, edge } = phosphor(fill);
-    ctx.fillStyle = body;
+    const p = phosphor(fill);
+    const actor = this.mode === 'actor';
+    ctx.fillStyle = actor ? p.actorBody : p.body;
     ctx.fill();
-    ctx.strokeStyle = edge;
+    ctx.strokeStyle = actor ? p.edge : p.dimEdge;
     ctx.lineWidth = line;
     ctx.stroke();
+  }
+
+  /** Draws a moving thing in two passes: a dark halo first, then the bright figure on top. */
+  private actor(draw: () => void): void {
+    this.mode = 'halo';
+    draw();
+    this.mode = 'actor';
+    draw();
+    this.mode = 'scenery';
   }
 
   private box(x: number, y: number, bw: number, bh: number, fill: string, line = 1.2): void {
