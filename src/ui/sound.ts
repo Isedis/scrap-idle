@@ -28,6 +28,8 @@ export class Sound {
   private threat = 0;
   /** Context time of the next creak under pressure. */
   private creakAt = 0;
+  /** Everything but the one that listens is silent. */
+  private hushed = false;
 
   constructor() {
     let stored: string | null = null;
@@ -105,7 +107,7 @@ export class Sound {
     this.music?.setThreat(level);
     const t = this.ctx.currentTime;
     if (level >= 0.25 && t >= this.creakAt) {
-      if (this.creakAt > 0) this.creak();
+      if (this.creakAt > 0 && !this.hushed) this.creak();
       this.creakAt = t + (25 + Math.random() * 35) / (1 + 2 * level);
     }
   }
@@ -148,8 +150,8 @@ export class Sound {
 
   // ---- One-off sounds ------------------------------------------------------------
 
-  private tone(type: OscillatorType, from: number, to: number, seconds: number, gain: number, delay = 0): void {
-    if (!this.ctx || !this.master) return;
+  private tone(type: OscillatorType, from: number, to: number, seconds: number, gain: number, delay = 0, it = false): void {
+    if (!this.ctx || !this.master || (this.hushed && !it)) return;
     const t = this.ctx.currentTime + delay;
     const o = this.ctx.createOscillator();
     const g = this.ctx.createGain();
@@ -163,8 +165,8 @@ export class Sound {
     o.stop(t + seconds + 0.02);
   }
 
-  private burst(seconds: number, gain: number, filter: BiquadFilterType, freq: number, delay = 0, q = 1): void {
-    if (!this.ctx || !this.master || !this.noise) return;
+  private burst(seconds: number, gain: number, filter: BiquadFilterType, freq: number, delay = 0, q = 1, it = false): void {
+    if (!this.ctx || !this.master || !this.noise || (this.hushed && !it)) return;
     const t = this.ctx.currentTime + delay;
     const src = this.ctx.createBufferSource();
     src.buffer = this.noise;
@@ -201,7 +203,7 @@ export class Sound {
 
   /** A whisper: breath through a narrow filter, swelling and fading. */
   whisper(): void {
-    if (!this.ctx || !this.master || !this.noise) return;
+    if (!this.ctx || !this.master || !this.noise || this.hushed) return;
     const t = this.ctx.currentTime;
     const src = this.ctx.createBufferSource();
     src.buffer = this.noise;
@@ -243,6 +245,75 @@ export class Sound {
   chime(): void {
     this.tone('triangle', 880, 860, 0.6, 0.08);
     this.tone('triangle', 659, 640, 0.8, 0.06, 0.12);
+  }
+
+  // ---- The one that listens --------------------------------------------------------
+
+  /** The music drags and comes apart as it comes: 0 for nothing, 1 at the door. */
+  setHunt(near: number): void {
+    this.music?.setBroken(near);
+  }
+
+  /**
+   * Silence for everything but it: the music and every other sound stop at once,
+   * and what is left is what it makes.
+   */
+  hush(on: boolean): void {
+    if (this.hushed === on) return;
+    this.hushed = on;
+    this.music?.hush(on);
+  }
+
+  /** A footstep somewhere in the plant: a heavy thud and grit, louder as it comes. */
+  step(near: number): void {
+    const g = 0.06 + 0.22 * near;
+    this.tone('sine', 150, 55, 0.35, g, 0, true);
+    this.burst(0.18, g * 1.4, 'lowpass', 900, 0.01, 1, true);
+    // Metal underfoot.
+    this.burst(0.06, g * 0.6, 'bandpass', 2600, 0.03, 4, true);
+  }
+
+  /** Breathing: a slow draw in and a longer breath out, close enough to hear the wet in it. */
+  breath(near: number, close = false): void {
+    if (!this.ctx || !this.master || !this.noise) return;
+    const t = this.ctx.currentTime;
+    const peak = (close ? 0.32 : 0.05 + 0.12 * near);
+    for (const [at, len, from, to] of [[0, 1.1, 500, 900], [1.3, 1.8, 800, 380]] as const) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noise;
+      src.loop = true;
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'bandpass';
+      f.frequency.setValueAtTime(from, t + at);
+      f.frequency.linearRampToValueAtTime(to, t + at + len);
+      f.Q.value = close ? 2.5 : 4;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t + at);
+      g.gain.exponentialRampToValueAtTime(peak, t + at + len * 0.4);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + at + len);
+      src.connect(f).connect(g).connect(this.master);
+      src.start(t + at, Math.random() * 0.5);
+      src.stop(t + at + len + 0.05);
+    }
+  }
+
+  /** Right by the booth: a wet click in its throat and a low scrape along the door. */
+  near(): void {
+    if (Math.random() < 0.5) {
+      // Clicks, two or three, too regular.
+      for (let i = 0; i < 2 + Math.floor(Math.random() * 2); i++) this.burst(0.025, 0.35, 'bandpass', 1800, i * 0.11, 6, true);
+    } else {
+      this.tone('sawtooth', 95, 70, 1.6, 0.05, 0, true);
+      this.burst(1.4, 0.06, 'bandpass', 1300, 0, 8, true);
+    }
+  }
+
+  /** It heard: a scream of metal and a blow that cuts off everything. */
+  heard(): void {
+    this.tone('sawtooth', 900, 120, 1.4, 0.16, 0, true);
+    this.tone('square', 1350, 160, 1.2, 0.08, 0.05, true);
+    this.burst(0.5, 0.5, 'lowpass', 1200, 1.2, 1, true);
+    this.tone('square', 120, 40, 2.5, 0.25, 1.2, true);
   }
 
   /** The shift lost: static and a long falling drone. */

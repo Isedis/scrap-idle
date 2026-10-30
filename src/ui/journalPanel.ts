@@ -2,6 +2,7 @@ import { CASES, CASE_BONUS, NOTES, eventById, unwatched, type Recording } from '
 import type { GameState } from '../game/state';
 import { ACHIEVEMENTS, achievementMult } from '../game/achievements';
 import { UNIQUES, describeUnique, uniqueById } from '../game/sorting';
+import { HEARD } from '../game/hearing';
 import { el } from './dom';
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -30,6 +31,8 @@ export class JournalPanel {
   private finds!: HTMLElement;
   private findsHead!: HTMLElement;
   private findsMeta!: HTMLElement;
+  private heard!: HTMLElement;
+  private heardHead!: HTMLElement;
   private achMeta!: HTMLElement;
   private achToggle!: HTMLButtonElement;
   /** The full achievement grid is long: closed, only the next few goals show. */
@@ -68,6 +71,10 @@ export class JournalPanel {
     this.finds = el('div', 'j-list');
     this.root.append(this.findsHead, this.finds);
 
+    this.heardHead = el('h2', 'panel-title', 'Тишина');
+    this.heard = el('div', 'j-list');
+    this.root.append(this.heardHead, this.heard);
+
     this.voicesHead = el('h2', 'panel-title', 'КАМ-00');
     this.voices = el('div', 'j-voices');
     this.root.append(this.voicesHead, this.voices);
@@ -92,7 +99,7 @@ export class JournalPanel {
   render(state: GameState): void {
     this.lastState = state;
     const story = state.story;
-    const sig = JSON.stringify([story.records.map((r) => [r.seq, r.watched]), story.cases, story.notes, story.voices.length, state.achievements.length, state.sorting.found.length, state.sorting.open, this.achOpen]);
+    const sig = JSON.stringify([story.records.map((r) => [r.seq, r.watched]), story.cases, story.notes, story.voices.length, state.achievements.length, state.sorting.found.length, state.sorting.open, state.hearing.survived, this.achOpen]);
     if (sig === this.shown) return;
     this.shown = sig;
 
@@ -131,6 +138,11 @@ export class JournalPanel {
             return row;
           })),
     );
+
+    // What was heard in the silence, one line for each walk lived through.
+    const heard = Math.min(state.hearing.survived, HEARD.length);
+    this.heardHead.hidden = this.heard.hidden = heard === 0;
+    this.heard.replaceChildren(...HEARD.slice(0, heard).map((line) => el('div', 'j-note', line)));
 
     this.voicesHead.hidden = story.voices.length === 0;
     // The last few things camera 00 said; the rest scroll away.

@@ -62,6 +62,7 @@ import {
   type ScriptId,
   type ScriptsState,
 } from './scripts';
+import { afterLoss, hearingTick, newHearing, noiseMult, type HearingState } from './hearing';
 import {
   FIRST_EVENT_SECONDS,
   FRESH_CASE_FACTOR,
@@ -119,6 +120,8 @@ export interface GameState {
   scripts: ScriptsState;
   /** Second prestige layer: the sorting line, the inspection table, recipes. */
   sorting: SortingState;
+  /** The one that listens: the plant's noise and how much it has heard. */
+  hearing: HearingState;
   /** Epoch ms of the last simulated moment, used for offline progress. */
   lastTick: number;
 }
@@ -145,6 +148,7 @@ export function newGame(now = Date.now()): GameState {
     autoRecycle: { on: false, factor: 1 },
     scripts: newScripts(),
     sorting: newSorting(),
+    hearing: newHearing(),
     lastTick: now,
   };
 }
@@ -164,7 +168,8 @@ export function sharedMult(state: GameState): Decimal {
     .mul(storyMult(state.story))
     .mul(compactMult(state.tracks))
     .mul(achievementMult(state.achievements))
-    .mul(sortingIncome(state.sorting));
+    .mul(sortingIncome(state.sorting))
+    .mul(noiseMult(state.hearing, state.sorting.open));
 }
 
 /** One multiplier in the income, for the breakdown the player can open. */
@@ -190,6 +195,7 @@ export function incomeBreakdown(state: GameState): { base: Decimal; parts: Incom
     { label: 'Достижения', mult: D(achievementMult(state.achievements)), note: '+1% за каждое' },
     { label: 'Пересортировки', mult: Decimal.pow(SORT_INCOME, so.sorts).mul(rankIncome(so.sorts)), note: '×2 за каждую и разряды' },
     { label: 'Фракции', mult: fractionsIncome(so.total), note: 'все фракции за игру' },
+    { label: 'Шум цеха', mult: D(noiseMult(state.hearing, so.open)), note: 'громче — больше, но оно слышит' },
     { label: 'Рецепты и находки', mult: D((hasRecipe(so, 'e1') ? 3 : 1) * uniqueMult(so, 'income')), note: 'сортировка' },
   ];
   const base = PRODUCERS.reduce((sum, p) => sum.add(p.baseRate.mul(owned(state, p.id))), D(0));
@@ -261,6 +267,9 @@ const OFFLINE_SLICES = 200;
  */
 export function advance(state: GameState, seconds: number, offline = false): void {
   if (seconds <= 0) return;
+  // Closed, the plant runs at normal load: louder is only for someone who is there to hear.
+  const noise = state.hearing.noise;
+  if (offline) state.hearing.noise = Math.min(noise, 1);
   const slice = offline ? Math.max(seconds / OFFLINE_SLICES, SLICE_SECONDS) : SLICE_SECONDS;
   for (let left = seconds; left > 0; left -= slice) {
     const dt = Math.min(slice, left);
@@ -278,9 +287,11 @@ export function advance(state: GameState, seconds: number, offline = false): voi
     // What falls back into the heap pushes it up, but never over the edge by itself.
     if (pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
     if (!state.sorting.open && state.recycle.total.gte(SORT_AT)) state.sorting.open = true;
-    // At the edge production stops; the game plays the loss and calls loseShift.
-    if (state.threat.level >= 1) break;
+    hearingTick(state.hearing, dt, state.sorting.open, offline);
+    // At the edge production stops; the game plays the loss and calls loseShift or loseToHearing.
+    if (state.threat.level >= 1 || state.hearing.phase === 'caught') break;
   }
+  if (offline) state.hearing.noise = noise;
   revealProducers(state);
 }
 
@@ -707,6 +718,24 @@ export function runScripts(state: GameState, dt: number, rng: () => number = Mat
 /** The threat reached the edge: the run is lost with nothing in return. Recycling progress stays. */
 export function loseShift(state: GameState): void {
   state.threat.losses += 1;
+  startNewRun(state);
+}
+
+/**
+ * It heard the plant: the whole of Recycling is gone, the tree and the scripts bought with it
+ * included, and the run starts over. Sorting stays.
+ */
+export function loseToHearing(state: GameState): void {
+  const old = state.recycle;
+  const layer = newLayer();
+  layer.resets = old.resets;
+  layer.bestSeconds = old.bestSeconds;
+  state.recycle = layer;
+  const sc = state.scripts;
+  sc.bought = [];
+  sc.speed = 0;
+  sc.reliability = 0;
+  afterLoss(state.hearing);
   startNewRun(state);
 }
 

@@ -5,6 +5,7 @@ import { advance, autoRecycleDue, autoSortDue, newGame, revealProducers, runScri
 import { applyOffline, readSave, writeSave } from './game/save';
 import { AWAY_SCREEN_SECONDS, awayReport, awaySnapshot, type AwayReport } from './game/away';
 import { App } from './ui/app';
+import { holdCheck } from './game/hearing';
 import { CHECK_EVERY_MS, latestBuild, reloadInto } from './update';
 
 const AUTOSAVE_MS = 10_000;
@@ -66,6 +67,8 @@ function frame(): void {
     welcomeBack(seconds, awayReport(snapshot, state, seconds), raw);
     dt = 0;
   } else {
+    // The minute at the door starts once the player can see it, not under the away screen.
+    if (app.covered()) holdCheck(state.hearing, dt);
     advance(state, dt);
     state.lastTick = now;
   }

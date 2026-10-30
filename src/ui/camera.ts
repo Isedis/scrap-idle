@@ -1,5 +1,6 @@
 import { C, HALO, phosphor } from './scene';
 import { el } from './dom';
+import { drawLurker } from './lurker';
 
 /**
  * Shared ground for the security cameras on the other tabs: the same night-vision look
@@ -62,6 +63,7 @@ export abstract class Camera<V> {
     this.t += dt;
     if (!this.reducedMotion) this.simulate(dt);
     this.draw();
+    drawLurker(this.ctx, this.w, this.h, this.t);
     if (this.flashAlpha > 0) {
       this.ctx.fillStyle = C.glow;
       this.ctx.globalAlpha = this.flashAlpha;

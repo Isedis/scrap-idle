@@ -98,6 +98,16 @@ export class Dread {
     }
   }
 
+  /** A label flickers now, outside the threat's own pace. */
+  flicker(): void {
+    this.glitch();
+  }
+
+  /** The face, if sharp moments are on. */
+  scare(): void {
+    if (this.sharp && !this.reducedMotion) this.face();
+  }
+
   /** A label flickers into the wrong word or into noise, then comes back. */
   private glitch(): void {
     const nodes = [...this.root.querySelectorAll<HTMLElement>(TARGETS)].filter((n) => n.offsetParent && !n.dataset.dread);

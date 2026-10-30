@@ -15,6 +15,7 @@ import {
   recycle,
   lightUp,
   loseShift,
+  loseToHearing,
   depthOf,
   darkPeakOf,
   incomeBreakdown,
@@ -46,6 +47,9 @@ import { FAIL_LINES } from '../game/scripts';
 import { checkAchievements, ACH_BONUS } from '../game/achievements';
 import { COMPACT_MILESTONE, type TrackDef } from '../game/infinite';
 import { Dread } from './dread';
+import { HearingBar } from './hearingBar';
+import { hunt } from './lurker';
+import { heardLine, nearness, setNoise, type HearingPhase } from '../game/hearing';
 import { eventById, unwatched, watch, type EventKind, type Recording } from '../game/story';
 import { RECYCLE_AT, hasNode, holdMs, milestoneBase, passiveBonus } from '../game/layers';
 import { STAGES, stageIndex, threatActive, threatMult } from '../game/threat';
@@ -64,6 +68,20 @@ const STAGE_NOTES = [
 type Tab = 'dump' | 'upgrades' | 'recycle' | 'auto' | 'journal' | 'settings';
 
 /** Seconds a terminal-only event stays on screen. */
+/** The one that listens took Recycling: the black screen holds a little longer. */
+const HEARD_MS = 6000;
+/** "It left": the line heard in the silence stays this long unless tapped away. */
+const LEFT_MS = 9000;
+/** Lines the terminal types while it walks. */
+const HUNT_LINES = [
+  'КАМ-03: ДВИЖЕНИЕ В ЦЕХУ. ИСТОЧНИК НЕ ОПРЕДЕЛЁН',
+  'ДАТЧИК ДВЕРИ ЦЕХА: ОТКРЫТО. ЗАКРЫТО. ОТКРЫТО',
+  'ВЕС НА ЛЕНТЕ: 212 КГ. ЛЕНТА СТОИТ',
+  'ОНО ИДЁТ НА ЗВУК',
+  'ШАГИ НЕ СОВПАДАЮТ С ЭХОМ',
+  'ОПЕРАТОР, СТАНЬТЕ ТИШЕ',
+  'ДАТЧИК ДВИЖЕНИЯ: КОРИДОР К БУДКЕ',
+];
 const CAM00_SECONDS = 1.6;
 const TYPE_MS_PER_CHAR = 70;
 
@@ -160,6 +178,11 @@ export class App {
   private live = new Map<EventKind, Recording>();
   private replaying = false;
   private dread!: Dread;
+  private hearingBar!: HearingBar;
+  /** Phase of the one that listens the screen last showed. */
+  private knownPhase: HearingPhase = 'idle';
+  /** Seconds to the next footstep, breath, terminal line and flicker while it walks. */
+  private huntClocks = { step: 1, breath: 3, say: 8, flicker: 2, near: 1.5 };
   private sharpButton!: HTMLButtonElement;
   private panels = new Map<Tab, HTMLElement>();
   private tabs = new Map<Tab, HTMLButtonElement>();
@@ -193,6 +216,7 @@ export class App {
     this.knownRecycleReady = canRecycle(state);
     this.knownStage = stageIndex(state.threat.level);
     this.knownSortOpen = state.sorting.open;
+    this.knownPhase = state.hearing.phase === 'caught' ? 'check' : state.hearing.phase;
   }
 
   private build(): void {
@@ -227,7 +251,11 @@ export class App {
     this.consoleEl = el('div', 'console');
     this.consoleEl.hidden = true;
     this.consoleEl.addEventListener('click', () => this.catchLive('typing') || this.catchLive('voice'));
-    header.append(figures, this.incomeEl, this.buildThreat(), this.consoleEl);
+    this.hearingBar = new HearingBar((noise) => {
+      setNoise(this.getState().hearing, noise);
+      this.render();
+    });
+    header.append(figures, this.incomeEl, this.buildThreat(), this.hearingBar.root, this.consoleEl);
 
     this.recyclePanel = new RecyclePanel(
       this.getState,
@@ -332,7 +360,7 @@ export class App {
     this.lostEl.hidden = true;
     this.lostEl.setAttribute('role', 'alert');
 
-    this.root.append(header, main, nav, this.toastEl, this.lostEl, this.intro.root, this.awayScreen.root);
+    this.root.append(header, main, nav, this.toastEl, this.hearingBar.hush, this.lostEl, this.intro.root, this.awayScreen.root);
     // Every camera can fold away to a thin strip; one choice for all of them.
     for (const feed of this.root.querySelectorAll<HTMLElement>('.feed')) this.addCameraFold(feed);
     this.setCamerasFolded(camerasFolded());
@@ -502,6 +530,11 @@ export class App {
   }
 
   /** The screen after a long absence; `then` runs once it is closed. */
+  /** A screen covers the game: the away report or a walk-through. */
+  covered(): boolean {
+    return !this.awayScreen.root.hidden || !this.intro.root.hidden;
+  }
+
   showAway(report: AwayReport, capped: number | null, then: () => void): void {
     this.awayScreen.show(report, capped, then);
   }
@@ -1087,6 +1120,7 @@ export class App {
   frame(dt: number): void {
     const state = this.getState();
     if (!this.losing) this.dread.update(dt, stageIndex(state.threat.level));
+    if (!this.losing) this.huntFrame(dt, state);
     // Folded cameras draw nothing, which also spares the battery.
     if (this.root.dataset.cams === 'off') return;
     if (!this.sortingPanel.root.hidden) this.sortingPanel.frame(dt, state);
@@ -1295,6 +1329,7 @@ export class App {
     this.autoButton.setAttribute('aria-pressed', String(state.autobuy));
 
     this.renderThreat(state);
+    this.renderHearing(state);
     this.sound.setThreat(state.threat.level);
     if (!this.incomeEl.hidden) this.renderIncome(state);
   }
@@ -1313,6 +1348,145 @@ export class App {
       ...parts.map((p) => row(`×${p.mult.lt(10) ? p.mult.toNumber().toFixed(2) : format(p.mult)}`, p.label, p.note, p.mult.lt(1) ? 'loss' : '')),
       row(`${format(ratePerSecond(state))}`, 'Итого', 'кг/с', 'total'),
     );
+  }
+
+  /** The plant's noise in the header, and what the one that listens is doing. */
+  private renderHearing(state: GameState): void {
+    const h = state.hearing;
+    const open = state.sorting.open;
+    if (open && !noiseToldOf()) {
+      markNoiseTold();
+      this.toast('Новое: шум цеха в шапке. Выше 100% — больше дохода. Но что-то слушает');
+    }
+    this.hearingBar.render(h, open);
+    const was = this.knownPhase;
+    this.knownPhase = h.phase;
+    if (h.phase === was) return;
+    if (h.phase === 'walk') {
+      this.sound.heard();
+      this.glitch(1.2);
+      this.pop(this.hearingBar.root, 'alarm');
+      this.typeLine('КАМ-03: ОНО УСЛЫШАЛО ЦЕХ');
+      this.toast('ОНО УСЛЫШАЛО. Идёт к будке, остановить нельзя. Когда подойдёт: шум на 0 и ни звука 10 секунд');
+      navigator.vibrate?.([200, 80, 200]);
+    } else if (h.phase === 'check') {
+      this.sound.step(1);
+      this.glitch(0.8);
+      this.pop(this.hearingBar.root, 'alarm');
+      this.typeLine('ОНО У ДВЕРИ');
+      this.toast('ОНО У ДВЕРИ. Минута: опустите шум до 0 и не трогайте 10 секунд');
+      navigator.vibrate?.([300, 100, 300]);
+    } else if (h.phase === 'caught') {
+      this.loseToListener();
+    } else if (h.phase === 'idle' && was === 'check') {
+      this.itLeft(h.survived);
+    }
+  }
+
+  /** Every frame while it walks or waits at the door: steps, breath, music coming apart, the screen. */
+  private huntFrame(dt: number, state: GameState): void {
+    const h = state.hearing;
+    const near = h.phase === 'walk' ? nearness(h) : h.phase === 'check' ? 1 : 0;
+    const holding = h.phase === 'check' && h.held > 0;
+    hunt.near = near;
+    this.sound.setHunt(near);
+    this.sound.hush(holding);
+    this.root.style.setProperty('--near', near.toFixed(3));
+    if (h.phase === 'walk' || h.phase === 'check') this.root.dataset.hunt = holding ? 'hold' : h.phase;
+    else delete this.root.dataset.hunt;
+    if (near === 0) return;
+
+    const c = this.huntClocks;
+    for (const k of Object.keys(c) as (keyof typeof c)[]) c[k] -= dt;
+    if (h.phase === 'walk') {
+      if (c.step <= 0) {
+        // Every 4 seconds at first, nearly every second at the end.
+        c.step = (4 - 3.1 * near) * (0.85 + Math.random() * 0.3);
+        this.sound.step(near);
+        this.scene.glitch(0.08 + 0.15 * near);
+        const main = this.root.querySelector('main');
+        main?.classList.add('hunt-step');
+        window.setTimeout(() => main?.classList.remove('hunt-step'), 140);
+      }
+      if (near > 0.5 && c.breath <= 0) {
+        c.breath = 7 - 3 * near;
+        this.sound.breath(near);
+      }
+      if (c.say <= 0) {
+        c.say = 40 - 25 * near;
+        this.typeLine(HUNT_LINES[Math.floor(Math.random() * HUNT_LINES.length)]);
+      }
+      if (c.flicker <= 0) {
+        c.flicker = (6 - 4.8 * near) * (0.6 + Math.random() * 0.8);
+        this.dread.flicker();
+      }
+    } else if (holding) {
+      // Silence: only it, right by the door.
+      if (c.breath <= 0) {
+        c.breath = 3.2;
+        this.sound.breath(1, true);
+      }
+      if (c.near <= 0) {
+        c.near = 1.6 + Math.random() * 1.6;
+        this.sound.near();
+      }
+    } else {
+      // At the door, waiting: breathing and the screen breaking, no more steps.
+      if (c.breath <= 0) {
+        c.breath = 3.5;
+        this.sound.breath(1);
+      }
+      if (c.flicker <= 0) {
+        c.flicker = 0.8 + Math.random();
+        this.dread.flicker();
+      }
+    }
+  }
+
+  /** It heard: the black screen, then Recycling is gone. */
+  private loseToListener(): void {
+    if (this.losing) return;
+    this.losing = true;
+    hunt.near = 0;
+    this.sound.hush(false);
+    this.sound.setHunt(0);
+    this.sound.heard();
+    this.dread.scare();
+    this.glitch(2);
+    delete this.root.dataset.hunt;
+    const lines = ['КАМ-03', 'ОНО УСЛЫШАЛО', 'ПЕРЕРАБОТКА ПОТЕРЯНА'];
+    this.lostEl.replaceChildren(...lines.map((l, i) => el('div', `lost-line l${i}`, l)));
+    this.lostEl.hidden = false;
+    window.setTimeout(() => {
+      const state = this.getState();
+      loseToHearing(state);
+      writeSave(state);
+      this.resetKnown();
+      this.toastQueue = [];
+      this.lostEl.hidden = true;
+      this.losing = false;
+      this.show('dump');
+      this.toast('Оно забрало свалку, улучшения и всю переработку. Сортировка осталась');
+      this.render();
+    }, HEARD_MS);
+  }
+
+  /** The silence held: it leaves, and what was heard in it is written down. */
+  private itLeft(survived: number): void {
+    this.sound.hush(false);
+    const line = heardLine(survived);
+    const box = el('div', 'lost left');
+    box.setAttribute('role', 'status');
+    box.append(el('div', 'lost-line l0', 'КАМ-03'), el('div', 'lost-line l1', 'ОНО УШЛО'), el('div', 'lost-line l2 heard-line', line));
+    const close = () => {
+      clearTimeout(timer);
+      box.remove();
+    };
+    const timer = window.setTimeout(close, LEFT_MS);
+    box.addEventListener('click', close);
+    this.root.append(box);
+    writeSave(this.getState());
+    this.toast('Оно ушло. Услышанное записано в журнал');
   }
 
   private renderThreat(state: GameState): void {
@@ -1383,5 +1557,24 @@ function saveCamerasFolded(folded: boolean): void {
     localStorage.setItem(CAMS_KEY, folded ? 'off' : 'on');
   } catch {
     // Without storage the cameras simply open again next time.
+  }
+}
+
+/** Whether the plant's noise was introduced on this device; a convenience, so local storage is enough. */
+const NOISE_KEY = 'scrap-idle-intro-noise';
+
+function noiseToldOf(): boolean {
+  try {
+    return localStorage.getItem(NOISE_KEY) === '1';
+  } catch {
+    return true;
+  }
+}
+
+function markNoiseTold(): void {
+  try {
+    localStorage.setItem(NOISE_KEY, '1');
+  } catch {
+    // Without storage it is simply told again next time.
   }
 }

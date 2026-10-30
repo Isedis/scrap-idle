@@ -1,5 +1,6 @@
 import type { Decimal } from '../game/num';
 import type { EventKind } from '../game/story';
+import { drawLurker } from './lurker';
 
 /** Palette of the camera feed: a night-vision picture in phosphor greens with amber lights. */
 export const C = {
@@ -706,6 +707,7 @@ export class Scene {
     ctx.restore();
     this.drawReticle();
     this.drawDread();
+    drawLurker(ctx, w, h, this.t);
 
     if (this.flashAlpha > 0) {
       ctx.globalAlpha = this.flashAlpha;

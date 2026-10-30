@@ -1328,3 +1328,101 @@ button { font: inherit; color: inherit; }
 .volume { display: grid; grid-template-columns: auto minmax(0, 1fr) 48px; align-items: center; gap: 12px; min-height: 44px; }
 .volume-range { width: 100%; min-height: 44px; accent-color: var(--glow); }
 .volume-value { color: var(--glow); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* ---- The one that listens: the plant's noise ---- */
+.noise {
+  width: 100%;
+  margin-top: 6px;
+  padding: 3px 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: rgb(0 0 0 / 0.25);
+}
+
+.noise-top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.noise-load { overflow: hidden; text-overflow: ellipsis; }
+.noise-heard { color: var(--mid); overflow: hidden; text-overflow: ellipsis; }
+.noise.loud .noise-heard { color: var(--danger); }
+
+/* A track split at normal load: green is safe, red is heard. */
+.noise-slider {
+  --fill: 50%;
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  touch-action: none;
+  cursor: pointer;
+}
+.noise-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--dim) 0 50%, rgb(255 107 87 / 0.55) 50% 100%);
+}
+.noise-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--dim) 0 50%, rgb(255 107 87 / 0.55) 50% 100%);
+}
+.noise-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  margin-top: -10px;
+  border: 2px solid var(--glow);
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: var(--glow-shadow);
+}
+.noise-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--glow);
+  border-radius: 50%;
+  background: var(--ink);
+}
+.noise.loud .noise-slider::-webkit-slider-thumb { border-color: var(--danger); box-shadow: 0 0 10px rgb(255 107 87 / 0.6); }
+.noise.loud .noise-slider::-moz-range-thumb { border-color: var(--danger); }
+
+.noise[data-phase='walk'] { border-color: var(--danger); }
+.noise[data-phase='walk'] .noise-heard { color: var(--danger); font-weight: 700; }
+.noise[data-phase='check'] { border-color: var(--danger); animation: urge 0.8s steps(2) infinite; }
+.noise[data-phase='check'] .noise-load { color: var(--danger); font-weight: 700; }
+.noise.alarm { animation: alarm 0.6s ease 3; }
+
+/* While it walks the edges go red, more the nearer it is; each step jolts the screen. */
+#app[data-hunt]::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 41;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 45%, transparent calc(70% - 35% * var(--near, 0)), rgb(90 0 0 / calc(0.25 + 0.6 * var(--near, 0))) 100%);
+}
+#app[data-hunt='check']::after { animation: heartbeat 0.9s ease-in-out infinite; }
+main.hunt-step { transform: translate(-2px, 2px); }
+
+/* The silence: black over everything, one number counting down. */
+.hush {
+  position: fixed;
+  inset: 0;
+  z-index: 58;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  pointer-events: none;
+  background: rgb(0 0 0 / 0.9);
+  color: var(--danger);
+  text-align: center;
+  letter-spacing: 0.2em;
+}
+.hush-count { font-size: 96px; font-weight: 700; line-height: 1; text-shadow: 0 0 24px rgb(255 107 87 / 0.6); animation: heartbeat 1.6s ease-in-out infinite; }
+.hush-line { font-size: 14px; }
+.hush-line.small { font-size: 11px; color: var(--mid); opacity: 0.6; }
+
+/* It left: what was heard in the silence. */
+.lost.left { background: rgb(0 0 0 / 0.94); color: var(--mid); cursor: pointer; }
+.lost.left .l2 { max-width: 34ch; margin: 0 auto; font-size: 15px; font-weight: 400; line-height: 1.55; letter-spacing: 0.02em; color: var(--glow); }
