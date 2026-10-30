@@ -455,6 +455,10 @@ export class App {
     b.id = `tab-${tab}`;
     b.innerHTML = icon;
     b.append(el('span', '', label));
+    // Switch on touch-down: a finger that drifts a little would turn the tap into a scroll and lose the click.
+    b.addEventListener('pointerdown', (e) => {
+      if (e.button === 0) this.show(tab);
+    });
     b.addEventListener('click', () => this.show(tab));
     this.tabs.set(tab, b);
     return b;

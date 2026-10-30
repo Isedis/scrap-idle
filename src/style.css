@@ -882,11 +882,13 @@ button { font: inherit; color: inherit; }
   z-index: 10;
   display: flex;
   justify-content: center;
-  gap: 8px;
-  padding-top: 6px;
-  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  gap: 0;
+  padding-top: 4px;
+  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(8px, env(safe-area-inset-left, 0px));
+  padding-right: max(8px, env(safe-area-inset-right, 0px));
+  /* The bar never scrolls the page, so every touch on it is a tap. */
+  touch-action: none;
   background: color-mix(in srgb, var(--bg) 94%, transparent);
   border-top: 1px solid var(--line);
 }
@@ -894,7 +896,7 @@ button { font: inherit; color: inherit; }
 .tab {
   flex: 1;
   max-width: 180px;
-  height: 52px;
+  height: 56px;
   display: flex;
   flex-direction: column;
   align-items: center;
