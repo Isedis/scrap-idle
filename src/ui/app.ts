@@ -48,6 +48,7 @@ import { checkAchievements, ACH_BONUS } from '../game/achievements';
 import { COMPACT_MILESTONE, type TrackDef } from '../game/infinite';
 import { Dread } from './dread';
 import { HearingBar } from './hearingBar';
+import { HuntFx } from './huntFx';
 import { hunt } from './lurker';
 import { heardLine, nearness, setNoise, type HearingPhase } from '../game/hearing';
 import { PHRASES, PLANT_KINDS, eventById, unwatched, watch, type EventDef, type EventKind, type Recording } from '../game/story';
@@ -181,6 +182,8 @@ export class App {
   private live = new Map<EventKind, Recording>();
   private dread!: Dread;
   private hearingBar!: HearingBar;
+  /** Footprints, fog and subtitles: the one that listens for those who play without sound. */
+  private huntFx = new HuntFx();
   private alertEl!: HTMLButtonElement;
   /** Where the warning in the header sends the player. */
   private dangerAt: 'dump' | 'plant' | null = null;
@@ -406,7 +409,7 @@ export class App {
     this.lostEl.hidden = true;
     this.lostEl.setAttribute('role', 'alert');
 
-    this.root.append(header, main, nav, this.toastEl, this.hearingBar.hush, this.lostEl, this.intro.root, this.awayScreen.root);
+    this.root.append(header, main, nav, this.toastEl, this.hearingBar.hush, this.huntFx.root, this.lostEl, this.intro.root, this.awayScreen.root);
     // Every camera can fold away to a thin strip; one choice for all of them.
     // The journal's monitor is where recordings are watched: it never folds.
     for (const feed of this.root.querySelectorAll<HTMLElement>('.feed')) if (!feed.closest('.j-monitor')) this.addCameraFold(feed);
@@ -1452,6 +1455,7 @@ export class App {
       this.glitch(1.2);
       this.pop(this.hearingBar.root, 'alarm');
       this.typeLine('КАМ-03: ОНО УСЛЫШАЛО ЦЕХ');
+      this.huntFx.say('[скрежет металла. оно услышало цех]', 3500);
       this.toast('ОНО УСЛЫШАЛО. Идёт к будке, остановить нельзя. Когда подойдёт: шум на 0 и ни звука 10 секунд');
       navigator.vibrate?.([200, 80, 200]);
     } else if (h.phase === 'check') {
@@ -1459,6 +1463,7 @@ export class App {
       this.glitch(0.8);
       this.pop(this.hearingBar.root, 'alarm');
       this.typeLine('ОНО У ДВЕРИ');
+      this.huntFx.say('[шаги стихли. оно у двери]', 3500);
       this.toast('ОНО У ДВЕРИ. Минута: опустите шум до 0 и не трогайте 10 секунд');
       navigator.vibrate?.([300, 100, 300]);
     } else if (h.phase === 'caught') {
@@ -1548,6 +1553,7 @@ export class App {
       if (this.stopFor > 0) this.sound.duck(false);
       this.stopFor = 0;
       this.hearingBar.listening = false;
+      this.huntFx.listening(false);
     }
     if (near === 0) return;
 
@@ -1566,8 +1572,10 @@ export class App {
         }
         this.root.dataset.hunt = 'walk';
         this.hearingBar.listening = false;
+        this.huntFx.listening(false);
         this.sound.duck(false);
         this.sound.lunge(pan);
+        this.huntFx.lunge(pan);
         this.glitch(0.5);
         this.pop(this.root.querySelector('main')!, 'hunt-lunge');
         navigator.vibrate?.(200);
@@ -1578,6 +1586,7 @@ export class App {
       if (this.stopIn <= 0 && near > 0.12 && near < 0.9) {
         this.stopFor = 5 + Math.random() * 3;
         this.hearingBar.listening = true;
+        this.huntFx.listening(true);
         this.sound.duck(true);
         this.typeLine('ОНО ОСТАНОВИЛОСЬ. СЛУШАЕТ');
         this.root.dataset.hunt = 'stop';
@@ -1587,6 +1596,7 @@ export class App {
         // Every 4 seconds at first, nearly every second at the end, never quite even.
         c.step = (4 - 3.1 * near) * (0.75 + Math.random() * 0.5);
         this.sound.step(near, pan);
+        this.huntFx.step(near, pan);
         this.scene.glitch(0.08 + 0.15 * near);
         const main = this.root.querySelector('main');
         main?.classList.add('hunt-step');
@@ -1595,6 +1605,7 @@ export class App {
       if (near > 0.5 && c.breath <= 0) {
         c.breath = 7 - 3 * near;
         this.sound.breath(near);
+        this.huntFx.breathe();
       }
       if (c.say <= 0) {
         c.say = 40 - 25 * near;
@@ -1607,9 +1618,9 @@ export class App {
     } else if (holding) {
       // Silence: only it, right by the door. It knocks, tries the handle, speaks.
       const beats: ['knock' | 'rattle' | 'whisper', number, () => void][] = [
-        ['knock', 1.8, () => this.sound.knock()],
-        ['rattle', 4.6, () => this.sound.rattle()],
-        ['whisper', 6.8, () => this.sound.whisperIt()],
+        ['knock', 1.8, () => (this.sound.knock(), this.huntFx.say('[три стука в дверь]', 2400))],
+        ['rattle', 4.6, () => (this.sound.rattle(), this.huntFx.say('[кто-то дёргает ручку]', 2000))],
+        ['whisper', 6.8, () => (this.sound.whisperIt(), this.huntFx.say('[шёпот за дверью]', 2600))],
       ];
       for (const [beat, at, play] of beats) {
         if (h.held < at || this.doorBeats.has(beat)) continue;
@@ -1620,6 +1631,7 @@ export class App {
       if (c.breath <= 0) {
         c.breath = 3.2;
         this.sound.breath(1, true);
+        this.huntFx.breathe(true);
       }
       if (c.near <= 0) {
         c.near = 1.6 + Math.random() * 1.6;
@@ -1630,6 +1642,7 @@ export class App {
       if (c.breath <= 0) {
         c.breath = 3.5;
         this.sound.breath(1);
+        this.huntFx.breathe(true);
       }
       if (c.flicker <= 0) {
         c.flicker = 0.8 + Math.random();
@@ -1649,6 +1662,8 @@ export class App {
     this.dread.scare();
     this.glitch(2);
     delete this.root.dataset.hunt;
+    this.huntFx.clear();
+    this.huntFx.say('[удар. скрежет. крик металла]', 4000);
     const lines = ['КАМ-03', 'ОНО УСЛЫШАЛО', 'ПЕРЕРАБОТКА ПОТЕРЯНА'];
     this.lostEl.replaceChildren(...lines.map((l, i) => el('div', `lost-line l${i}`, l)));
     this.lostEl.hidden = false;
@@ -1670,6 +1685,7 @@ export class App {
   private itLeft(survived: number): void {
     this.sound.hush(false);
     this.sound.walkAway();
+    this.huntFx.leave();
     const line = heardLine(survived);
     const box = el('div', 'lost left');
     box.setAttribute('role', 'status');
