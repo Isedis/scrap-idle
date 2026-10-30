@@ -40,7 +40,7 @@ import { COMPACT_MILESTONE, type TrackDef } from '../game/infinite';
 import { Dread } from './dread';
 import { eventById, unwatched, watch, type EventKind, type Recording } from '../game/story';
 import { RECYCLE_AT, hasNode, milestoneBase, passiveBonus } from '../game/layers';
-import { STAGES, formatDepth, stageIndex, threatActive } from '../game/threat';
+import { STAGES, stageIndex, threatActive } from '../game/threat';
 
 /** How long the floodlight button must be held. */
 const HOLD_MS = 1500;
@@ -117,7 +117,7 @@ export class App {
   private knownRecycleReady = false;
   private threatEl!: HTMLElement;
   private threatBar!: HTMLElement;
-  private depthEl!: HTMLElement;
+  private stageEl!: HTMLElement;
   private lightButton!: HTMLButtonElement;
   private lostEl!: HTMLElement;
   private knownStage = 0;
@@ -307,8 +307,8 @@ export class App {
     this.threatEl.hidden = true;
     const text = el('div', 'threat-text');
     this.threatBar = el('div', 'threat-bar');
-    this.depthEl = el('div', 'threat-depth');
-    text.append(this.threatBar, this.depthEl);
+    this.stageEl = el('div', 'threat-stage');
+    text.append(this.threatBar, this.stageEl);
 
     this.lightButton = el('button', 'light', 'Прожектор');
     this.lightButton.type = 'button';
@@ -669,7 +669,7 @@ export class App {
     this.workshop.bought();
     this.pop(this.rateEl, 'pulse');
     if (def.id === 'compact' && state.compacted % COMPACT_MILESTONE === 0) {
-      this.typeLine(`УПЛОТНЕНИЕ ×${state.compacted}. ОБЪЕКТ ПОДНЯЛСЯ. ГЛУБИНА ${formatDepth(depthOf(state)).toUpperCase()}`);
+      this.typeLine(`УПЛОТНЕНИЕ ×${state.compacted}. ТО, ЧТО ВНИЗУ, ПОДНЯЛОСЬ БЛИЖЕ`);
       this.scene.glitch(0.8);
       this.toast('Куча осела. То, что под ней, стало ближе');
     } else {
@@ -1156,7 +1156,7 @@ export class App {
     }
     this.knownStage = stage;
     this.threatBar.textContent = `угроза ${textBar(level, 10)} ${Math.floor(level * 100)}%`;
-    this.depthEl.textContent = `${STAGES[stage].name.toUpperCase()} · объект на глубине ${formatDepth(depthOf(state))} ▼`;
+    this.stageEl.textContent = STAGES[stage].name.toUpperCase();
     this.root.dataset.threat = String(stage);
     // The light button begs as it gets worse.
     this.lightButton.textContent = stage >= 4 ? 'СВЕТ!!' : stage >= 3 ? 'Свет!' : 'Прожектор';

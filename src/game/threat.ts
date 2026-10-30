@@ -101,23 +101,3 @@ export function depthMeters(totalTrash: Decimal, extraDigits = 0): Decimal {
   return D(START_DEPTH_M).div(Decimal.pow(10, digits.div(DIGITS_PER_TENFOLD)));
 }
 
-const UNITS: [number, string][] = [
-  [1e3, 'км'],
-  [1, 'м'],
-  [1e-2, 'см'],
-  [1e-3, 'мм'],
-  [1e-6, 'мкм'],
-  [1e-9, 'нм'],
-];
-
-/** Depth for the terminal: km to nm, then plain powers of ten. */
-export function formatDepth(m: Decimal): string {
-  for (const [scale, unit] of UNITS) {
-    if (m.gte(scale)) {
-      const v = m.div(scale).toNumber();
-      return `${v >= 100 ? Math.round(v) : v.toFixed(v >= 10 ? 1 : 2)} ${unit}`;
-    }
-  }
-  const exp = Math.floor(m.log10().toNumber());
-  return `${m.div(Decimal.pow(10, exp)).toNumber().toFixed(2)}e${exp} м`;
-}

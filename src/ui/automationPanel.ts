@@ -292,7 +292,8 @@ export class AutomationPanel {
         this.updaters.push((s) => {
           const sc = s.scripts;
           chance.textContent = `Шанс отказа ${(lightFailChance(s) * 100).toFixed(1)}% · ур. ${sc.reliability}`;
-          failures.textContent = sc.failures > 0 ? `Отказов: ${sc.failures}. Чем ближе объект, тем чаще.` : 'Чем ближе объект, тем чаще отказы.';
+          const why = 'Чем больше куча за всю игру, тем чаще отказы.';
+          failures.textContent = sc.failures > 0 ? `Отказов: ${sc.failures}. ${why}` : why;
           const cost = reliabilityCost(sc.reliability);
           price.textContent = `${format(cost)} ВС`;
           button.disabled = s.recycle.points.lt(cost);

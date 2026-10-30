@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { advance, lightUp, loseShift, newGame, producerRate, recycle } from '../src/game/state';
-import { OFFLINE_CAP, THREAT_STARTS_AT, climb, depthMeters, fillSeconds, formatDepth, stageIndex, threatMult } from '../src/game/threat';
+import { OFFLINE_CAP, THREAT_STARTS_AT, climb, depthMeters, fillSeconds, stageIndex, threatMult } from '../src/game/threat';
 import { applyOffline, deserialize, serialize } from '../src/game/save';
 import { RECYCLE_AT } from '../src/game/layers';
 import { D } from '../src/game/num';
@@ -117,13 +117,6 @@ describe('depth', () => {
     const far = depthMeters(D('1e1000'));
     expect(far.gt(0)).toBe(true);
     expect(far.lt(1e-60)).toBe(true);
-  });
-
-  it('reads in sensible units', () => {
-    expect(formatDepth(D(4112))).toBe('4.11 км');
-    expect(formatDepth(D(37.5))).toBe('37.5 м');
-    expect(formatDepth(D(0.004))).toBe('4.00 мм');
-    expect(formatDepth(D(3e-12))).toBe('3.00e-12 м');
   });
 });
 

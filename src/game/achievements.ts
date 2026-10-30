@@ -59,9 +59,10 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: 'edge', name: 'На грани', text: 'Включить свет на 95% угрозы', check: (s) => s.threat.bravest >= 0.95 },
   { id: 'lost', name: 'Смена потеряна', text: 'Потерять смену', check: (s) => s.threat.losses >= 1 },
   { id: 'night', name: 'Ночная смена', text: 'Играть с полуночи до пяти утра', check: () => isNight(new Date()) },
-  { id: 'km', name: 'Глубже километра', text: 'Объект ближе 1 км', check: (_, d) => d.lt(1000) },
-  { id: 'm', name: 'Он под нами', text: 'Объект ближе 1 м', check: (_, d) => d.lt(1) },
-  { id: 'cm', name: 'На расстоянии ладони', text: 'Объект ближе 1 см', check: (_, d) => d.lt(D(0.01)) },
+  // The thing under the heap rises with everything ever collected; Compaction brings it up sooner.
+  { id: 'km', name: 'Что-то шевельнулось', text: 'Собрать около 250 млн кг за всю игру', check: (_, d) => d.lt(1000) },
+  { id: 'm', name: 'Он под нами', text: 'Собрать около 2.5e44 кг за всю игру', check: (_, d) => d.lt(1) },
+  { id: 'cm', name: 'На расстоянии ладони', text: 'Собрать около 2.5e68 кг за всю игру', check: (_, d) => d.lt(D(0.01)) },
   // Automation
   { id: 'scripts', name: 'Руки свободны', text: 'Установить все скрипты', check: (s) => SCRIPTS.every((d) => (d.node ? s.recycle.nodes.includes(d.node) : s.scripts.bought.includes(d.id))) },
   { id: 'fail1', name: 'Отказ питания', text: 'Автопрожектор не включился', check: (s) => s.scripts.failures >= 1 },

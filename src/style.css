@@ -403,7 +403,7 @@ body::after {
 
 .threat-text { min-width: 0; display: grid; gap: 1px; }
 .threat-bar { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.threat-depth { font-size: 11px; color: var(--mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.threat-stage { font-size: 11px; color: var(--mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Hold to switch on: the fill grows under the label while held. */
 .light {
