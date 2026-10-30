@@ -1,5 +1,4 @@
-import '@fontsource-variable/unbounded';
-import '@fontsource-variable/manrope';
+import '@fontsource-variable/jetbrains-mono';
 import './style.css';
 import { format } from './game/num';
 import { advance, newGame, revealProducers, type GameState } from './game/state';
@@ -30,8 +29,10 @@ let lastRender = 0;
 function frame(): void {
   const now = Date.now();
   // A hidden tab pauses frames; the gap is simulated exactly on return.
-  advance(state, (now - state.lastTick) / 1000);
+  const dt = (now - state.lastTick) / 1000;
+  advance(state, dt);
   state.lastTick = now;
+  app.frame(dt);
   if (now - lastRender >= RENDER_MS) {
     lastRender = now;
     app.render();

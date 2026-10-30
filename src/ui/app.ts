@@ -1,8 +1,9 @@
-import { format, D } from '../game/num';
+import { format, D, type Decimal } from '../game/num';
 import { PRODUCERS, costOf, type ProducerDef } from '../game/producers';
 import { buy, canBuy, newGame, ratePerSecond, type GameState } from '../game/state';
 import { exportSave, importSave, wipeSave, writeSave } from '../game/save';
 import { ICONS } from './icons';
+import { Scene } from './scene';
 
 type Tab = 'dump' | 'settings';
 
@@ -26,18 +27,35 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** Owns the DOM; the game loop calls `render` a few times a second. */
+/** Text progress bar in the terminal's own style: [██████░░░░]. */
+export function textBar(fraction: number, cells = 10): string {
+  const filled = Math.round(Math.min(Math.max(fraction, 0), 1) * cells);
+  return `[${'█'.repeat(filled)}${'░'.repeat(cells - filled)}]`;
+}
+
+/** How far `have` is toward `need`, 0..1. */
+function progress(have: Decimal, need: Decimal): number {
+  if (need.lte(0) || have.gte(need)) return 1;
+  return have.div(need).toNumber();
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** Owns the DOM; the game loop calls `render` a few times a second and `frame` every frame. */
 export class App {
   private rows: ProducerRow[] = [];
   private trashEl!: HTMLElement;
   private rateEl!: HTMLElement;
+  private clockEl!: HTMLElement;
   private list!: HTMLElement;
   private teaser!: HTMLElement;
+  private teaserBar!: HTMLElement;
   private teaserText!: HTMLElement;
   private panels = new Map<Tab, HTMLElement>();
   private tabs = new Map<Tab, HTMLButtonElement>();
   private toastEl!: HTMLElement;
   private toastTimer = 0;
+  private scene!: Scene;
 
   constructor(
     private root: HTMLElement,
@@ -49,10 +67,10 @@ export class App {
 
   private build(): void {
     const header = el('header', 'top');
-    header.append(el('div', 'brand', 'Scrap Idle'));
+    header.append(el('div', 'brand', `scrap_idle v${__APP_VERSION__}`));
     this.trashEl = el('div', 'trash', '0');
-    const unit = el('div', 'trash-unit', 'кг мусора');
-    this.rateEl = el('div', 'rate', '+0 /с');
+    const unit = el('div', 'trash-unit', 'кг мусора в системе');
+    this.rateEl = el('div', 'rate', 'поток: +0 кг/с');
     header.append(this.trashEl, unit, this.rateEl);
 
     const main = el('main', 'panels');
@@ -67,6 +85,18 @@ export class App {
 
     this.root.append(header, main, nav, this.toastEl);
     this.show('dump');
+  }
+
+  private buildFeed(): HTMLElement {
+    const feed = el('div', 'feed');
+    const canvas = el('canvas', 'feed-canvas');
+    canvas.setAttribute('aria-hidden', 'true');
+    const label = el('div', 'feed-label', 'КАМ-01 · СВАЛКА');
+    const rec = el('div', 'feed-rec', 'REC');
+    this.clockEl = el('div', 'feed-clock', '00:00:00');
+    feed.append(canvas, label, rec, this.clockEl);
+    this.scene = new Scene(canvas);
+    return feed;
   }
 
   private tabButton(tab: Tab, label: string, icon: string): HTMLButtonElement {
@@ -88,6 +118,7 @@ export class App {
   private buildDump(): HTMLElement {
     const panel = el('section', 'panel');
     this.panels.set('dump', panel);
+    panel.append(this.buildFeed());
     panel.append(el('h2', 'panel-title', 'Производство'));
     this.list = el('div', 'producers');
     for (const def of PRODUCERS) this.rows.push(this.buildRow(def));
@@ -96,9 +127,11 @@ export class App {
     const icon = el('div', 'p-icon');
     icon.innerHTML = ICONS.locked;
     const body = el('div', 'p-body');
-    body.append(el('div', 'p-name', '???'));
+    const head = el('div', 'p-head');
+    this.teaserBar = el('span', 'p-bar');
+    head.append(el('span', 'p-name', '???'), this.teaserBar);
     this.teaserText = el('div', 'p-flavor');
-    body.append(this.teaserText);
+    body.append(head, this.teaserText);
     this.teaser.append(icon, body);
 
     panel.append(this.list);
@@ -112,7 +145,7 @@ export class App {
 
     const body = el('div', 'p-body');
     const head = el('div', 'p-head');
-    const count = el('span', 'p-count', '0');
+    const count = el('span', 'p-count', '×0');
     head.append(el('span', 'p-name', def.name), count);
     const rate = el('div', 'p-rate');
     body.append(head, el('div', 'p-flavor', def.flavor), rate);
@@ -202,7 +235,6 @@ export class App {
       this.render();
     });
     panel.append(reset);
-    panel.append(el('p', 'version', `Версия ${__APP_VERSION__}`));
     return panel;
   }
 
@@ -213,10 +245,18 @@ export class App {
     this.toastTimer = window.setTimeout(() => (this.toastEl.hidden = true), 3500);
   }
 
+  /** Every animation frame: only the camera feed. */
+  frame(dt: number): void {
+    const state = this.getState();
+    this.scene.update(dt, ratePerSecond(state), state.totalTrash);
+  }
+
   render(): void {
     const state = this.getState();
     this.trashEl.textContent = format(state.trash);
-    this.rateEl.textContent = `+${format(ratePerSecond(state))} /с`;
+    this.rateEl.textContent = `поток: +${format(ratePerSecond(state))} кг/с`;
+    const now = new Date();
+    this.clockEl.textContent = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
 
     // Rebuild the list order only when a new producer is revealed.
     const visible = this.rows.filter((r) => state.revealed.includes(r.def.id));
@@ -225,14 +265,22 @@ export class App {
     if (wanted.length !== this.list.children.length || wanted.some((n, i) => this.list.children[i] !== n)) {
       this.list.replaceChildren(...wanted);
     }
-    if (next) this.teaserText.textContent = `Появится, когда соберёте ${format(next.baseCost.div(2))} кг`;
+    if (next) {
+      const need = next.baseCost.div(2);
+      const p = progress(state.totalTrash, need);
+      this.teaserBar.textContent = `${textBar(p)} ${Math.floor(p * 100)}%`;
+      this.teaserText.textContent = `Сигнал появится при ${format(need)} кг`;
+    }
 
     for (const row of visible) {
       const owned = state.owned[row.def.id] ?? 0;
+      const cost = costOf(row.def, owned);
       row.count.textContent = `×${owned}`;
-      row.rate.textContent = `+${format(row.def.baseRate)} /с за штуку · всего +${format(row.def.baseRate.mul(D(owned)))} /с`;
-      row.price.textContent = `${format(costOf(row.def, owned))} кг`;
+      row.rate.textContent = `+${format(row.def.baseRate)}/с за шт · всего +${format(row.def.baseRate.mul(D(owned)))}/с`;
+      row.price.textContent = `${format(cost)} кг`;
       row.button.disabled = !canBuy(state, row.def.id);
+      // The button fills up as the player saves toward the price.
+      row.button.style.setProperty('--p', String(progress(state.trash, cost)));
     }
   }
 }
