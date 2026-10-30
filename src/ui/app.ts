@@ -55,6 +55,7 @@ export class App {
   private tabs = new Map<Tab, HTMLButtonElement>();
   private toastEl!: HTMLElement;
   private toastTimer = 0;
+  private updateEl!: HTMLElement;
   private scene!: Scene;
 
   constructor(
@@ -83,7 +84,11 @@ export class App {
     this.toastEl.setAttribute('role', 'status');
     this.toastEl.hidden = true;
 
-    this.root.append(header, main, nav, this.toastEl);
+    this.updateEl = el('div', 'update');
+    this.updateEl.setAttribute('role', 'status');
+    this.updateEl.hidden = true;
+
+    this.root.append(header, main, nav, this.toastEl, this.updateEl);
     this.show('dump');
   }
 
@@ -243,6 +248,21 @@ export class App {
     this.toastEl.hidden = false;
     clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => (this.toastEl.hidden = true), 3500);
+  }
+
+  /** Persistent strip offering a newer build; stays until the player taps it. */
+  offerUpdate(onUpdate: () => void): void {
+    if (!this.updateEl.hidden) return;
+    const button = el('button', 'update-btn', 'Обновить');
+    button.type = 'button';
+    button.id = 'update';
+    button.addEventListener('click', () => {
+      button.disabled = true;
+      button.textContent = 'Загрузка…';
+      onUpdate();
+    });
+    this.updateEl.replaceChildren(el('span', 'update-text', 'Доступна новая версия'), button);
+    this.updateEl.hidden = false;
   }
 
   /** Every animation frame: only the camera feed. */

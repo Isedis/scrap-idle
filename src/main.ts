@@ -4,6 +4,7 @@ import { format } from './game/num';
 import { advance, newGame, revealProducers, type GameState } from './game/state';
 import { applyOffline, readSave, writeSave } from './game/save';
 import { App } from './ui/app';
+import { CHECK_EVERY_MS, findNewBuild, reloadInto } from './update';
 
 const AUTOSAVE_MS = 10_000;
 const RENDER_MS = 100;
@@ -44,5 +45,20 @@ requestAnimationFrame(frame);
 setInterval(() => writeSave(state), AUTOSAVE_MS);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') writeSave(state);
+  else checkForUpdate();
 });
 window.addEventListener('pagehide', () => writeSave(state));
+
+// A copy opened from the home screen can run for days; look for newer builds.
+async function checkForUpdate(): Promise<void> {
+  if (!import.meta.env.PROD) return;
+  const build = await findNewBuild(__BUILD_ID__, (url) => fetch(url, { cache: 'no-store' }));
+  if (build) {
+    app.offerUpdate(() => {
+      writeSave(state);
+      reloadInto(build);
+    });
+  }
+}
+checkForUpdate();
+setInterval(checkForUpdate, CHECK_EVERY_MS);
