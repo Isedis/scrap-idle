@@ -503,6 +503,110 @@ body::after {
   to { opacity: 1; }
 }
 
+/* ---- Camera events ---- */
+.console {
+  width: 100%;
+  margin-top: 6px;
+  color: var(--danger);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-shadow: 0 0 8px rgb(255 107 87 / 0.5);
+  cursor: pointer;
+}
+
+.feed-label.cam00 { color: var(--danger); text-shadow: 0 0 6px rgb(255 107 87 / 0.8); cursor: pointer; }
+
+.feed-motion {
+  position: absolute;
+  left: 4px;
+  top: 20px;
+  min-height: 24px;
+  padding: 2px 6px;
+  border: 1px solid var(--danger);
+  border-radius: 3px;
+  background: rgb(0 0 0 / 0.6);
+  color: var(--danger);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  animation: pulse-dim 1.6s ease-in-out infinite;
+}
+
+.feed-playback {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  color: var(--light, #c8ffd2);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 4px #000;
+  animation: pulse-dim 1s ease-in-out infinite;
+}
+
+/* Pulses without ever disappearing, so it stays readable and tappable. */
+@keyframes pulse-dim {
+  50% { opacity: 0.45; }
+}
+
+/* Ignatyev's note, as found: a scrap of paper over the picture. */
+.feed-paper {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  width: min(90%, 360px);
+  transform: translateX(-50%) rotate(-1.5deg);
+  padding: 10px 12px;
+  background: #d9e8d2;
+  color: #1a2a1c;
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.6);
+  cursor: pointer;
+  animation: toast-in 0.4s ease;
+}
+
+/* ---- Journal ---- */
+.j-list { display: flex; flex-direction: column; }
+
+.j-rec {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding-block: 10px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.j-rec-when { color: var(--mid); font-size: 11px; font-variant-numeric: tabular-nums; }
+.j-rec-what { font-weight: 700; }
+.j-rec.new .j-rec-what { color: var(--danger); }
+.j-rec.new .j-rec-what::before { content: '● '; }
+.j-watch { min-height: 40px; padding: 6px 12px; font-size: 11px; }
+
+.j-case { padding-block: 10px; border-bottom: 1px dashed var(--line); }
+.j-case-title { font-weight: 700; letter-spacing: 0.04em; }
+.j-case.locked .j-case-title { color: var(--dim); }
+.j-text { margin-top: 4px; color: var(--mid); font-size: 12px; line-height: 1.5; }
+
+.j-note {
+  margin-block: 6px;
+  padding: 10px 12px;
+  background: #d9e8d2;
+  color: #1a2a1c;
+  font-size: 12px;
+  line-height: 1.5;
+  transform: rotate(-0.6deg);
+}
+
+.j-note:nth-child(even) { transform: rotate(0.5deg); }
+
+.j-voices { display: grid; gap: 4px; }
+.j-voice { color: var(--danger); font-size: 12px; letter-spacing: 0.06em; }
+.j-voice::before { content: '> '; }
+
 /* ---- Recycling ---- */
 .r-stats {
   display: grid;
@@ -721,7 +825,16 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-.tab { position: relative; min-width: 0; }
+.tab { position: relative; min-width: 0; padding-inline: 2px; }
+
+.tab span:not(.badge) {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
 
 .tab svg { width: 20px; height: 20px; }
 

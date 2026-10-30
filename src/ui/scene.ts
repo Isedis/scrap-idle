@@ -1,4 +1,5 @@
 import type { Decimal } from '../game/num';
+import type { EventKind } from '../game/story';
 
 /** Palette of the camera feed: a night-vision picture in phosphor greens with amber lights. */
 const C = {
@@ -47,7 +48,33 @@ export interface SceneView {
   recycles: number;
   /** Threat 0..1: darkness, interference and the thing in the yard grow with it. */
   threat: number;
+  /** Marks left by events this run. */
+  traces: readonly string[];
 }
+
+/** An event playing on camera: what, how far in, and whether it is a replay from the archive. */
+interface Playing {
+  kind: EventKind;
+  t: number;
+  dur: number;
+  replay: boolean;
+}
+
+/** How long each camera event lasts, in seconds. DOM-only kinds are absent. */
+const EVENT_SECONDS: Partial<Record<EventKind, number>> = {
+  eyes: 4.5,
+  bag: 6,
+  lampBlink: 3,
+  extra: 7,
+  fridge: 5,
+  note: 6,
+  driverless: 9,
+  lampTurn: 2.5,
+  breathe: 8,
+  gull: 5,
+  raccoon: 6,
+  cat: 7,
+};
 
 type ItemKind = 0 | 1 | 2 | 3 | 4; // can, bottle, box, tyre, bag
 
@@ -193,6 +220,7 @@ export class Scene {
   /** The figure that shows up in the yard as the threat rises: where, and how long it stays. */
   private ghost: { x: number; lane: 0 | 1; left: number } | null = null;
   private ghostIn = 8;
+  private playing: Playing[] = [];
   private reducedMotion: boolean;
   /** How `paint` draws: dim scenery, bright actors, or the dark halo behind actors. */
   private mode: 'scenery' | 'actor' | 'halo' = 'scenery';
@@ -280,6 +308,30 @@ export class Scene {
   }
 
   /** The floodlight: glare over the yard, the figure gone. */
+  /** Plays a camera event; returns false for kinds the camera does not draw. */
+  playEvent(kind: EventKind, replay = false): boolean {
+    const dur = EVENT_SECONDS[kind];
+    if (!dur) return false;
+    this.playing = this.playing.filter((p) => p.kind !== kind);
+    this.playing.push({ kind, t: 0, dur, replay });
+    if (kind === 'lampTurn') this.glitch(1.5);
+    return true;
+  }
+
+  /** The live event (not a replay) near a tap at x, y in CSS pixels of the canvas, if any. */
+  hit(x: number, y: number): EventKind | null {
+    for (const p of this.playing) {
+      if (p.replay) continue;
+      const a = this.anchor(p);
+      if (a && Math.hypot(a[0] - x, a[1] - y) < 32) return p.kind;
+    }
+    return null;
+  }
+
+  private active(kind: EventKind): Playing | undefined {
+    return this.playing.find((p) => p.kind === kind);
+  }
+
   floodlight(): void {
     this.glare = 1;
     this.ghost = null;
@@ -361,6 +413,8 @@ export class Scene {
     const target = this.h * (0.1 + 0.36 * this.grow);
     this.heapHeight += (target - this.heapHeight) * Math.min(dt * 2, 1);
     // At the edge the heap breathes.
+    const breath = this.active('breathe');
+    if (breath && !this.reducedMotion) this.heapHeight += Math.sin(breath.t * ((2 * Math.PI) / 4.8)) * this.h * 0.02 * dt * 6;
     if (view.threat >= 0.9 && !this.reducedMotion) this.heapHeight += Math.sin(this.t * 1.3) * this.h * 0.012 * dt * 60 * (view.threat - 0.85);
 
     // A few actors stand for the whole workforce; once machines arrive, fewer people walk the yard.
@@ -520,6 +574,8 @@ export class Scene {
     this.flashAlpha = Math.max(0, this.flashAlpha - dt * 1.4);
     this.glitchLeft = Math.max(0, this.glitchLeft - dt);
     this.glare = Math.max(0, this.glare - dt * 0.9);
+    for (const p of this.playing) p.t += dt;
+    this.playing = this.playing.filter((p) => p.t < p.dur);
 
     // Interference comes more often the higher the threat.
     if (threat >= 0.25 && Math.random() < dt * threat * threat * 0.6) this.glitch(rnd(0.08, 0.3));
@@ -604,6 +660,7 @@ export class Scene {
 
     // Middle plane.
     this.drawHeap();
+    if (this.view?.traces.includes('fridge') && !this.active('fridge')) this.drawFridge(0.55, 0.9);
 
     // Near plane.
     const yard = ctx.createLinearGradient(0, this.horizon, 0, h);
@@ -632,6 +689,7 @@ export class Scene {
     for (const it of this.items) this.actor(() => this.drawItem(it));
     this.drawParticles();
 
+    for (const p of this.playing) this.drawEvent(p);
     if (this.ghost) this.drawGhost(this.ghost.x, this.laneY(this.ghost.lane), this.ghost.lane === 0 ? 0.78 : 1);
     this.drawDread();
 
@@ -648,6 +706,202 @@ export class Scene {
       ctx.globalAlpha = 1;
     }
     if (this.glitchLeft > 0) this.drawGlitch();
+  }
+
+  // ---- Camera events ---------------------------------------------------------
+
+  /** Where a tap counts as catching the event, or null for events without a spot. */
+  private anchor(p: Playing): [number, number] | null {
+    const u = p.t / p.dur;
+    switch (p.kind) {
+      case 'eyes': {
+        // Low in the dark body of the heap, away from the lamp.
+        const x = this.heapX + this.heapHalf * 0.55;
+        return [x, this.surface(x) + (this.horizon - this.surface(x)) * 0.6];
+      }
+      case 'bag': {
+        const x = this.heapX + this.heapHalf * 0.15 + Math.sin(p.t * 1.5) * 6;
+        return [x, this.surface(x) - 10 - u * this.h * 0.7];
+      }
+      case 'extra':
+        return [this.w * (0.75 - 0.35 * u), this.laneY(0) + (this.h - this.laneY(0)) * u - 14];
+      case 'fridge': {
+        const x = this.heapX + this.heapHalf * 0.35;
+        return [x, this.surface(x) + 4];
+      }
+      case 'note': {
+        const x = this.heapX - this.heapHalf * 0.2 + u * this.w * 0.5;
+        return [x, this.surface(this.heapX) - 10 - u * this.h * 0.5 + Math.sin(p.t * 4) * 8];
+      }
+      case 'driverless':
+        return [this.driverlessX(p) + 70, this.laneY(1) - 20];
+      case 'gull':
+        return [-20 + u * (this.w + 40), this.h * 0.25 + Math.sin(p.t * 3) * 6];
+      case 'raccoon':
+        return [this.heapX - this.heapHalf * 0.6 + Math.sin(p.t * 1.2) * 10, this.horizon + 2];
+      case 'cat':
+        return [this.w + 10 - u * (this.w + 20), this.laneY(0) - 3];
+      default:
+        return null;
+    }
+  }
+
+  private driverlessX(p: Playing): number {
+    const stop = this.heapX - this.heapHalf - 30;
+    if (p.t < 3) return -90 + (stop + 90) * (p.t / 3);
+    if (p.t < 5.5) return stop;
+    return stop - (stop + 90) * ((p.t - 5.5) / 3.5);
+  }
+
+  private drawEvent(p: Playing): void {
+    const { ctx } = this;
+    const a = this.anchor(p);
+    const fade = Math.min(1, p.t / 0.4, (p.dur - p.t) / 0.6);
+    switch (p.kind) {
+      case 'eyes': {
+        // Two lights that do not blink together.
+        const [x, y] = a!;
+        const glow = ctx.createRadialGradient(x, y, 0, x, y, 12);
+        glow.addColorStop(0, `rgba(216, 255, 220, ${0.25 * fade})`);
+        glow.addColorStop(1, 'rgba(216, 255, 220, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(x - 12, y - 12, 24, 24);
+        ctx.fillStyle = C.light;
+        ctx.globalAlpha = fade * (Math.sin(p.t * 3) > -0.6 ? 1 : 0);
+        ctx.fillRect(x - 5, y - 1, 3, 2);
+        ctx.globalAlpha = fade * (Math.sin(p.t * 3 + 1.4) > -0.6 ? 1 : 0);
+        ctx.fillRect(x + 2, y - 1, 3, 2);
+        ctx.globalAlpha = 1;
+        break;
+      }
+      case 'bag': {
+        const [x, y] = a!;
+        ctx.globalAlpha = fade;
+        this.actor(() => this.drawJunk({ u: 0, depth: 0, kind: 'bag', rot: Math.sin(p.t) * 0.3, color: C.items[1] }, x, y, 0.7));
+        ctx.globalAlpha = 1;
+        break;
+      }
+      case 'extra': {
+        // Walks toward the camera, growing, no hat, no sack; never shows a face.
+        const [x, y] = a!;
+        const scale = 0.8 + 0.7 * (p.t / p.dur);
+        ctx.globalAlpha = fade;
+        this.actor(() => {
+          this.ctx.save();
+          this.ctx.translate(x, y + 14);
+          this.ctx.scale(scale, scale);
+          this.box(-3.5, -9, 3, 9, C.deep, 1);
+          this.box(0.5, -9, 3, 9, C.deep, 1);
+          this.ctx.beginPath();
+          this.ctx.roundRect(-5, -19, 10, 11, 2);
+          this.paint(C.green);
+          this.circle(0, -22.5, 3.8, '#06140c');
+          this.ctx.restore();
+        });
+        ctx.globalAlpha = 1;
+        break;
+      }
+      case 'fridge':
+        this.drawFridge(Math.min(p.t / 2, 1), fade);
+        break;
+      case 'note': {
+        const [x, y] = a!;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(Math.sin(p.t * 5) * 0.6);
+        ctx.globalAlpha = fade;
+        this.mode = 'actor';
+        this.box(-4, -3, 8, 6, C.light, 0.8);
+        this.mode = 'scenery';
+        ctx.fillStyle = '#2f6b45';
+        ctx.fillRect(-2.5, -1.5, 5, 0.8);
+        ctx.fillRect(-2.5, 0.5, 4, 0.8);
+        ctx.restore();
+        ctx.globalAlpha = 1;
+        break;
+      }
+      case 'driverless': {
+        const tilt = p.t < 3 ? 0 : p.t < 4.2 ? (p.t - 3) * 0.4 : p.t < 5.3 ? 0.48 : Math.max(0, 0.48 - (p.t - 5.3) * 1.2);
+        const tr: Truck = { x: this.driverlessX(p), state: 'dump', timer: 0, tilt, dumped: false };
+        this.actor(() => this.drawTruck(tr, true));
+        if (p.t > 4.2 && p.t < 4.3) for (let i = 0; i < 5; i++) this.throwItem(tr.x + 4, this.laneY(1) - 34, this.onHeap(), rnd(0.6, 1));
+        break;
+      }
+      case 'breathe':
+        break;
+      case 'gull': {
+        const [x, y] = a!;
+        const flap = Math.sin(p.t * 10) * 3;
+        this.actor(() => {
+          this.ctx.beginPath();
+          this.ctx.moveTo(x - 7, y - flap);
+          this.ctx.quadraticCurveTo(x - 3, y - 3, x, y);
+          this.ctx.quadraticCurveTo(x + 3, y - 3, x + 7, y - flap);
+          this.ctx.lineWidth = 1.6;
+          this.ctx.strokeStyle = this.mode === 'halo' ? '#040e08' : C.light;
+          this.ctx.stroke();
+          this.box(x - 0.5, y + 1, 1, 5, C.lime, 0.6);
+        });
+        break;
+      }
+      case 'raccoon': {
+        const [x, y] = a!;
+        ctx.globalAlpha = fade;
+        this.actor(() => {
+          this.ctx.beginPath();
+          this.ctx.ellipse(x, y - 3, 5, 3, 0, 0, Math.PI * 2);
+          this.paint(C.green, 1);
+          this.circle(x + 5, y - 5, 2.2, C.light, 0.8);
+          this.box(x - 9, y - 4, 4, 2, C.deep, 0.6);
+        });
+        ctx.globalAlpha = 1;
+        break;
+      }
+      case 'cat': {
+        const [x, y] = a!;
+        this.actor(() => {
+          this.ctx.beginPath();
+          this.ctx.ellipse(x, y, 4.5, 2.4, 0, 0, Math.PI * 2);
+          this.paint(C.green, 1);
+          this.circle(x - 4.5, y - 2.5, 2, C.green, 0.8);
+          this.box(x + 4, y - 6, 1.2, 5, C.green, 0.6);
+        });
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  /** The fridge on the heap: door swinging open, light inside. `open` 0..1. */
+  private drawFridge(open: number, alpha = 1): void {
+    const { ctx } = this;
+    const x = this.heapX + this.heapHalf * 0.35;
+    const y = this.surface(x) + 4;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y);
+    ctx.rotate(-0.12);
+    this.actor(() => this.box(-6, -18, 12, 20, C.hub, 1));
+    // Light spilling out of the gap.
+    const glow = ctx.createRadialGradient(4, -8, 1, 4, -8, 24 * open);
+    glow.addColorStop(0, `rgba(216, 255, 220, ${0.55 * open})`);
+    glow.addColorStop(1, 'rgba(216, 255, 220, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(-20, -32, 48, 48);
+    ctx.fillStyle = C.light;
+    ctx.fillRect(-5, -17, 10 * open, 18);
+    // Something standing on the shelves.
+    if (open > 0.6) {
+      ctx.fillStyle = '#010503';
+      ctx.fillRect(-3, -15, 3, 14);
+      ctx.fillRect(1, -11, 2, 10);
+    }
+    // The door, swung out toward the camera.
+    ctx.fillStyle = C.green;
+    ctx.fillRect(6, -18, 6 * open, 20);
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   /** A tall dark figure with two faint eyes. It never moves. */
@@ -912,7 +1166,24 @@ export class Scene {
     const { ctx } = this;
     const lx = this.w * 0.24;
     const top = this.horizon - 62;
-    const flicker = this.reducedMotion ? 1 : this.t % 7 > 6.6 ? 0.55 + Math.random() * 0.3 : 1;
+    let flicker = this.reducedMotion ? 1 : this.t % 7 > 6.6 ? 0.55 + Math.random() * 0.3 : 1;
+    // Three blinks, a second apart.
+    const blink = this.active('lampBlink');
+    if (blink && [0.3, 1.3, 2.3].some((s) => blink.t > s && blink.t < s + 0.35)) flicker = 0;
+    if (this.view?.traces.includes('lamp')) {
+      // Turned to face the lens: no cone on the yard, a hard glare at the camera instead.
+      this.box(lx - 1, top, 2.5, this.horizon + 10 - top, C.far, 0.8);
+      const glow = ctx.createRadialGradient(lx + 8, top + 2, 1, lx + 8, top + 2, 40);
+      glow.addColorStop(0, `rgba(216, 255, 220, ${0.8 * flicker})`);
+      glow.addColorStop(1, 'rgba(216, 255, 220, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(lx - 32, top - 38, 80, 80);
+      ctx.fillStyle = C.light;
+      ctx.beginPath();
+      ctx.arc(lx + 8, top + 2, 5, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
     // Cone of light down onto the yard.
     ctx.globalAlpha = 0.09 * flicker;
     ctx.fillStyle = C.amber;
@@ -1164,7 +1435,7 @@ export class Scene {
   }
 
   /** Garbage truck, about twice a worker's height; the body tips back to dump. */
-  private drawTruck(tr: Truck): void {
+  private drawTruck(tr: Truck, empty = false): void {
     const { ctx } = this;
     const g = this.laneY(1);
     const x = tr.x;
@@ -1203,7 +1474,8 @@ export class Scene {
     ctx.lineTo(x + 77, g - 21);
     ctx.lineTo(x + 62, g - 21);
     ctx.closePath();
-    this.paint(C.light, 1);
+    // An empty cab is just a dark window.
+    this.paint(empty ? '#06140c' : C.light, 1);
     this.box(x, g - 11, 84, 4, C.outline, 0);
     this.circle(x + 16, g - 5, 6, C.tyre, 1.4);
     this.circle(x + 16, g - 5, 2.2, C.hub, 0.8);

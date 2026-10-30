@@ -1,7 +1,7 @@
 import '@fontsource-variable/jetbrains-mono';
 import './style.css';
 import { format } from './game/num';
-import { activeAutobuyInterval, advance, autoBuy, newGame, revealProducers, type GameState } from './game/state';
+import { activeAutobuyInterval, advance, autoBuy, newGame, revealProducers, storyTick, type GameState } from './game/state';
 import { applyOffline, readSave, writeSave } from './game/save';
 import { App } from './ui/app';
 import { CHECK_EVERY_MS, latestBuild, reloadInto } from './update';
@@ -24,6 +24,10 @@ const app = new App(
 app.render();
 if (away >= OFFLINE_NOTE_SECONDS) {
   app.toast(`Пока вас не было, собрано ${format(state.trash.sub(before))} кг`);
+  const caught = state.story.records.filter((r) => r.away && !r.watched).length;
+  if (caught > 0) app.toast(`Камера записала движение: ${caught}. Записи в журнале`);
+  // Once something has stirred, a long absence does not go unnoticed.
+  if (away >= 30 * 60 && state.story.records.length > 0) app.greet(away);
 }
 
 /** A hidden tab can come back after hours; the auto-buyer catches up at most this many buys per frame. */
@@ -37,6 +41,9 @@ function frame(): void {
   const dt = (now - state.lastTick) / 1000;
   advance(state, dt);
   state.lastTick = now;
+
+  const event = storyTick(state, dt);
+  if (event) app.onEvent(event);
 
   const interval = activeAutobuyInterval(state);
   if (interval !== null) {

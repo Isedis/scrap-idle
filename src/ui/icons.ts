@@ -17,6 +17,7 @@ export const ICONS: Record<string, string> = {
   synergy: svg('<path d="M9.5 14.5l5-5"/><path d="M11 7l1.5-1.5a3.5 3.5 0 0 1 5 5L16 12M13 17l-1.5 1.5a3.5 3.5 0 0 1-5-5L8 12"/>'),
   upgrades: svg('<path d="M12 20.5v-11M7.5 14l4.5-4.5 4.5 4.5"/><path d="M5 3.5h14"/>'),
   recycle: svg('<path d="M7.5 9.5 10 5h4l2.5 4.5"/><path d="m14.5 8 2 1.5 1-2.5"/><path d="M18 13.5l2 3.5-2 3.5h-5"/><path d="m14.5 18.5-1.5 2 1.5 2"/><path d="M8 20.5H4.5l-2-3.5 2-3.5"/><path d="m6.5 15.5-2-2-2.5 1"/>'),
+  journal: svg('<rect x="3" y="7" width="13" height="10" rx="1.5"/><path d="m16 10.5 5-3v9l-5-3"/><circle cx="7" cy="12" r="1.2"/>'),
   locked: svg('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>'),
   heap: svg('<path d="M2.5 19.5h19"/><path d="M4 19.5l3.5-6 2.5 2.5 3.5-6.5 3 5 1.5-2 2.5 7"/>'),
   gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1M18.7 18.7l-2.1-2.1M7.4 7.4 5.3 5.3"/>'),

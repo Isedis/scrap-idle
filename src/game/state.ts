@@ -13,7 +13,8 @@ import {
   recycleProductionMult,
   type LayerState,
 } from './layers';
-import { OFFLINE_EFFICIENCY, climb, newThreat, threatMult, type ThreatState } from './threat';
+import { OFFLINE_EFFICIENCY, climb, newThreat, stageIndex, threatActive, threatMult, type ThreatState } from './threat';
+import { eventById, eventInterval, isNight, newStory, pickEvent, record, storyMult, type Recording, type StoryState } from './story';
 
 export type BuyMode = 'one' | 'ten' | 'max';
 
@@ -40,6 +41,8 @@ export interface GameState {
   autobuy: boolean;
   /** Something rising under the heap; the floodlight pushes it back. */
   threat: ThreatState;
+  /** What the camera has caught: the archive, open cases, notes. */
+  story: StoryState;
   /** Epoch ms of the last simulated moment, used for offline progress. */
   lastTick: number;
 }
@@ -59,6 +62,7 @@ export function newGame(now = Date.now()): GameState {
     recycle: newLayer(),
     autobuy: true,
     threat: newThreat(),
+    story: newStory(),
     lastTick: now,
   };
 }
@@ -72,7 +76,8 @@ export function producerRate(state: GameState, id: string): Decimal {
   if (!def || n === 0) return D(0);
   let mult = Decimal.pow(milestoneBase(state.recycle), milestonesReached(n))
     .mul(recycleProductionMult(state.recycle))
-    .mul(threatMult(state.threat.level));
+    .mul(threatMult(state.threat.level))
+    .mul(storyMult(state.story));
   let bonus = 0;
   for (const uid of state.upgrades) {
     const e = upgradeById(uid)?.effect;
@@ -110,6 +115,7 @@ export function advance(state: GameState, seconds: number, offline = false): voi
     state.totalTrash = state.totalTrash.add(gained);
     state.runTrash = state.runTrash.add(gained);
     state.runSeconds += dt;
+    if (!offline) state.story.boost = Math.max(0, state.story.boost - dt);
     state.threat.level = climb(state.threat.level, state.runTrash, dt, offline);
     // At the edge production stops; the game plays the loss and calls loseShift.
     if (state.threat.level >= 1) break;
@@ -235,6 +241,7 @@ function startNewRun(state: GameState): void {
   // Saved blueprints keep the first tier of every producer upgrade.
   state.upgrades = hasNode(layer, 's3') ? state.upgrades.filter((id) => /-1$/.test(id)) : [];
   state.threat.level = 0;
+  state.story.traces = [];
 }
 
 // ---- Threat -------------------------------------------------------------------
@@ -262,3 +269,34 @@ export function buyNode(state: GameState, id: string): boolean {
 export function activeAutobuyInterval(state: GameState): number | null {
   return state.autobuy ? autobuyInterval(state.recycle) : null;
 }
+
+// ---- Story events ---------------------------------------------------------------
+
+/**
+ * Counts down to the next camera event and records it when due. Returns the new
+ * recording for the screen to play, or null. Nothing happens before the threat wakes.
+ */
+export function storyTick(state: GameState, dt: number, now = new Date()): Recording | null {
+  if (!threatActive(state.runTrash) || state.threat.level >= 1) return null;
+  const stage = stageIndex(state.threat.level);
+  const story = state.story;
+  story.nextIn -= dt;
+  if (story.nextIn > 0) return null;
+  story.nextIn = eventInterval(stage, isNight(now));
+  return record(story, pickEvent(story, stage, state.owned), now.getTime());
+}
+
+/** While the game was closed the camera kept recording: up to two events from the absence. */
+export function recordAway(state: GameState, seconds: number, now: number): Recording[] {
+  if (seconds < 10 * 60 || !threatActive(state.runTrash)) return [];
+  const count = seconds > 2 * 3600 ? 2 : 1;
+  const out: Recording[] = [];
+  for (let i = 0; i < count; i++) {
+    const at = now - seconds * 1000 * Math.random();
+    const event = pickEvent(state.story, stageIndex(state.threat.level), state.owned);
+    out.push(record(state.story, event, at, { away: true }));
+  }
+  return out;
+}
+
+export { eventById };

@@ -23,6 +23,8 @@ import { el, progress, syncChildren, textBar } from './dom';
 export { textBar } from './dom';
 import { Scene } from './scene';
 import { RecyclePanel } from './recyclePanel';
+import { JournalPanel } from './journalPanel';
+import { eventById, unwatched, watch, type EventKind, type Recording } from '../game/story';
 import { RECYCLE_AT, hasNode, milestoneBase, passiveBonus } from '../game/layers';
 import { STAGES, depthMeters, formatDepth, stageIndex, threatActive } from '../game/threat';
 
@@ -39,7 +41,11 @@ const STAGE_NOTES = [
   'ОНО ПОДНИМАЕТСЯ. СВЕТ!',
 ];
 
-type Tab = 'dump' | 'upgrades' | 'recycle' | 'settings';
+type Tab = 'dump' | 'upgrades' | 'recycle' | 'journal' | 'settings';
+
+/** Seconds a terminal-only event stays on screen. */
+const CAM00_SECONDS = 1.6;
+const TYPE_MS_PER_CHAR = 70;
 
 interface ProducerRow {
   def: ProducerDef;
@@ -102,6 +108,17 @@ export class App {
   private lostEl!: HTMLElement;
   private knownStage = 0;
   private losing = false;
+  private journalPanel!: JournalPanel;
+  private journalBadge!: HTMLElement;
+  private feedLabel!: HTMLElement;
+  private motionEl!: HTMLElement;
+  private playbackEl!: HTMLElement;
+  private paperEl!: HTMLElement;
+  private consoleEl!: HTMLElement;
+  private typingTimer = 0;
+  /** Live events on screen right now, by kind, with the recording a tap would catch. */
+  private live = new Map<EventKind, Recording>();
+  private replaying = false;
   private panels = new Map<Tab, HTMLElement>();
   private tabs = new Map<Tab, HTMLButtonElement>();
   private toastEl!: HTMLElement;
@@ -143,7 +160,11 @@ export class App {
     this.rateEl = el('div', 'rate', 'поток: +0 кг/с');
     this.layerEl = el('div', 'layer-line');
     this.layerEl.hidden = true;
-    header.append(this.trashEl, unit, this.rateEl, this.layerEl, this.buildThreat());
+    // Lines camera 00 types into the terminal on its own.
+    this.consoleEl = el('div', 'console');
+    this.consoleEl.hidden = true;
+    this.consoleEl.addEventListener('click', () => this.catchLive('typing') || this.catchLive('voice'));
+    header.append(this.trashEl, unit, this.rateEl, this.layerEl, this.buildThreat(), this.consoleEl);
 
     this.recyclePanel = new RecyclePanel(
       this.getState,
@@ -159,7 +180,10 @@ export class App {
     this.panels.set('recycle', this.recyclePanel.root);
 
     const main = el('main', 'panels');
-    main.append(this.buildDump(), this.buildUpgrades(), this.recyclePanel.root, this.buildSettings());
+    this.journalPanel = new JournalPanel((rec) => this.watchRecord(rec, false));
+    this.panels.set('journal', this.journalPanel.root);
+
+    main.append(this.buildDump(), this.buildUpgrades(), this.recyclePanel.root, this.journalPanel.root, this.buildSettings());
 
     const nav = el('nav', 'tabs');
     const upgradesTab = this.tabButton('upgrades', 'Улучшения', ICONS.upgrades);
@@ -175,7 +199,11 @@ export class App {
     this.settingsBadge = el('span', 'badge', '!');
     this.settingsBadge.hidden = true;
     settingsTab.append(this.settingsBadge);
-    nav.append(this.tabButton('dump', 'Свалка', ICONS.heap), upgradesTab, this.recycleTab, settingsTab);
+    const journalTab = this.tabButton('journal', 'Журнал', ICONS.journal);
+    this.journalBadge = el('span', 'badge');
+    this.journalBadge.hidden = true;
+    journalTab.append(this.journalBadge);
+    nav.append(this.tabButton('dump', 'Свалка', ICONS.heap), upgradesTab, this.recycleTab, journalTab, settingsTab);
 
     this.toastEl = el('div', 'toast');
     this.toastEl.setAttribute('role', 'status');
@@ -273,14 +301,141 @@ export class App {
     const feed = el('div', 'feed');
     const canvas = el('canvas', 'feed-canvas');
     canvas.setAttribute('aria-hidden', 'true');
-    const label = el('div', 'feed-label', 'КАМ-01 · СВАЛКА');
+    this.feedLabel = el('div', 'feed-label', 'КАМ-01 · СВАЛКА');
+    this.feedLabel.addEventListener('click', () => this.catchLive('cam00'));
     const rec = el('div', 'feed-rec', 'REC');
     this.clockEl = el('div', 'feed-clock', '00:00:00');
     this.captionEl = el('div', 'feed-caption');
     this.captionEl.hidden = true;
-    feed.append(canvas, label, rec, this.clockEl, this.captionEl);
+    this.motionEl = el('button', 'feed-motion');
+    (this.motionEl as HTMLButtonElement).type = 'button';
+    this.motionEl.hidden = true;
+    this.motionEl.addEventListener('click', () => this.show('journal'));
+    this.playbackEl = el('div', 'feed-playback');
+    this.playbackEl.hidden = true;
+    this.paperEl = el('div', 'feed-paper');
+    this.paperEl.hidden = true;
+    this.paperEl.addEventListener('click', () => (this.paperEl.hidden = true));
+    feed.append(canvas, this.feedLabel, rec, this.clockEl, this.captionEl, this.motionEl, this.playbackEl, this.paperEl);
     this.scene = new Scene(canvas);
+    // A tap on something moving catches it live.
+    canvas.addEventListener('pointerdown', (e) => {
+      const box = canvas.getBoundingClientRect();
+      const kind = this.scene.hit(e.clientX - box.left, e.clientY - box.top);
+      if (kind) this.catchLive(kind);
+    });
+    canvas.removeAttribute('aria-hidden');
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', 'Камера наблюдения: двор свалки');
     return feed;
+  }
+
+  // ---- Camera events -----------------------------------------------------------
+
+  /** A new recording from the scheduler: play it live; a tap while it plays catches it. */
+  onEvent(rec: Recording): void {
+    const event = eventById(rec.event);
+    if (!event || this.losing) return;
+    const seconds = this.playKind(event.kind, rec.phrase, false);
+    this.live.set(event.kind, rec);
+    window.setTimeout(() => {
+      if (this.live.get(event.kind) === rec) this.live.delete(event.kind);
+    }, seconds * 1000);
+    this.render();
+  }
+
+  /** Plays an event on camera or in the terminal. Returns how long it lasts, in seconds. */
+  private playKind(kind: EventKind, phrase: string | undefined, replay: boolean): number {
+    if (kind === 'cam00') {
+      this.feedLabel.textContent = 'КАМ-00 · ЯМА';
+      this.feedLabel.classList.add('cam00');
+      this.scene.glitch(0.3);
+      window.setTimeout(() => {
+        this.feedLabel.textContent = 'КАМ-01 · СВАЛКА';
+        this.feedLabel.classList.remove('cam00');
+      }, CAM00_SECONDS * 1000);
+      return CAM00_SECONDS;
+    }
+    if (kind === 'typing' || kind === 'voice') {
+      const text = phrase ?? '';
+      this.typeLine(text);
+      if (kind === 'voice') this.scene.glitch(0.6);
+      return (text.length * TYPE_MS_PER_CHAR) / 1000 + 1.5;
+    }
+    this.scene.playEvent(kind, replay);
+    const seconds: Partial<Record<EventKind, number>> = { lampTurn: 2.5, lampBlink: 3, eyes: 4.5, fridge: 5, gull: 5, bag: 6, note: 6, raccoon: 6, extra: 7, cat: 7, breathe: 8, driverless: 9 };
+    return seconds[kind] ?? 5;
+  }
+
+  /** Back after a long absence: the terminal says how long, as if it was counting. */
+  greet(seconds: number): void {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    this.typeLine(`ВАС НЕ БЫЛО ${h > 0 ? `${h} Ч ` : ''}${m} МИН. МЫ СЧИТАЛИ.`);
+  }
+
+  /** The terminal types a line on its own, letter by letter. */
+  private typeLine(text: string): void {
+    clearInterval(this.typingTimer);
+    this.consoleEl.hidden = false;
+    this.consoleEl.textContent = '> ';
+    let i = 0;
+    this.typingTimer = window.setInterval(() => {
+      this.consoleEl.textContent = `> ${text.slice(0, ++i)}`;
+      if (i >= text.length) clearInterval(this.typingTimer);
+    }, TYPE_MS_PER_CHAR);
+  }
+
+  /** A tap landed on a live event: it counts as watched right away. */
+  private catchLive(kind: EventKind): boolean {
+    const rec = this.live.get(kind);
+    if (!rec || rec.watched) return false;
+    this.live.delete(kind);
+    this.caption('Зафиксировано оператором');
+    this.applyWatch(rec);
+    return true;
+  }
+
+  /** Plays a recording from the archive on the camera, then reveals what it shows. */
+  private watchRecord(rec: Recording, live: boolean): void {
+    const event = eventById(rec.event);
+    if (!event || this.replaying || this.losing) return;
+    if (live) {
+      this.applyWatch(rec);
+      return;
+    }
+    this.show('dump');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    this.replaying = true;
+    const d = new Date(rec.at);
+    const p2 = (n: number) => String(n).padStart(2, '0');
+    this.playbackEl.textContent = `◀◀ ЗАПИСЬ ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+    this.playbackEl.hidden = false;
+    this.scene.glitch(0.4);
+    const seconds = this.playKind(event.kind, rec.phrase, true);
+    window.setTimeout(() => {
+      this.playbackEl.hidden = true;
+      this.replaying = false;
+      this.applyWatch(rec);
+    }, seconds * 1000 + 300);
+  }
+
+  private applyWatch(rec: Recording): void {
+    const event = eventById(rec.event)!;
+    const result = watch(this.getState().story, rec.seq);
+    if (result.opened) {
+      const no = String(result.opened.caseNo).padStart(3, '0');
+      this.toast(`Дело #${no} открыто: ${result.opened.title}. Доход +3%`);
+      this.pop(this.rateEl, 'pulse');
+    }
+    if (result.note) {
+      this.paperEl.textContent = result.note;
+      this.paperEl.hidden = false;
+      window.setTimeout(() => (this.paperEl.hidden = true), 9000);
+    }
+    if (result.boosted) this.toast(`${event.title}: ускорение ×1.5 на 30 с`);
+    writeSave(this.getState());
+    this.render();
   }
 
   private tabButton(tab: Tab, label: string, icon: string): HTMLButtonElement {
@@ -586,6 +741,7 @@ export class App {
       total: state.runTrash,
       recycles: state.recycle.resets,
       threat: state.threat.level,
+      traces: state.story.traces,
     });
   }
 
@@ -702,6 +858,12 @@ export class App {
     }
     this.recycleBadge.hidden = !this.recyclePanel.attention(state);
     if (!this.recyclePanel.root.hidden) this.recyclePanel.render(state);
+    if (!this.journalPanel.root.hidden) this.journalPanel.render(state);
+    const pending = unwatched(state.story);
+    this.journalBadge.hidden = pending === 0;
+    this.journalBadge.textContent = String(pending);
+    this.motionEl.hidden = pending === 0 || this.replaying;
+    this.motionEl.textContent = `● движение · ${pending}`;
     this.layerEl.hidden = layer.total.lte(0);
     this.layerEl.textContent = `вторсырьё: ${format(layer.points)} · бонус ×${format(passiveBonus(layer.total))}`;
 

@@ -3,10 +3,12 @@ import { advance, newGame, type BuyMode, type GameState } from './state';
 import { PRODUCERS } from './producers';
 import { upgradeById } from './upgrades';
 import { nodeById, newLayer, offlineCapSeconds, type LayerState } from './layers';
+import { NOTES, eventById, newStory, type Recording, type StoryState } from './story';
+import { recordAway } from './state';
 
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
-const VERSION = 4;
+const VERSION = 5;
 
 /** Run length for a run whose start is not known; stays negative however long it is played. */
 const UNKNOWN_RUN_SECONDS = -1e12;
@@ -52,6 +54,31 @@ interface SaveV4 extends Omit<SaveV3, 'v'> {
   threat: { level: number; losses: number };
 }
 
+/** v5 adds what the camera caught: archive, cases, notes, voices. */
+interface SaveV5 extends Omit<SaveV4, 'v'> {
+  v: 5;
+  story: StoryState;
+}
+
+function loadStory(data: Partial<StoryState> | undefined): StoryState {
+  const story = newStory();
+  if (!data || typeof data !== 'object') return story;
+  const known = (id: unknown): id is string => typeof id === 'string' && !!eventById(id);
+  story.cases = Array.isArray(data.cases) ? [...new Set(data.cases.filter(known))] : [];
+  story.notes = Number.isInteger(data.notes) ? Math.min(Math.max(data.notes!, 0), NOTES.length) : 0;
+  story.voices = Array.isArray(data.voices) ? data.voices.filter((v) => typeof v === 'string').slice(-50) : [];
+  story.records = Array.isArray(data.records)
+    ? data.records
+        .filter((r): r is Recording => !!r && known(r.event) && Number.isFinite(r.seq) && Number.isFinite(r.at))
+        .map((r) => ({ seq: r.seq, event: r.event, at: r.at, watched: r.watched === true, ...(r.away ? { away: true } : {}), ...(typeof r.phrase === 'string' ? { phrase: r.phrase } : {}) }))
+    : [];
+  story.traces = Array.isArray(data.traces) ? data.traces.filter((t) => t === 'fridge' || t === 'lamp') : [];
+  story.nextIn = Number.isFinite(data.nextIn) && data.nextIn! > 0 ? data.nextIn! : story.nextIn;
+  story.boost = Number.isFinite(data.boost) && data.boost! > 0 ? data.boost! : 0;
+  story.seq = Math.max(Number.isFinite(data.seq) ? data.seq! : 0, ...story.records.map((r) => r.seq), 0);
+  return story;
+}
+
 const BUY_MODES: readonly BuyMode[] = ['one', 'ten', 'max'];
 
 const saveLayer = (l: LayerState): LayerSave => ({
@@ -77,7 +104,7 @@ function loadLayer(data: Partial<LayerSave> | undefined): LayerState | null {
 }
 
 export function serialize(state: GameState): string {
-  const data: SaveV4 = {
+  const data: SaveV5 = {
     v: VERSION,
     trash: state.trash.toString(),
     totalTrash: state.totalTrash.toString(),
@@ -91,6 +118,7 @@ export function serialize(state: GameState): string {
     layers: { recycle: saveLayer(state.recycle) },
     autobuy: state.autobuy,
     threat: { level: state.threat.level, losses: state.threat.losses },
+    story: state.story,
     lastTick: state.lastTick,
   };
   return JSON.stringify(data);
@@ -98,13 +126,13 @@ export function serialize(state: GameState): string {
 
 /** Parses a save; returns null for anything that is not a readable save. */
 export function deserialize(text: string): GameState | null {
-  let data: Partial<SaveV4> | Partial<SaveV3> | Partial<SaveV2> | Partial<SaveV1>;
+  let data: Partial<SaveV5> | Partial<SaveV4> | Partial<SaveV3> | Partial<SaveV2> | Partial<SaveV1>;
   try {
     data = JSON.parse(text);
   } catch {
     return null;
   }
-  if (!data || typeof data !== 'object' || ![1, 2, 3, 4].includes(data.v as number)) return null;
+  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5].includes(data.v as number)) return null;
 
   const state = newGame(typeof data.lastTick === 'number' ? data.lastTick : Date.now());
   const trash = parseNum(data.trash ?? '0');
@@ -121,7 +149,7 @@ export function deserialize(text: string): GameState | null {
   if (!state.revealed.includes('collector')) state.revealed.unshift('collector');
 
   // A v1 save simply has none of these yet.
-  if (data.v === 2 || data.v === 3 || data.v === 4) {
+  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5) {
     const ids = (list: unknown) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string' && upgradeById(id)) : []);
     state.upgrades = [...new Set(ids(data.upgrades))];
     state.seenUpgrades = [...new Set([...ids(data.seenUpgrades), ...state.upgrades])];
@@ -131,7 +159,7 @@ export function deserialize(text: string): GameState | null {
   // Before v3 there was a single run: everything collected so far belongs to it, length unknown.
   state.runTrash = state.totalTrash;
   state.runSeconds = UNKNOWN_RUN_SECONDS;
-  if (data.v === 3 || data.v === 4) {
+  if (data.v === 3 || data.v === 4 || data.v === 5) {
     const run = parseNum(data.runTrash ?? '0');
     const recycle = loadLayer(data.layers?.recycle);
     if (!run || !recycle) return null;
@@ -142,12 +170,13 @@ export function deserialize(text: string): GameState | null {
   }
 
   // Older saves start with nothing stirring.
-  if (data.v === 4) {
+  if (data.v === 4 || data.v === 5) {
     const t = data.threat;
     const level = typeof t?.level === 'number' && Number.isFinite(t.level) ? t.level : 0;
     state.threat.level = Math.min(Math.max(level, 0), 1);
     state.threat.losses = typeof t?.losses === 'number' && t.losses >= 0 ? Math.floor(t.losses) : 0;
   }
+  if (data.v === 5) state.story = loadStory(data.story);
   return state;
 }
 
@@ -170,6 +199,7 @@ export function importSave(text: string): GameState | null {
 export function applyOffline(state: GameState, now = Date.now()): number {
   const seconds = Math.min(Math.max(0, (now - state.lastTick) / 1000), offlineCapSeconds(state.recycle));
   advance(state, seconds, true);
+  recordAway(state, seconds, now);
   state.lastTick = now;
   return seconds;
 }
