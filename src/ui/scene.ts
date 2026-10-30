@@ -178,6 +178,9 @@ function phosphor(hex: string): Phosphor {
 /** Dark outline drawn around actors so they separate from the busy background. */
 const HALO = 'rgb(4 14 8)';
 
+/** The camera overlay's own colour, like the REC mark: the one thing in the picture that is not green. */
+const HUD_RED = '#ff6b57';
+
 const MAX_ITEMS = 24;
 const MAX_PARTICLES = 160;
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
@@ -221,6 +224,8 @@ export class Scene {
   private ghost: { x: number; lane: 0 | 1; left: number } | null = null;
   private ghostIn = 8;
   private playing: Playing[] = [];
+  /** Digital zoom onto a replayed event: current scale and the point it is centred on. */
+  private zoom = { scale: 1, x: 0, y: 0 };
   private reducedMotion: boolean;
   /** How `paint` draws: dim scenery, bright actors, or the dark halo behind actors. */
   private mode: 'scenery' | 'actor' | 'halo' = 'scenery';
@@ -320,6 +325,10 @@ export class Scene {
 
   /** The live event (not a replay) near a tap at x, y in CSS pixels of the canvas, if any. */
   hit(x: number, y: number): EventKind | null {
+    // Taps arrive in screen pixels; anchors live in scene pixels.
+    const [ox, oy] = this.zoomOffset();
+    x = (x - ox) / this.zoom.scale;
+    y = (y - oy) / this.zoom.scale;
     for (const p of this.playing) {
       if (p.replay) continue;
       const a = this.anchor(p);
@@ -422,6 +431,7 @@ export class Scene {
     this.syncWalkers('collector', Math.min(this.owned('collector'), machines ? 2 : 4));
     this.syncWalkers('cart', Math.min(this.owned('cart'), machines ? 1 : 2));
     if (!this.reducedMotion) this.simulate(dt);
+    this.updateZoom(dt);
     this.draw();
   }
 
@@ -641,6 +651,8 @@ export class Scene {
 
   private draw(): void {
     const { ctx, w, h } = this;
+    ctx.save();
+    this.applyZoom();
     const sky = ctx.createLinearGradient(0, 0, 0, this.horizon);
     sky.addColorStop(0, C.skyTop);
     sky.addColorStop(1, C.skyBottom);
@@ -691,6 +703,8 @@ export class Scene {
 
     for (const p of this.playing) this.drawEvent(p);
     if (this.ghost) this.drawGhost(this.ghost.x, this.laneY(this.ghost.lane), this.ghost.lane === 0 ? 0.78 : 1);
+    ctx.restore();
+    this.drawReticle();
     this.drawDread();
 
     if (this.flashAlpha > 0) {
@@ -708,20 +722,102 @@ export class Scene {
     if (this.glitchLeft > 0) this.drawGlitch();
   }
 
+  // ---- Replay zoom -------------------------------------------------------------
+
+  /** How far a replay zooms in on what happened. */
+  private static readonly ZOOM = 2.5;
+
+  /** The replay being zoomed on, if any. */
+  private zoomTarget(): Playing | undefined {
+    return this.playing.find((p) => p.replay && this.anchor(p));
+  }
+
+  /** Eases the zoom in on a replayed event, follows it while it moves, and eases out at the end. */
+  private updateZoom(dt: number): void {
+    const p = this.zoomTarget();
+    const a = p && this.anchor(p);
+    const want = p && a && p.t < p.dur - 0.7 ? Scene.ZOOM : 1;
+    const k = this.reducedMotion ? 1 : Math.min(dt * 3.5, 1);
+    this.zoom.scale += (want - this.zoom.scale) * k;
+    if (a) {
+      // Jump to the spot on the first frame, then track it smoothly.
+      if (this.zoom.scale < 1.02) [this.zoom.x, this.zoom.y] = a;
+      this.zoom.x += (a[0] - this.zoom.x) * k;
+      this.zoom.y += (a[1] - this.zoom.y) * k;
+    }
+  }
+
+  /** Where a point of the scene lands on screen under the current zoom. */
+  private toScreen(x: number, y: number): [number, number] {
+    const { scale } = this.zoom;
+    const [ox, oy] = this.zoomOffset();
+    return [x * scale + ox, y * scale + oy];
+  }
+
+  /** Translation that puts the zoom point in the middle, without showing past the edges of the scene. */
+  private zoomOffset(): [number, number] {
+    const { scale, x, y } = this.zoom;
+    const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+    return [clamp(this.w / 2 - x * scale, this.w - this.w * scale, 0), clamp(this.h / 2 - y * scale, this.h - this.h * scale, 0)];
+  }
+
+  private applyZoom(): void {
+    if (this.zoom.scale <= 1.001) return;
+    const [ox, oy] = this.zoomOffset();
+    this.ctx.translate(ox, oy);
+    this.ctx.scale(this.zoom.scale, this.zoom.scale);
+  }
+
+  /** Corner brackets around the zoomed object and the zoom readout, like a review desk. */
+  private drawReticle(): void {
+    const p = this.zoomTarget();
+    const a = p && this.anchor(p);
+    if (!p || !a || this.zoom.scale < 1.3) return;
+    const { ctx } = this;
+    const [sx, sy] = this.toScreen(a[0], a[1]);
+    const r = 14 * this.zoom.scale;
+    const c = r * 0.45;
+    const blink = Math.sin(p.t * 8) > -0.3;
+    ctx.strokeStyle = HUD_RED;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = blink ? 0.95 : 0.5;
+    ctx.beginPath();
+    for (const [dx, dy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const x = sx + dx * r;
+      const y = sy + dy * r;
+      ctx.moveTo(x, y - dy * c);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x - dx * c, y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = HUD_RED;
+    ctx.font = '10px "JetBrains Mono Variable", monospace';
+    ctx.fillText(`ZOOM ×${this.zoom.scale.toFixed(1)}`, 8, this.h - 8);
+    ctx.fillText('ОБЪЕКТ', Math.min(sx + r + 4, this.w - 44), Math.max(sy - r + 8, 12));
+  }
+
   // ---- Camera events ---------------------------------------------------------
 
   /** Where a tap counts as catching the event, or null for events without a spot. */
   private anchor(p: Playing): [number, number] | null {
     const u = p.t / p.dur;
     switch (p.kind) {
+      case 'lampBlink':
+      case 'lampTurn':
+        return [this.w * 0.24 + 8, this.horizon - 60];
+      case 'breathe':
+        return [this.heapX, this.surface(this.heapX) + 10];
       case 'eyes': {
         // Low in the dark body of the heap, away from the lamp.
         const x = this.heapX + this.heapHalf * 0.55;
         return [x, this.surface(x) + (this.horizon - this.surface(x)) * 0.6];
       }
       case 'bag': {
+        // Rises to near the top of the frame, never out of it.
         const x = this.heapX + this.heapHalf * 0.15 + Math.sin(p.t * 1.5) * 6;
-        return [x, this.surface(x) - 10 - u * this.h * 0.7];
+        const from = this.surface(x) - 10;
+        return [x, from - u * (from - this.h * 0.14)];
       }
       case 'extra':
         return [this.w * (0.75 - 0.35 * u), this.laneY(0) + (this.h - this.laneY(0)) * u - 14];
