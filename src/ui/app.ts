@@ -36,6 +36,7 @@ import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
+import { Sound } from './sound';
 import { AwayScreen } from './awayScreen';
 import type { AwayReport } from '../game/away';
 import { WorkshopCam } from './workshopCam';
@@ -137,6 +138,7 @@ export class App {
   private automationPanel!: AutomationPanel;
   private sortingPanel!: SortingPanel;
   private intro = new Intro();
+  readonly sound = new Sound();
   private awayScreen = new AwayScreen();
   /** Camera 05 over the workshop, on the Upgrades tab. */
   private workshop = new WorkshopCam();
@@ -229,6 +231,7 @@ export class App {
       () => this.doRecycle(),
       (node) => {
         this.toast(`Дерево: ${node.name}`);
+        this.sound.click();
         this.scene.flash('amber');
         this.caption(node.text);
         this.pop(this.rateEl, 'pulse');
@@ -242,6 +245,7 @@ export class App {
       () => this.doResort(false),
       (message) => {
         if (message) {
+          this.sound.click();
           this.toast(message);
           this.scene.flash('amber');
         }
@@ -272,6 +276,7 @@ export class App {
 
     this.automationPanel = new AutomationPanel(this.getState, (message) => {
       if (message) {
+        this.sound.click();
         this.toast(message);
         this.scene.flash('amber');
       }
@@ -326,7 +331,7 @@ export class App {
     // Every camera can fold away to a thin strip; one choice for all of them.
     for (const feed of this.root.querySelectorAll<HTMLElement>('.feed')) this.addCameraFold(feed);
     this.setCamerasFolded(camerasFolded());
-    this.dread = new Dread(this.root, main, (line) => this.typeLine(line));
+    this.dread = new Dread(this.root, main, (line) => this.typeLine(line), this.sound);
     this.sharpButton.setAttribute('aria-pressed', String(this.dread.sharp));
     this.sharpButton.textContent = this.dread.sharp ? 'Резкие моменты: вкл' : 'Резкие моменты: выкл';
     this.show('dump');
@@ -385,6 +390,7 @@ export class App {
     const state = this.getState();
     const was = state.threat.level;
     lightUp(state);
+    this.sound.relay();
     this.scene.floodlight();
     this.knownStage = 0;
     if (was >= 0.5) this.caption('Свет. Оно отступило');
@@ -394,7 +400,8 @@ export class App {
   private loseRun(): void {
     if (this.losing) return;
     this.losing = true;
-    this.scene.glitch(2);
+    this.sound.lost();
+    this.glitch(2);
     const lines = ['КАМ-00', 'СИГНАЛ ПОТЕРЯН', 'СМЕНА ПОТЕРЯНА'];
     this.lostEl.replaceChildren(...lines.map((l, i) => el('div', `lost-line l${i}`, l)));
     this.lostEl.hidden = false;
@@ -464,7 +471,7 @@ export class App {
     if (kind === 'cam00') {
       this.feedLabel.textContent = 'КАМ-00 · ЯМА';
       this.feedLabel.classList.add('cam00');
-      this.scene.glitch(0.3);
+      this.glitch(0.3);
       window.setTimeout(() => {
         this.feedLabel.textContent = 'КАМ-01 · СВАЛКА';
         this.feedLabel.classList.remove('cam00');
@@ -474,7 +481,7 @@ export class App {
     if (kind === 'typing' || kind === 'voice') {
       const text = phrase ?? '';
       this.typeLine(text);
-      if (kind === 'voice') this.scene.glitch(0.6);
+      if (kind === 'voice') this.glitch(0.6);
       return (text.length * TYPE_MS_PER_CHAR) / 1000 + 1.5;
     }
     this.scene.playEvent(kind, replay);
@@ -531,7 +538,7 @@ export class App {
     const p2 = (n: number) => String(n).padStart(2, '0');
     this.playbackEl.textContent = `◀◀ ЗАПИСЬ ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
     this.playbackEl.hidden = false;
-    this.scene.glitch(0.4);
+    this.glitch(0.4);
     const seconds = this.playKind(event.kind, rec.phrase, true);
     window.setTimeout(() => {
       this.playbackEl.hidden = true;
@@ -663,10 +670,11 @@ export class App {
       const state = this.getState();
       const before = state.owned[def.id] ?? 0;
       if (buy(state, def.id) > 0) {
+        this.sound.click();
         this.pop(button);
         if (before === 0) {
           // The first unit shows up on camera: make an entrance.
-          this.scene.glitch(0.6);
+          this.glitch(0.6);
           this.caption(`Новое на камере: ${def.name}`);
         }
         this.render();
@@ -694,6 +702,7 @@ export class App {
     this.buyAllButton.addEventListener('click', () => {
       const bought = buyAllUpgrades(this.getState());
       if (bought.length === 0) return;
+      this.sound.click();
       for (const u of bought) this.toast(`Куплено: ${u.name}`);
       this.scene.flash('amber');
       this.workshop.bought();
@@ -714,12 +723,13 @@ export class App {
   /** An endless upgrade was bought; every few Compaction levels the thing comes up closer. */
   private onTrack(def: TrackDef): void {
     const state = this.getState();
+    this.sound.click();
     this.scene.flash('amber');
     this.workshop.bought();
     this.pop(this.rateEl, 'pulse');
     if (def.id === 'compact' && state.compacted % COMPACT_MILESTONE === 0) {
       this.typeLine(`УПЛОТНЕНИЕ ×${state.compacted}. ТО, ЧТО ВНИЗУ, ПОДНЯЛОСЬ БЛИЖЕ`);
-      this.scene.glitch(0.8);
+      this.glitch(0.8);
       this.toast('Куча осела. То, что под ней, стало ближе');
     } else {
       this.caption(`${def.name}: ур. ${state.tracks[def.id]}`);
@@ -734,9 +744,10 @@ export class App {
     if (gain.lte(0)) return;
     writeSave(state);
     this.resetKnown();
-    this.scene.glitch(0.4);
+    this.glitch(0.4);
     this.toast(`Автопереработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
     this.recyclePanel.camera.slam();
+    this.sound.press();
     this.automationPanel.note(`recycle: №${state.recycle.resets}, +${format(gain)} ВС`);
     this.render();
   }
@@ -757,7 +768,7 @@ export class App {
         this.intro.show(SORTING_INTRO);
       }
       this.typeLine('ЛЕНТА ПОШЛА. ХВОСТЫ УХОДЯТ ОБРАТНО В КУЧУ. ОНО ИХ ЖДЁТ');
-      this.scene.glitch(0.8);
+      this.glitch(0.8);
     }
     this.drainFinds(state);
     // The first look at the running line comes with a walk-through.
@@ -781,11 +792,13 @@ export class App {
         if (uniques.length <= 2) this.toast(`Находка: ${u.name}. ${describeUnique(u)}`);
         this.sortingPanel.showFind(`${u.name}: ${u.text} (${describeUnique(u)})`, false);
         this.caption(u.name);
+        this.sound.chime();
       } else if (n.kind === 'anomaly') {
         if (this.losing) continue;
         this.typeLine(n.line);
-        this.scene.glitch(1.2);
+        this.glitch(1.2);
         this.sortingPanel.camera.anomaly();
+        this.sound.whisper();
         this.pop(this.threatEl, 'alarm');
         this.sortingPanel.showFind('Стол осмотра: предмет не опознан. Угроза +15%', true);
       } else {
@@ -803,7 +816,8 @@ export class App {
     writeSave(state);
     this.resetKnown();
     this.toastQueue = [];
-    this.scene.glitch(auto ? 0.6 : 2);
+    this.glitch(auto ? 0.6 : 2);
+    this.sound.press();
     this.scene.flash('amber');
     if (!auto) this.typeLine(`ПЕРЕСОРТИРОВКА №${state.sorting.sorts}. ПЕРЕРАБОТКА СОЖЖЕНА. КУЧА ПОМНИТ`);
     this.toast(`Пересортировка №${state.sorting.sorts}: +${format(gain)} фракций, доход ×2`);
@@ -824,11 +838,13 @@ export class App {
       if (n.script !== 'light' || this.losing) continue;
       if (n.failed) {
         this.typeLine(FAIL_LINES[Math.floor(Math.random() * FAIL_LINES.length)]);
-        this.scene.glitch(1.2);
+        this.glitch(1.2);
         this.pop(this.threatEl, 'alarm');
         this.toast('Автопрожектор не включился. Держите свет сами!');
         this.automationPanel.camera.failed();
+        this.sound.fail();
       } else {
+        this.sound.relay();
         this.scene.floodlight();
         this.knownStage = 0;
         this.caption('Автопрожектор: свет');
@@ -851,6 +867,7 @@ export class App {
     button.append(el('span', 'buy-label', 'Купить'), el('span', 'buy-price', `${format(def.cost)} кг`));
     button.addEventListener('click', () => {
       if (buyUpgrade(this.getState(), def.id)) {
+        this.sound.click();
         this.toast(`Куплено: ${def.name}`);
         this.workshop.bought();
         this.scene.flash('amber');
@@ -888,6 +905,29 @@ export class App {
       this.updateStatus.classList.remove('ready');
     });
     panel.append(this.updateStatus, this.updateButton);
+
+    panel.append(el('h2', 'panel-title', 'Звук'));
+    panel.append(el('p', 'note', 'Гул камеры, свет, помехи и то, что шепчет. Звук включается с первым касанием в игре.'));
+    const volumeRow = el('label', 'volume');
+    const volumeValue = el('span', 'volume-value');
+    const volume = el('input', 'volume-range');
+    volume.type = 'range';
+    volume.id = 'volume';
+    volume.min = '0';
+    volume.max = '100';
+    volume.step = '5';
+    volume.value = String(Math.round(this.sound.level * 100));
+    volume.setAttribute('aria-label', 'Громкость');
+    const showVolume = () => (volumeValue.textContent = volume.value === '0' ? 'выкл' : `${volume.value}%`);
+    showVolume();
+    volume.addEventListener('input', () => {
+      this.sound.setVolume(Number(volume.value) / 100);
+      showVolume();
+    });
+    // A tick on release, so the level can be heard.
+    volume.addEventListener('change', () => this.sound.click());
+    volumeRow.append(el('span', '', 'Громкость'), volume, volumeValue);
+    panel.append(volumeRow);
 
     panel.append(el('h2', 'panel-title', 'Страх'));
     panel.append(el('p', 'note', 'Вспышки, разрывы экрана и лицо на последней стадии угрозы. Выключите, если мерцание вам вредно.'));
@@ -1010,6 +1050,9 @@ export class App {
       return;
     }
     this.toastEl.replaceChildren(...lines.map((l) => el('div', 'toast-line', l)));
+    // Just under the header: the threat and the floodlight must stay in sight and in reach.
+    const header = this.root.querySelector('header');
+    this.toastEl.style.top = `${Math.round(header?.getBoundingClientRect().bottom ?? 0) + 6}px`;
     this.toastEl.hidden = false;
     this.toastTimer = window.setTimeout(() => this.nextToast(), TOAST_MS + TOAST_LINE_MS * (lines.length - 1));
   }
@@ -1052,6 +1095,12 @@ export class App {
     });
   }
 
+  /** Interference on camera 01, heard as static when it is more than a flicker. */
+  private glitch(seconds: number): void {
+    this.scene.glitch(seconds);
+    if (seconds >= 0.5) this.sound.static(seconds);
+  }
+
   /** A button on a camera that folds every camera to a strip, or opens them again. */
   private addCameraFold(feed: HTMLElement): void {
     const b = el('button', 'feed-fold');
@@ -1080,9 +1129,10 @@ export class App {
     writeSave(state);
     this.resetKnown();
     this.toastQueue = [];
-    this.scene.glitch(1.4);
+    this.glitch(1.4);
     this.scene.flash('amber');
     this.recyclePanel.camera.slam();
+    this.sound.press();
     this.caption(`Переработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
     this.toast(`Получено ${format(gain)} вторсырья. Доход ×${format(passiveBonus(state.recycle.total))}`);
     // The player stays on the tab: the press comes down on camera 03, and the tree is right there to spend on.
@@ -1093,7 +1143,7 @@ export class App {
   private announce(state: GameState): void {
     for (const id of state.revealed.slice(this.knownRevealed)) {
       this.toast(`Новый производитель: ${producerById(id)?.name}`);
-      this.scene.glitch(0.35);
+      this.glitch(0.35);
     }
     this.knownRevealed = state.revealed.length;
 
@@ -1109,7 +1159,7 @@ export class App {
     if (!this.knownRecycleReady && canRecycle(state)) {
       this.knownRecycleReady = true;
       this.toast(state.recycle.resets === 0 ? 'Открыта переработка! Загляните во вкладку' : 'Переработка снова доступна');
-      this.scene.glitch(0.5);
+      this.glitch(0.5);
       this.caption('Доступна переработка');
     }
 
@@ -1228,6 +1278,7 @@ export class App {
     this.autoButton.setAttribute('aria-pressed', String(state.autobuy));
 
     this.renderThreat(state);
+    this.sound.setThreat(state.threat.level);
     if (!this.incomeEl.hidden) this.renderIncome(state);
   }
 
@@ -1260,8 +1311,11 @@ export class App {
     const stage = stageIndex(level);
     if (stage > this.knownStage) {
       this.toast(STAGE_NOTES[stage]);
-      if (stage >= 2) this.scene.glitch(0.4);
-      if (stage >= 3) this.pop(this.threatEl, 'alarm');
+      if (stage >= 2) this.glitch(0.4);
+      if (stage >= 3) {
+        this.pop(this.threatEl, 'alarm');
+        this.sound.alarm();
+      }
     }
     this.knownStage = stage;
     this.threatBar.textContent = `угроза ${textBar(level, 10)} ${Math.floor(level * 100)}%`;

@@ -1,3 +1,5 @@
+import type { Sound } from './sound';
+
 /**
  * The interface itself starts to break as the threat rises: labels flicker into the
  * wrong words, pale words show through the panels, the terminal types on its own,
@@ -60,6 +62,7 @@ export class Dread {
     private root: HTMLElement,
     private main: HTMLElement,
     private typeLine: (line: string) => void,
+    private sound: Sound,
   ) {
     this.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     this.sharp = readSharp(!this.reducedMotion);
@@ -130,6 +133,7 @@ export class Dread {
     el.classList.remove('show');
     void el.offsetWidth;
     el.classList.add('show');
+    this.sound.whisper();
   }
 
   private say(): void {
@@ -144,12 +148,14 @@ export class Dread {
   /** The interface tears sideways for a moment. */
   private tear(): void {
     this.main.classList.add('dread-tear');
+    this.sound.static(0.2);
     window.setTimeout(() => this.main.classList.remove('dread-tear'), rnd(90, 200));
   }
 
   /** The face fills the screen for a fraction of a second. */
   private face(): void {
     this.flash(this.faceEl, 240);
+    this.sound.static(0.7);
     navigator.vibrate?.([90, 40, 160]);
   }
 

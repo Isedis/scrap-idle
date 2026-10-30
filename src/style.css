@@ -949,10 +949,12 @@ button { font: inherit; color: inherit; }
 
 /* ---- Toast ---- */
 .toast {
-  /* At the top, over the header: down by the tab bar it covered the buy buttons. */
+  /* Under the header (set when shown): down by the tab bar it covered the buy buttons,
+     over the header it covered the floodlight. Taps go through it to whatever is below. */
   position: fixed;
   left: 50%;
   top: calc(env(safe-area-inset-top, 0px) + 6px);
+  pointer-events: none;
   z-index: 20;
   width: max-content;
   max-width: calc(100% - 32px);
@@ -1320,3 +1322,8 @@ button { font: inherit; color: inherit; }
 .away-value { color: var(--glow); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .away-note { grid-column: 1 / -1; color: var(--mid); font-size: 11px; }
 .away-row.bad .away-value, .away-row.bad .away-note { color: var(--danger); }
+
+/* ---- Sound ---- */
+.volume { display: grid; grid-template-columns: auto minmax(0, 1fr) 48px; align-items: center; gap: 12px; min-height: 44px; }
+.volume-range { width: 100%; min-height: 44px; accent-color: var(--glow); }
+.volume-value { color: var(--glow); font-variant-numeric: tabular-nums; text-align: right; }
