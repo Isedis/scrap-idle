@@ -2,6 +2,7 @@ import { format, type Decimal } from '../game/num';
 import { BRANCHES, LAYERS, NODES, RECYCLE_AT, REPEATS, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, repeatCost, type NodeDef, type RepeatDef } from '../game/layers';
 import { recycleAdvice } from '../game/advice';
 import { PlantCam, type PlantView } from './plantCam';
+import { CorridorCam, type CorridorView } from './corridorCam';
 import { nearness } from '../game/hearing';
 import { recycleMult, buyNode, buyRepeat, canRecycle, currentGain, repeatsOpen, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
@@ -22,6 +23,10 @@ export class RecyclePanel {
   private now!: HTMLElement;
   /** Camera 03 over the plant. */
   readonly camera = new PlantCam();
+  /** Camera 07 in the corridor to the booth: on screen instead of 03 while the one that listens is out. */
+  readonly corridor = new CorridorCam();
+  /** Where the tab's camera sits: 03, or 07 while it walks. */
+  readonly camSlot = el('div', 'cam-slot');
   private action!: HTMLElement;
   private actionTitle!: HTMLElement;
   private actionBar!: HTMLElement;
@@ -46,8 +51,10 @@ export class RecyclePanel {
     const head = el('div', 'panel-head');
     head.append(el('h2', 'panel-title', 'Переработка'));
     this.now = el('div', 's-now');
+    this.corridor.root.hidden = true;
+    this.camSlot.append(this.camera.root, this.corridor.root);
     this.root.append(
-      this.camera.root,
+      this.camSlot,
       head,
       el('p', 's-why', 'Сдаёшь весь мусор и производителей — получаешь вторсырьё. Оно навсегда усиливает доход и тратится на дерево ниже.'),
       this.now,
@@ -223,7 +230,16 @@ export class RecyclePanel {
 
   /** Every animation frame while the tab is on screen: the camera. */
   frame(dt: number, state: GameState): void {
-    this.camera.update(dt, plantView(state));
+    const h = state.hearing;
+    const out = h.phase === 'walk' || h.phase === 'check' || this.corridor.leaving;
+    // The tab switches to the corridor while it is out there, and back to the plant after.
+    if (this.corridor.root.hidden === out) {
+      this.corridor.root.hidden = !out;
+      this.camera.root.hidden = out;
+      (out ? this.corridor : this.camera).glitch(0.6);
+    }
+    if (out) this.corridor.update(dt, corridorView(state));
+    else this.camera.update(dt, plantView(state));
   }
 }
 
@@ -238,6 +254,11 @@ export function plantView(state: GameState): PlantView {
     threat: state.threat.level,
     noise: state.sorting.open ? state.hearing.noise : 1,
     loud: state.sorting.open,
-    hunt: { phase: state.hearing.phase, near: nearness(state.hearing), held: state.hearing.held },
   };
+}
+
+/** What camera 07 shows of the one that listens. */
+export function corridorView(state: GameState): CorridorView {
+  const h = state.hearing;
+  return { phase: h.phase, near: nearness(h), held: h.held };
 }

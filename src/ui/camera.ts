@@ -18,6 +18,8 @@ export abstract class Camera<V> {
   protected reducedMotion: boolean;
   private mode: 'scenery' | 'actor' | 'halo' = 'scenery';
   private glitchLeft = 0;
+  /** The one that listens flickers through this camera while it walks. */
+  protected lurks = true;
   private flashAlpha = 0;
   private clock: HTMLElement;
 
@@ -63,7 +65,7 @@ export abstract class Camera<V> {
     this.t += dt;
     if (!this.reducedMotion) this.simulate(dt);
     this.draw();
-    drawLurker(this.ctx, this.w, this.h, this.t);
+    if (this.lurks) drawLurker(this.ctx, this.w, this.h, this.t);
     if (this.flashAlpha > 0) {
       this.ctx.fillStyle = C.glow;
       this.ctx.globalAlpha = this.flashAlpha;

@@ -31,7 +31,7 @@ import { ICONS } from './icons';
 import { el, progress, syncChildren, textBar } from './dom';
 export { textBar } from './dom';
 import { Scene, type SceneView } from './scene';
-import { RecyclePanel, plantView } from './recyclePanel';
+import { RecyclePanel, corridorView, plantView } from './recyclePanel';
 import { JournalPanel } from './journalPanel';
 import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
@@ -299,7 +299,7 @@ export class App {
       },
     );
     this.panels.set('recycle', this.recyclePanel.root);
-    this.recyclePanel.camera.root.after(this.hearingBar.root);
+    this.recyclePanel.camSlot.after(this.hearingBar.root);
     // A tap on camera 03 while something happens there catches it, like on camera 01.
     this.recyclePanel.camera.root.addEventListener('click', () => {
       const kind = this.recyclePanel.camera.live;
@@ -1185,7 +1185,7 @@ export class App {
     if (!this.losing) this.huntFrame(dt, state);
     // In the silence camera 03 is on the dark screen, whatever the tab, folded or not.
     const silence = state.hearing.phase === 'check' && state.hearing.held > 0;
-    if (silence) this.recyclePanel.camera.update(dt, plantView(state));
+    if (silence) this.recyclePanel.corridor.update(dt, corridorView(state));
     // The journal's monitor shows camera 01 live, or the recording it plays, folded or not.
     if (!this.journalPanel.root.hidden) this.journalPanel.monitor.frame(dt, this.yardView(state), plantView(state));
     // Folded cameras draw nothing, which also spares the battery.
@@ -1455,7 +1455,7 @@ export class App {
       this.glitch(1.2);
       this.pop(this.hearingBar.root, 'alarm');
       this.typeLine('КАМ-03: ОНО УСЛЫШАЛО ЦЕХ');
-      this.recyclePanel.camera.say('СКРЕЖЕТ · ОНО УСЛЫШАЛО ЦЕХ', 3.5);
+      this.recyclePanel.corridor.say('СКРЕЖЕТ · ОНО УСЛЫШАЛО ЦЕХ', 3.5);
       this.toast('ОНО УСЛЫШАЛО. Идёт к будке, остановить нельзя. Когда подойдёт: шум на 0 и ни звука 10 секунд');
       navigator.vibrate?.([200, 80, 200]);
     } else if (h.phase === 'check') {
@@ -1463,7 +1463,7 @@ export class App {
       this.glitch(0.8);
       this.pop(this.hearingBar.root, 'alarm');
       this.typeLine('ОНО У ДВЕРИ');
-      this.recyclePanel.camera.say('ШАГИ СТИХЛИ · У ДВЕРИ БУДКИ', 3.5);
+      this.recyclePanel.corridor.say('ШАГИ СТИХЛИ · У ДВЕРИ БУДКИ', 3.5);
       this.toast('ОНО У ДВЕРИ. Минута: опустите шум до 0 и не трогайте 10 секунд');
       navigator.vibrate?.([300, 100, 300]);
     } else if (h.phase === 'caught') {
@@ -1529,7 +1529,7 @@ export class App {
       this.layerView = 'recycle';
       this.show('recycle');
       // The camera in the middle of the screen: the slider sits just under it.
-      this.recyclePanel.camera.root.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      this.recyclePanel.camSlot.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
     this.render();
   }
@@ -1540,9 +1540,11 @@ export class App {
     const near = h.phase === 'walk' ? nearness(h) : h.phase === 'check' ? 1 : 0;
     const holding = h.phase === 'check' && h.held > 0;
     // During the silence the screen goes dark around camera 03: the camera moves into it.
-    const cam = this.recyclePanel.camera.root;
-    if (holding && cam.parentElement !== this.hearingBar.hushCam) this.hearingBar.hushCam.append(cam);
-    else if (!holding && cam.parentElement === this.hearingBar.hushCam) this.hearingBar.root.before(cam);
+    const cam = this.recyclePanel.corridor.root;
+    if (holding && cam.parentElement !== this.hearingBar.hushCam) {
+      cam.hidden = false;
+      this.hearingBar.hushCam.append(cam);
+    } else if (!holding && cam.parentElement === this.hearingBar.hushCam) this.recyclePanel.camSlot.append(cam);
     hunt.near = near;
     this.sound.setHunt(near);
     this.sound.hush(holding);
@@ -1557,7 +1559,7 @@ export class App {
       if (this.stopFor > 0) this.sound.duck(false);
       this.stopFor = 0;
       this.hearingBar.listening = false;
-      this.recyclePanel.camera.listening = false;
+      this.recyclePanel.corridor.listening = false;
     }
     if (near === 0) return;
 
@@ -1576,10 +1578,10 @@ export class App {
         }
         this.root.dataset.hunt = 'walk';
         this.hearingBar.listening = false;
-        this.recyclePanel.camera.listening = false;
+        this.recyclePanel.corridor.listening = false;
         this.sound.duck(false);
         this.sound.lunge(pan);
-        this.recyclePanel.camera.huntLunge();
+        this.recyclePanel.corridor.huntLunge();
         this.glitch(0.5);
         navigator.vibrate?.(200);
         this.stopIn = 14 + Math.random() * 12;
@@ -1589,8 +1591,8 @@ export class App {
       if (this.stopIn <= 0 && near > 0.12 && near < 0.9) {
         this.stopFor = 5 + Math.random() * 3;
         this.hearingBar.listening = true;
-        this.recyclePanel.camera.listening = true;
-        this.recyclePanel.camera.say('ТИШИНА · ОНО ПРИСЛУШИВАЕТСЯ', 8);
+        this.recyclePanel.corridor.listening = true;
+        this.recyclePanel.corridor.say('ТИШИНА · ОНО ПРИСЛУШИВАЕТСЯ', 8);
         this.sound.duck(true);
         this.typeLine('ОНО ОСТАНОВИЛОСЬ. СЛУШАЕТ');
         this.root.dataset.hunt = 'stop';
@@ -1600,13 +1602,13 @@ export class App {
         // Every 4 seconds at first, nearly every second at the end, never quite even.
         c.step = (4 - 3.1 * near) * (0.75 + Math.random() * 0.5);
         this.sound.step(near, pan);
-        this.recyclePanel.camera.huntStep(near, pan);
+        this.recyclePanel.corridor.huntStep(near, pan);
         this.scene.glitch(0.08 + 0.15 * near);
       }
       if (near > 0.5 && c.breath <= 0) {
         c.breath = 7 - 3 * near;
         this.sound.breath(near);
-        this.recyclePanel.camera.say('ТЯЖЁЛОЕ ДЫХАНИЕ', 2);
+        this.recyclePanel.corridor.say('ТЯЖЁЛОЕ ДЫХАНИЕ', 2);
       }
       if (c.say <= 0) {
         c.say = 40 - 25 * near;
@@ -1627,7 +1629,7 @@ export class App {
         if (h.held < at || this.doorBeats.has(beat)) continue;
         this.doorBeats.add(beat);
         play();
-        this.recyclePanel.camera.huntBeat(beat);
+        this.recyclePanel.corridor.huntBeat(beat);
       }
       if (c.breath <= 0) {
         c.breath = 3.2;
@@ -1642,7 +1644,7 @@ export class App {
       if (c.breath <= 0) {
         c.breath = 3.5;
         this.sound.breath(1);
-        this.recyclePanel.camera.say('ДЫХАНИЕ У ДВЕРИ', 2.5);
+        this.recyclePanel.corridor.say('ДЫХАНИЕ У ДВЕРИ', 2.5);
       }
       if (c.flicker <= 0) {
         c.flicker = 0.8 + Math.random();
@@ -1662,7 +1664,7 @@ export class App {
     this.dread.scare();
     this.glitch(2);
     delete this.root.dataset.hunt;
-    this.recyclePanel.camera.huntClear();
+    this.recyclePanel.corridor.huntClear();
     const lines = ['КАМ-03', 'ОНО УСЛЫШАЛО', 'ПЕРЕРАБОТКА ПОТЕРЯНА'];
     this.lostEl.replaceChildren(...lines.map((l, i) => el('div', `lost-line l${i}`, l)));
     this.lostEl.hidden = false;
@@ -1684,7 +1686,7 @@ export class App {
   private itLeft(survived: number): void {
     this.sound.hush(false);
     this.sound.walkAway();
-    this.recyclePanel.camera.huntLeave();
+    this.recyclePanel.corridor.huntLeave();
     const line = heardLine(survived);
     const box = el('div', 'lost left');
     box.setAttribute('role', 'status');
