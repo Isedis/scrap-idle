@@ -27,6 +27,15 @@ const C = {
   items: ['#9dff8a', '#7ce0ff', '#ffc857', '#c8ffd2', '#a8e07a'],
 };
 
+/** Big junk on the heap is muted so the heap reads as one mass; the bright colours belong to things that move. */
+const J = {
+  white: '#8fbf98',
+  box: '#a8893f',
+  bags: ['#5f9fae', '#7fa86a', '#9fb87a'],
+  sofa: '#2a6a40',
+  hub: '#4f8a63',
+};
+
 /** What the camera needs to know about the game. */
 export interface SceneView {
   owned: Record<string, number>;
@@ -98,7 +107,7 @@ interface Junk {
   color: string;
 }
 
-const MAX_ITEMS = 60;
+const MAX_ITEMS = 24;
 const MAX_PARTICLES = 160;
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 const pick = <T>(list: readonly T[]) => list[Math.floor(Math.random() * list.length)];
@@ -154,7 +163,7 @@ export class Scene {
     }
     const kinds: Junk['kind'][] = ['fridge', 'tyre', 'bag', 'box', 'washer', 'tyre', 'bag', 'sofa', 'box', 'bag', 'tyre', 'fridge', 'bag', 'box', 'washer', 'tyre', 'bag', 'box'];
     kinds.forEach((kind, i) => {
-      this.junk.push({ u: 0.1 + rand() * 0.8, depth: 0.08 + rand() * 0.55, kind, rot: (rand() - 0.5) * 0.7, color: C.items[i % C.items.length] });
+      this.junk.push({ u: 0.1 + rand() * 0.8, depth: 0.08 + rand() * 0.55, kind, rot: (rand() - 0.5) * 0.7, color: J.bags[i % J.bags.length] });
     });
     new ResizeObserver(() => this.resize()).observe(canvas);
     this.resize();
@@ -220,7 +229,7 @@ export class Scene {
 
   /** Sparks along the yard, for a celebration. */
   burst(): void {
-    for (let i = 0; i < 28; i++) {
+    for (let i = 0; i < 16; i++) {
       this.spark(rnd(0, this.w), this.laneY(1) - rnd(0, 20), rnd(-40, 40), rnd(-90, -30), pick([C.glow, C.amber]), 0.9);
     }
   }
@@ -290,11 +299,13 @@ export class Scene {
 
     // Heap: a mound at the start, filling the sky by 1e15 kg.
     this.grow = Math.min(Math.log10(view.total.toNumber() + 1) / 15, 1);
-    const target = this.h * (0.1 + 0.45 * this.grow);
+    const target = this.h * (0.1 + 0.36 * this.grow);
     this.heapHeight += (target - this.heapHeight) * Math.min(dt * 2, 1);
 
-    this.syncWalkers('collector', Math.min(this.owned('collector'), 6));
-    this.syncWalkers('cart', Math.min(this.owned('cart'), 3));
+    // A few actors stand for the whole workforce; once machines arrive, fewer people walk the yard.
+    const machines = this.owned('truck') >= 10 || this.owned('sorter') >= 10;
+    this.syncWalkers('collector', Math.min(this.owned('collector'), machines ? 2 : 4));
+    this.syncWalkers('cart', Math.min(this.owned('cart'), machines ? 1 : 2));
     if (!this.reducedMotion) this.simulate(dt);
     this.draw();
   }
@@ -313,14 +324,14 @@ export class Scene {
         const y = this.laneY(w.lane) - 20;
         this.throwItem(w.x, y, this.onHeap(), 0.8);
         if (w.kind === 'cart') this.throwItem(w.x + w.dir * 14, y + 4, this.onHeap(), 0.95);
-        w.tossIn = w.kind === 'cart' ? rnd(3, 6) : rnd(2.5, 5);
+        w.tossIn = w.kind === 'cart' ? rnd(5, 9) : rnd(4, 8);
       }
     }
 
     const trucks = this.owned('truck');
     if (trucks > 0) {
       this.truckIn -= dt;
-      if (this.truckIn <= 0 && this.trucks.length < (trucks >= 10 ? 2 : 1)) {
+      if (this.truckIn <= 0 && this.trucks.length < 1) {
         this.trucks.push({ x: -90, state: 'in', timer: 0, tilt: 0, dumped: false });
         this.truckIn = Math.max(3, 13 - Math.log2(trucks + 1) * 2);
       }
@@ -373,7 +384,7 @@ export class Scene {
         this.skyDropIn = Math.max(0.6, 5 - orbital * 0.15);
       }
     }
-    const satTarget = Math.min(orbital, 6);
+    const satTarget = Math.min(orbital, 3);
     while (this.satellites.length < satTarget) this.satellites.push({ x: -10, y: rnd(0.08, 0.32) * this.h, speed: rnd(8, 20), phase: rnd(0, 6) });
     this.satellites.length = Math.min(this.satellites.length, satTarget);
     for (const s of this.satellites) {
@@ -429,7 +440,7 @@ export class Scene {
     }
     this.items = this.items.filter((it) => it.landed < 1.6);
 
-    if (Math.random() < dt * 1.2) {
+    if (Math.random() < dt * 0.5) {
       const x = this.onHeap();
       this.spark(x, this.surface(x), rnd(-4, 4), rnd(-26, -12), C.amber, 2.5);
     }
@@ -740,7 +751,7 @@ export class Scene {
     this.paint(C.heapFront, 1.6);
 
     // Big junk sticking out of the heap; more shows as it grows.
-    const visible = Math.round(5 + this.grow * (this.junk.length - 5));
+    const visible = Math.round(4 + this.grow * 6);
     const s = Math.min(Math.max(this.heapHeight / 75, 0.5), 0.85);
     for (const j of this.junk.slice(0, visible)) {
       const x = this.heapX - this.heapHalf + j.u * this.heapHalf * 2;
@@ -786,7 +797,7 @@ export class Scene {
     ctx.scale(s, s);
     switch (j.kind) {
       case 'fridge':
-        this.box(-6, -11, 12, 21, C.light);
+        this.box(-6, -11, 12, 21, J.white);
         ctx.beginPath();
         ctx.moveTo(-6, -4);
         ctx.lineTo(6, -4);
@@ -795,12 +806,12 @@ export class Scene {
         ctx.fillRect(3, -9, 1.5, 3);
         break;
       case 'washer':
-        this.box(-6, -6, 12, 12, C.light);
-        this.circle(0, 1, 3.5, C.hub, 1);
+        this.box(-6, -6, 12, 12, J.white);
+        this.circle(0, 1, 3.5, J.hub, 1);
         break;
       case 'tyre':
         this.circle(0, 0, 5.5, C.tyre);
-        this.circle(0, 0, 2.2, C.hub, 1);
+        this.circle(0, 0, 2.2, J.hub, 1);
         break;
       case 'bag':
         ctx.beginPath();
@@ -810,19 +821,19 @@ export class Scene {
         ctx.quadraticCurveTo(5, 6, 6, 2);
         ctx.quadraticCurveTo(7, -4, 1, -7);
         ctx.closePath();
-        this.paint(j.color === C.amber ? C.cyan : j.color);
+        this.paint(j.color);
         break;
       case 'box':
-        this.box(-7, -5, 14, 10, C.amber);
+        this.box(-7, -5, 14, 10, J.box);
         ctx.beginPath();
         ctx.moveTo(-7, -1);
         ctx.lineTo(7, -1);
         ctx.stroke();
         break;
       case 'sofa':
-        this.box(-10, -3, 20, 6, C.deep);
-        this.box(-10, -7, 4, 10, C.deep);
-        this.box(6, -7, 4, 10, C.deep);
+        this.box(-10, -3, 20, 6, J.sofa);
+        this.box(-10, -7, 4, 10, J.sofa);
+        this.box(6, -7, 4, 10, J.sofa);
         break;
     }
     ctx.restore();
@@ -871,7 +882,7 @@ export class Scene {
     this.box(x + 6, y, 20, 6, C.amber);
     this.box(x + 7, base - 8, 18, 8, C.lime);
     // Finished cubes stacked beside it.
-    const cubes = Math.min(n, 10);
+    const cubes = Math.min(n, 6);
     for (let i = 0; i < cubes; i++) {
       const row = i < 4 ? 0 : i < 7 ? 1 : i < 9 ? 2 : 3;
       const col = i < 4 ? i : i < 7 ? i - 4 : i < 9 ? i - 7 : 0;
