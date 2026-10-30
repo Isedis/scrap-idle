@@ -1,3 +1,5 @@
+import { Music } from './music';
+
 /**
  * Sound, made on the spot with Web Audio: no files to download, and every sound can lean
  * into the mood. A phone lets a page make sound only after a touch, so the sound starts
@@ -6,6 +8,7 @@
 
 const VOLUME_KEY = 'scrap-idle-volume';
 const DEFAULT_VOLUME = 0.6;
+const MUSIC_KEY = 'scrap-idle-music';
 
 /** Reads a stored volume, falling back to the default for anything unreadable. */
 export function parseVolume(stored: string | null): number {
@@ -18,10 +21,9 @@ export class Sound {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
-  /** The camera hum and the threat's rumble, always running once sound starts. */
-  private hum: GainNode | null = null;
-  private rumble: GainNode | null = null;
-  private rumbleOsc: OscillatorNode | null = null;
+  /** Background music, running once sound starts. */
+  private music: Music | null = null;
+  private musicOn: boolean;
   private volume: number;
   private threat = 0;
   /** Context time of the next creak under pressure. */
@@ -35,6 +37,13 @@ export class Sound {
       // No storage: the default volume.
     }
     this.volume = parseVolume(stored);
+    let music: string | null = null;
+    try {
+      music = localStorage.getItem(MUSIC_KEY);
+    } catch {
+      // No storage: music on.
+    }
+    this.musicOn = music !== 'off';
     // The first touch anywhere starts the sound; a phone allows nothing before it.
     const start = () => {
       this.start();
@@ -83,69 +92,35 @@ export class Sound {
     this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const data = this.noise.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
-    this.startHum();
+    this.music = new Music(ctx, this.master);
+    this.music.setOn(this.musicOn);
+    this.music.start();
     this.setThreat(this.threat);
   }
 
-  /**
-   * The camera's mains hum, and a low rumble that swells with the threat. A phone speaker
-   * plays almost nothing under 150-200 Hz, so both are built from low notes rich in
-   * harmonics and filtered into the range it can play: heard as a buzz and a growl.
-   */
-  private startHum(): void {
-    const ctx = this.ctx!;
-    this.hum = ctx.createGain();
-    this.hum.gain.value = 0.035;
-    this.hum.connect(this.master!);
-    const mains = ctx.createOscillator();
-    mains.type = 'sawtooth';
-    mains.frequency.value = 50;
-    const buzz = ctx.createBiquadFilter();
-    buzz.type = 'bandpass';
-    buzz.frequency.value = 320;
-    buzz.Q.value = 0.8;
-    mains.connect(buzz).connect(this.hum);
-    mains.start();
-
-    this.rumble = ctx.createGain();
-    this.rumble.gain.value = 0;
-    this.rumble.connect(this.master!);
-    this.rumbleOsc = ctx.createOscillator();
-    this.rumbleOsc.type = 'sawtooth';
-    this.rumbleOsc.frequency.value = 55;
-    const growl = ctx.createBiquadFilter();
-    growl.type = 'lowpass';
-    growl.frequency.value = 480;
-    this.rumbleOsc.connect(growl).connect(this.rumble);
-    this.rumbleOsc.start();
-    // Breath under the growl: noise in the low mids.
-    const air = ctx.createBufferSource();
-    air.buffer = this.noise;
-    air.loop = true;
-    const airBand = ctx.createBiquadFilter();
-    airBand.type = 'bandpass';
-    airBand.frequency.value = 260;
-    airBand.Q.value = 1.2;
-    const airGain = ctx.createGain();
-    airGain.gain.value = 0.6;
-    air.connect(airBand).connect(airGain).connect(this.rumble);
-    air.start();
-  }
-
-  /**
-   * The rumble follows the threat: silent until the noises start, loud near the edge.
-   * Under pressure, something creaks now and then. Called every render.
-   */
+  /** The music follows the threat; under pressure, something creaks now and then. Called every render. */
   setThreat(level: number): void {
     this.threat = level;
-    if (!this.ctx || !this.rumble || !this.rumbleOsc) return;
+    if (!this.ctx) return;
+    this.music?.setThreat(level);
     const t = this.ctx.currentTime;
-    const loud = level < 0.25 ? 0 : ((level - 0.25) / 0.75) ** 1.5 * 0.16;
-    this.rumble.gain.setTargetAtTime(loud, t, 0.5);
-    this.rumbleOsc.frequency.setTargetAtTime(55 - level * 15, t, 0.5);
     if (level >= 0.25 && t >= this.creakAt) {
       if (this.creakAt > 0) this.creak();
       this.creakAt = t + (25 + Math.random() * 35) / (1 + 2 * level);
+    }
+  }
+
+  get musicPlaying(): boolean {
+    return this.musicOn;
+  }
+
+  setMusic(on: boolean): void {
+    this.musicOn = on;
+    this.music?.setOn(on);
+    try {
+      localStorage.setItem(MUSIC_KEY, on ? 'on' : 'off');
+    } catch {
+      // Without storage the music is on again next time.
     }
   }
 

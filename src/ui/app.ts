@@ -907,7 +907,7 @@ export class App {
     panel.append(this.updateStatus, this.updateButton);
 
     panel.append(el('h2', 'panel-title', 'Звук'));
-    panel.append(el('p', 'note', 'Гул камеры, свет, помехи и то, что шепчет. Звук включается с первым касанием в игре.'));
+    panel.append(el('p', 'note', 'Музыка, которая темнеет с угрозой, свет, помехи и то, что шепчет. Звук включается с первым касанием в игре.'));
     const volumeRow = el('label', 'volume');
     const volumeValue = el('span', 'volume-value');
     const volume = el('input', 'volume-range');
@@ -927,7 +927,19 @@ export class App {
     // A tick on release, so the level can be heard.
     volume.addEventListener('change', () => this.sound.click());
     volumeRow.append(el('span', '', 'Громкость'), volume, volumeValue);
-    panel.append(volumeRow);
+    const musicButton = el('button', 'btn');
+    musicButton.type = 'button';
+    musicButton.id = 'music';
+    const showMusic = () => {
+      musicButton.textContent = this.sound.musicPlaying ? 'Музыка: вкл' : 'Музыка: выкл';
+      musicButton.setAttribute('aria-pressed', String(this.sound.musicPlaying));
+    };
+    showMusic();
+    musicButton.addEventListener('click', () => {
+      this.sound.setMusic(!this.sound.musicPlaying);
+      showMusic();
+    });
+    panel.append(volumeRow, musicButton);
 
     panel.append(el('h2', 'panel-title', 'Страх'));
     panel.append(el('p', 'note', 'Вспышки, разрывы экрана и лицо на последней стадии угрозы. Выключите, если мерцание вам вредно.'));
