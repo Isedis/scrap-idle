@@ -2,13 +2,15 @@ import { parseNum } from './num';
 import { advance, newGame, type BuyMode, type GameState } from './state';
 import { PRODUCERS } from './producers';
 import { upgradeById } from './upgrades';
+import { nodeById, newLayer, offlineCapSeconds, type LayerState } from './layers';
 
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
-const VERSION = 2;
+const VERSION = 3;
 
-/** Offline progress stops counting after a day away. */
-export const OFFLINE_CAP_SECONDS = 24 * 60 * 60;
+/** Run length for a run whose start is not known; stays negative however long it is played. */
+const UNKNOWN_RUN_SECONDS = -1e12;
+
 
 interface SaveV1 {
   v: 1;
@@ -27,10 +29,49 @@ interface SaveV2 extends Omit<SaveV1, 'v'> {
   buyMode: BuyMode;
 }
 
+interface LayerSave {
+  points: string;
+  total: string;
+  resets: number;
+  nodes: string[];
+  bestSeconds: number | null;
+}
+
+/** v3 adds the current run and prestige layers, keyed by layer id so later layers slot in. */
+interface SaveV3 extends Omit<SaveV2, 'v'> {
+  v: 3;
+  runTrash: string;
+  runSeconds: number;
+  layers: Record<string, LayerSave>;
+  autobuy: boolean;
+}
+
 const BUY_MODES: readonly BuyMode[] = ['one', 'ten', 'max'];
 
+const saveLayer = (l: LayerState): LayerSave => ({
+  points: l.points.toString(),
+  total: l.total.toString(),
+  resets: l.resets,
+  nodes: l.nodes,
+  bestSeconds: l.bestSeconds,
+});
+
+function loadLayer(data: Partial<LayerSave> | undefined): LayerState | null {
+  const layer = newLayer();
+  if (!data || typeof data !== 'object') return layer;
+  const points = parseNum(data.points ?? '0');
+  const total = parseNum(data.total ?? '0');
+  if (!points || !total) return null;
+  layer.points = points;
+  layer.total = total.max(points);
+  layer.resets = Number.isFinite(data.resets) && data.resets! >= 0 ? Math.floor(data.resets!) : 0;
+  layer.nodes = Array.isArray(data.nodes) ? [...new Set(data.nodes.filter((id) => typeof id === 'string' && nodeById(id)))] : [];
+  layer.bestSeconds = typeof data.bestSeconds === 'number' && data.bestSeconds >= 0 ? data.bestSeconds : null;
+  return layer;
+}
+
 export function serialize(state: GameState): string {
-  const data: SaveV2 = {
+  const data: SaveV3 = {
     v: VERSION,
     trash: state.trash.toString(),
     totalTrash: state.totalTrash.toString(),
@@ -39,6 +80,10 @@ export function serialize(state: GameState): string {
     upgrades: state.upgrades,
     seenUpgrades: state.seenUpgrades,
     buyMode: state.buyMode,
+    runTrash: state.runTrash.toString(),
+    runSeconds: state.runSeconds,
+    layers: { recycle: saveLayer(state.recycle) },
+    autobuy: state.autobuy,
     lastTick: state.lastTick,
   };
   return JSON.stringify(data);
@@ -46,13 +91,13 @@ export function serialize(state: GameState): string {
 
 /** Parses a save; returns null for anything that is not a readable save. */
 export function deserialize(text: string): GameState | null {
-  let data: Partial<SaveV2> | Partial<SaveV1>;
+  let data: Partial<SaveV3> | Partial<SaveV2> | Partial<SaveV1>;
   try {
     data = JSON.parse(text);
   } catch {
     return null;
   }
-  if (!data || typeof data !== 'object' || (data.v !== 1 && data.v !== 2)) return null;
+  if (!data || typeof data !== 'object' || ![1, 2, 3].includes(data.v as number)) return null;
 
   const state = newGame(typeof data.lastTick === 'number' ? data.lastTick : Date.now());
   const trash = parseNum(data.trash ?? '0');
@@ -69,11 +114,24 @@ export function deserialize(text: string): GameState | null {
   if (!state.revealed.includes('collector')) state.revealed.unshift('collector');
 
   // A v1 save simply has none of these yet.
-  if (data.v === 2) {
+  if (data.v === 2 || data.v === 3) {
     const ids = (list: unknown) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string' && upgradeById(id)) : []);
     state.upgrades = [...new Set(ids(data.upgrades))];
     state.seenUpgrades = [...new Set([...ids(data.seenUpgrades), ...state.upgrades])];
     if (BUY_MODES.includes(data.buyMode as BuyMode)) state.buyMode = data.buyMode as BuyMode;
+  }
+
+  // Before v3 there was a single run: everything collected so far belongs to it, length unknown.
+  state.runTrash = state.totalTrash;
+  state.runSeconds = UNKNOWN_RUN_SECONDS;
+  if (data.v === 3) {
+    const run = parseNum(data.runTrash ?? '0');
+    const recycle = loadLayer(data.layers?.recycle);
+    if (!run || !recycle) return null;
+    state.runTrash = run.min(state.totalTrash);
+    state.runSeconds = Number.isFinite(data.runSeconds) ? data.runSeconds! : UNKNOWN_RUN_SECONDS;
+    state.recycle = recycle;
+    state.autobuy = data.autobuy !== false;
   }
   return state;
 }
@@ -95,7 +153,7 @@ export function importSave(text: string): GameState | null {
 
 /** Applies the time since the last tick, capped. Returns the seconds simulated. */
 export function applyOffline(state: GameState, now = Date.now()): number {
-  const seconds = Math.min(Math.max(0, (now - state.lastTick) / 1000), OFFLINE_CAP_SECONDS);
+  const seconds = Math.min(Math.max(0, (now - state.lastTick) / 1000), offlineCapSeconds(state.recycle));
   advance(state, seconds);
   state.lastTick = now;
   return seconds;

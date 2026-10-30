@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { advance, buy, buyUpgrade, newGame } from '../src/game/state';
-import { applyOffline, deserialize, exportSave, importSave, OFFLINE_CAP_SECONDS, serialize } from '../src/game/save';
+import { applyOffline, deserialize, exportSave, importSave, serialize } from '../src/game/save';
+import { newLayer, offlineCapSeconds } from '../src/game/layers';
+
+const OFFLINE_CAP_SECONDS = offlineCapSeconds(newLayer());
 import { D } from '../src/game/num';
 
 describe('saves', () => {

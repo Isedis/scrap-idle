@@ -1,7 +1,7 @@
 import '@fontsource-variable/jetbrains-mono';
 import './style.css';
 import { format } from './game/num';
-import { advance, newGame, revealProducers, type GameState } from './game/state';
+import { activeAutobuyInterval, advance, autoBuy, newGame, revealProducers, type GameState } from './game/state';
 import { applyOffline, readSave, writeSave } from './game/save';
 import { App } from './ui/app';
 import { CHECK_EVERY_MS, findNewBuild, reloadInto } from './update';
@@ -26,13 +26,27 @@ if (away >= OFFLINE_NOTE_SECONDS) {
   app.toast(`Пока вас не было, собрано ${format(state.trash.sub(before))} кг`);
 }
 
+/** A hidden tab can come back after hours; the auto-buyer catches up at most this many buys per frame. */
+const AUTOBUY_MAX_PER_FRAME = 8;
+
 let lastRender = 0;
+let autobuyClock = 0;
 function frame(): void {
   const now = Date.now();
   // A hidden tab pauses frames; the gap is simulated exactly on return.
   const dt = (now - state.lastTick) / 1000;
   advance(state, dt);
   state.lastTick = now;
+
+  const interval = activeAutobuyInterval(state);
+  if (interval !== null) {
+    autobuyClock = Math.min(autobuyClock + dt, interval * AUTOBUY_MAX_PER_FRAME);
+    while (autobuyClock >= interval) {
+      autobuyClock -= interval;
+      autoBuy(state);
+    }
+  }
+
   app.frame(dt);
   if (now - lastRender >= RENDER_MS) {
     lastRender = now;

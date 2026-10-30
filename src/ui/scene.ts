@@ -41,7 +41,10 @@ const J = {
 export interface SceneView {
   owned: Record<string, number>;
   rate: Decimal;
+  /** Trash collected this run: the heap grows with it and shrinks on recycle. */
   total: Decimal;
+  /** Recycles done: a recycling complex grows on the horizon. */
+  recycles: number;
 }
 
 type ItemKind = 0 | 1 | 2 | 3 | 4; // can, bottle, box, tyre, bag
@@ -557,6 +560,7 @@ export class Scene {
 
     // Far plane.
     this.drawSkyline();
+    this.drawComplex();
     this.drawStacks();
     this.drawPlants();
     this.drawLamp();
@@ -717,6 +721,33 @@ export class Scene {
       ctx.globalAlpha = 0.6;
       for (const [u, v] of b.win) ctx.fillRect(x + 2 + u * (bw - 5), this.horizon - bh + 2 + v * (bh - 5), 1.5, 1.5);
       ctx.globalAlpha = 1;
+    }
+  }
+
+  /** Recycling domes on the horizon behind the heap, one more for each of the first recycles. */
+  private drawComplex(): void {
+    const { ctx } = this;
+    const n = Math.min(this.view?.recycles ?? 0, 4);
+    for (let i = 0; i < n; i++) {
+      // Big enough to show over the heap's shoulder early in a run; the heap hides them as it grows.
+      const x = this.w * (0.87 - i * 0.09);
+      const r = 17 + i * 3;
+      ctx.beginPath();
+      ctx.arc(x, this.horizon, r, Math.PI, 0);
+      ctx.closePath();
+      this.paint(C.heapEdge);
+      // Ribs of the dome.
+      ctx.strokeStyle = phosphor(C.heapEdge).dimEdge;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.ellipse(x, this.horizon, r * 0.5, r, 0, Math.PI, 0);
+      ctx.moveTo(x - r * 0.85, this.horizon - r * 0.5);
+      ctx.lineTo(x + r * 0.85, this.horizon - r * 0.5);
+      ctx.stroke();
+      if (Math.sin(this.t * 2 + i * 1.7) > 0.2) {
+        ctx.fillStyle = C.light;
+        ctx.fillRect(x - 1, this.horizon - r - 3, 2, 2);
+      }
     }
   }
 

@@ -32,27 +32,27 @@ export function producerById(id: string): ProducerDef | undefined {
   return PRODUCERS.find((p) => p.id === id);
 }
 
-/** Price of the next unit when `owned` units are already bought. */
-export function costOf(def: ProducerDef, owned: number): Decimal {
-  return def.baseCost.mul(Decimal.pow(COST_GROWTH, owned));
+/** Price of the next unit when `owned` units are already bought; `mult` is a discount from bonuses. */
+export function costOf(def: ProducerDef, owned: number, mult = 1): Decimal {
+  return def.baseCost.mul(Decimal.pow(COST_GROWTH, owned)).mul(mult);
 }
 
 /** Price of `count` units bought one after another, starting at `owned`. */
-export function costOfMany(def: ProducerDef, owned: number, count: number): Decimal {
+export function costOfMany(def: ProducerDef, owned: number, count: number, mult = 1): Decimal {
   if (count <= 0) return D(0);
   // Geometric series: first · (g^n − 1) / (g − 1).
-  return costOf(def, owned).mul(Decimal.pow(COST_GROWTH, count).sub(1)).div(COST_GROWTH - 1);
+  return costOf(def, owned, mult).mul(Decimal.pow(COST_GROWTH, count).sub(1)).div(COST_GROWTH - 1);
 }
 
 /** How many units `budget` buys right now, starting at `owned`. */
-export function affordableCount(def: ProducerDef, owned: number, budget: Decimal): number {
-  const first = costOf(def, owned);
+export function affordableCount(def: ProducerDef, owned: number, budget: Decimal, mult = 1): number {
+  const first = costOf(def, owned, mult);
   if (budget.lt(first)) return 0;
   const ratio = budget.mul(COST_GROWTH - 1).div(first).add(1);
   let n = Math.floor(ratio.log(COST_GROWTH).toNumber());
   // Floating point can land one off either way at the boundary.
-  while (n > 0 && costOfMany(def, owned, n).gt(budget)) n--;
-  while (costOfMany(def, owned, n + 1).lte(budget)) n++;
+  while (n > 0 && costOfMany(def, owned, n, mult).gt(budget)) n--;
+  while (costOfMany(def, owned, n + 1, mult).lte(budget)) n++;
   return n;
 }
 

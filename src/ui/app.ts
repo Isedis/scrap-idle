@@ -1,4 +1,4 @@
-import { format, type Decimal } from '../game/num';
+import { format } from '../game/num';
 import { PRODUCERS, milestonesReached, nextMilestone, prevMilestone, producerById, type ProducerDef } from '../game/producers';
 import { UPGRADES, describeUpgrade, type UpgradeDef } from '../game/upgrades';
 import {
@@ -10,14 +10,20 @@ import {
   purchasePlan,
   ratePerSecond,
   takeNewUpgrades,
+  canRecycle,
+  recycle,
   type BuyMode,
   type GameState,
 } from '../game/state';
 import { exportSave, importSave, wipeSave, writeSave } from '../game/save';
 import { ICONS } from './icons';
+import { el, progress, syncChildren, textBar } from './dom';
+export { textBar } from './dom';
 import { Scene } from './scene';
+import { RecyclePanel } from './recyclePanel';
+import { RECYCLE_AT, hasNode, milestoneBase, passiveBonus } from '../game/layers';
 
-type Tab = 'dump' | 'upgrades' | 'settings';
+type Tab = 'dump' | 'upgrades' | 'recycle' | 'settings';
 
 interface ProducerRow {
   def: ProducerDef;
@@ -34,36 +40,6 @@ interface UpgradeRow {
   def: UpgradeDef;
   root: HTMLElement;
   button: HTMLButtonElement;
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className?: string,
-  text?: string,
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-/** Text progress bar in the terminal's own style: [██████░░░░]. */
-export function textBar(fraction: number, cells = 10): string {
-  const filled = Math.round(Math.min(Math.max(fraction, 0), 1) * cells);
-  return `[${'█'.repeat(filled)}${'░'.repeat(cells - filled)}]`;
-}
-
-/** How far `have` is toward `need`, 0..1. */
-function progress(have: Decimal, need: Decimal): number {
-  if (need.lte(0) || have.gte(need)) return 1;
-  return have.div(need).toNumber();
-}
-
-/** Puts `wanted` into `parent` in order, touching the DOM only when something changed. */
-function syncChildren(parent: HTMLElement, wanted: HTMLElement[]): void {
-  if (wanted.length !== parent.children.length || wanted.some((n, i) => parent.children[i] !== n)) {
-    parent.replaceChildren(...wanted);
-  }
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -96,6 +72,13 @@ export class App {
   private upgradeCount!: HTMLElement;
   private upgradeBadge!: HTMLElement;
   private modeButtons = new Map<BuyMode, HTMLButtonElement>();
+  private autoButton!: HTMLButtonElement;
+  private layerEl!: HTMLElement;
+  private recyclePanel!: RecyclePanel;
+  private recycleTab!: HTMLButtonElement;
+  private recycleBadge!: HTMLElement;
+  /** Recycling was announced as ready for this run. */
+  private knownRecycleReady = false;
   private panels = new Map<Tab, HTMLElement>();
   private tabs = new Map<Tab, HTMLButtonElement>();
   private toastEl!: HTMLElement;
@@ -121,6 +104,7 @@ export class App {
     const state = this.getState();
     this.knownRevealed = state.revealed.length;
     for (const def of PRODUCERS) this.knownMilestones.set(def.id, milestonesReached(state.owned[def.id] ?? 0));
+    this.knownRecycleReady = canRecycle(state);
   }
 
   private build(): void {
@@ -129,17 +113,37 @@ export class App {
     this.trashEl = el('div', 'trash', '0');
     const unit = el('div', 'trash-unit', 'кг мусора в системе');
     this.rateEl = el('div', 'rate', 'поток: +0 кг/с');
-    header.append(this.trashEl, unit, this.rateEl);
+    this.layerEl = el('div', 'layer-line');
+    this.layerEl.hidden = true;
+    header.append(this.trashEl, unit, this.rateEl, this.layerEl);
+
+    this.recyclePanel = new RecyclePanel(
+      this.getState,
+      () => this.doRecycle(),
+      (node) => {
+        this.toast(`Дерево: ${node.name}`);
+        this.scene.flash('amber');
+        this.caption(node.text);
+        this.pop(this.rateEl, 'pulse');
+        this.render();
+      },
+    );
+    this.panels.set('recycle', this.recyclePanel.root);
 
     const main = el('main', 'panels');
-    main.append(this.buildDump(), this.buildUpgrades(), this.buildSettings());
+    main.append(this.buildDump(), this.buildUpgrades(), this.recyclePanel.root, this.buildSettings());
 
     const nav = el('nav', 'tabs');
     const upgradesTab = this.tabButton('upgrades', 'Улучшения', ICONS.upgrades);
     this.upgradeBadge = el('span', 'badge');
     this.upgradeBadge.hidden = true;
     upgradesTab.append(this.upgradeBadge);
-    nav.append(this.tabButton('dump', 'Свалка', ICONS.heap), upgradesTab, this.tabButton('settings', 'Настройки', ICONS.gear));
+    this.recycleTab = this.tabButton('recycle', 'Переработка', ICONS.recycle);
+    this.recycleBadge = el('span', 'badge', '!');
+    this.recycleBadge.hidden = true;
+    this.recycleTab.append(this.recycleBadge);
+    this.recycleTab.hidden = true;
+    nav.append(this.tabButton('dump', 'Свалка', ICONS.heap), upgradesTab, this.recycleTab, this.tabButton('settings', 'Настройки', ICONS.gear));
 
     this.toastEl = el('div', 'toast');
     this.toastEl.setAttribute('role', 'status');
@@ -204,7 +208,20 @@ export class App {
       this.modeButtons.set(mode, b);
       modes.append(b);
     }
-    head.append(modes);
+    // Auto-buyer switch, shown once it is bought in the Recycling tree.
+    this.autoButton = el('button', 'mode auto', 'Авто');
+    this.autoButton.type = 'button';
+    this.autoButton.id = 'autobuy';
+    this.autoButton.hidden = true;
+    this.autoButton.addEventListener('click', () => {
+      const state = this.getState();
+      state.autobuy = !state.autobuy;
+      this.toast(state.autobuy ? 'Автозакупщик включён' : 'Автозакупщик выключен');
+      this.render();
+    });
+    const controls = el('div', 'controls');
+    controls.append(this.autoButton, modes);
+    head.append(controls);
     panel.append(head);
 
     this.list = el('div', 'producers');
@@ -435,7 +452,23 @@ export class App {
   /** Every animation frame: only the camera feed. */
   frame(dt: number): void {
     const state = this.getState();
-    this.scene.update(dt, { owned: state.owned, rate: ratePerSecond(state), total: state.totalTrash });
+    this.scene.update(dt, { owned: state.owned, rate: ratePerSecond(state), total: state.runTrash, recycles: state.recycle.resets });
+  }
+
+  /** Runs the recycle and plays it on camera. */
+  private doRecycle(): void {
+    const state = this.getState();
+    const gain = recycle(state);
+    if (gain.lte(0)) return;
+    writeSave(state);
+    this.resetKnown();
+    this.toastQueue = [];
+    this.scene.glitch(1.4);
+    this.scene.flash('amber');
+    this.caption(`Переработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
+    this.toast(`Получено ${format(gain)} вторсырья. Доход ×${format(passiveBonus(state.recycle.total))}`);
+    this.show('dump');
+    this.render();
   }
 
   /** Announces producers, upgrades and milestones that appeared since the last check. */
@@ -448,14 +481,22 @@ export class App {
 
     for (const u of takeNewUpgrades(state)) this.toast(`Новое улучшение: ${u.name}`);
 
+    if (!this.knownRecycleReady && canRecycle(state)) {
+      this.knownRecycleReady = true;
+      this.toast(state.recycle.resets === 0 ? 'Открыта переработка! Загляните во вкладку' : 'Переработка снова доступна');
+      this.scene.glitch(0.5);
+      this.caption('Доступна переработка');
+    }
+
     for (const def of PRODUCERS) {
       const owned = state.owned[def.id] ?? 0;
       const reached = milestonesReached(owned);
       if (reached > (this.knownMilestones.get(def.id) ?? 0)) {
-        this.toast(`${def.name}: ${prevMilestone(owned)} шт, доход ×2`);
+        const base = milestoneBase(state.recycle);
+        this.toast(`${def.name}: ${prevMilestone(owned)} шт, доход ×${base}`);
         this.scene.flash('green');
         this.scene.burst();
-        this.caption(`${def.name} ×2`);
+        this.caption(`${def.name} ×${base}`);
         this.pop(this.rateEl, 'pulse');
         const row = this.rows.find((r) => r.def.id === def.id);
         if (row) this.pop(row.root, 'flash');
@@ -481,7 +522,7 @@ export class App {
     syncChildren(this.list, [...visible.map((r) => r.root), ...(next ? [this.teaser] : [])]);
     if (next) {
       const need = next.baseCost.div(2);
-      const p = progress(state.totalTrash, need);
+      const p = progress(state.runTrash, need);
       this.teaserBar.textContent = `${textBar(p)} ${Math.floor(p * 100)}%`;
       this.teaserText.textContent = `Сигнал появится при ${format(need)} кг`;
     }
@@ -493,7 +534,7 @@ export class App {
       row.rate.textContent = `даёт +${format(producerRate(state, row.def.id))}/с`;
       const from = prevMilestone(owned);
       const to = nextMilestone(owned);
-      row.milestone.textContent = `${textBar((owned - from) / (to - from), 8)} ${owned}/${to} → ×2`;
+      row.milestone.textContent = `${textBar((owned - from) / (to - from), 8)} ${owned}/${to} → ×${milestoneBase(state.recycle)}`;
       const amount = state.buyMode === 'one' ? '' : state.buyMode === 'ten' ? ' ×10' : plan.count > 1 ? ` ×${plan.count}` : '';
       row.label.textContent = `Купить${amount}`;
       row.price.textContent = `${format(plan.cost)} кг`;
@@ -517,5 +558,20 @@ export class App {
     }
     this.upgradeBadge.hidden = affordable === 0;
     this.upgradeBadge.textContent = String(affordable);
+
+    // Recycling: the tab shows up as the first recycle comes into view.
+    const layer = state.recycle;
+    const recycleVisible = layer.resets > 0 || state.runTrash.gte(RECYCLE_AT.div(100));
+    if (recycleVisible && this.recycleTab.hidden) {
+      this.recycleTab.hidden = false;
+      if (layer.resets === 0) this.toast('Новая вкладка: Переработка');
+    }
+    this.recycleBadge.hidden = !this.recyclePanel.attention(state);
+    if (!this.recyclePanel.root.hidden) this.recyclePanel.render(state);
+    this.layerEl.hidden = layer.total.lte(0);
+    this.layerEl.textContent = `вторсырьё: ${format(layer.points)} · бонус ×${format(passiveBonus(layer.total))}`;
+
+    this.autoButton.hidden = !hasNode(layer, 'a1');
+    this.autoButton.setAttribute('aria-pressed', String(state.autobuy));
   }
 }
