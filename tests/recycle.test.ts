@@ -188,3 +188,46 @@ describe('save v3', () => {
     expect(deserialize('{"v":3,"trash":"1","totalTrash":"1","runTrash":"1","owned":{},"layers":{"recycle":{"points":"x"}},"lastTick":0}')).toBeNull();
   });
 });
+
+describe('the bigger tree', () => {
+  it('new nodes do not close the endless nodes for anyone who had them', async () => {
+    const { NODES } = await import('../src/game/layers');
+    const { newGame, repeatsOpen } = await import('../src/game/state');
+    const s = newGame(0);
+    s.recycle.nodes = NODES.filter((n) => !n.extra).map((n) => n.id);
+    expect(repeatsOpen(s)).toBe(true);
+    expect(NODES.length).toBeGreaterThanOrEqual(27);
+  });
+
+  it('new nodes do what they say', async () => {
+    const { milestoneBase, offlineEfficiency, holdMs, offlineCapSeconds } = await import('../src/game/layers');
+    const { newGame, scriptOwned, scriptTick, darkPeakOf, lightFailChance, buyNode } = await import('../src/game/state');
+    const { D } = await import('../src/game/num');
+    const s = newGame(0);
+    s.recycle.points = D(1e9);
+    const plain = { hold: holdMs(s.recycle), peak: darkPeakOf(s), fail: lightFailChance(s), eff: offlineEfficiency(s.recycle) };
+    for (const id of ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'a1', 'a2', 'a3', 'a4', 'a5', 'o1', 'o2', 'o3', 'o4', 't1', 't2', 't3', 't4']) expect(buyNode(s, id), id).toBe(true);
+    expect(milestoneBase(s.recycle)).toBe(4);
+    expect(scriptTick(s)).toBeCloseTo(0.1);
+    expect(scriptOwned(s, 'upgrades') && scriptOwned(s, 'endless') && scriptOwned(s, 'light')).toBe(true);
+    expect(offlineEfficiency(s.recycle)).toBe(0.75);
+    expect(plain.eff).toBe(0.5);
+    expect(offlineCapSeconds(s.recycle)).toBe(30 * 24 * 3600);
+    expect(holdMs(s.recycle)).toBeLessThan(plain.hold);
+    expect(darkPeakOf(s)).toBeCloseTo(plain.peak + 0.2);
+    expect(lightFailChance(s)).toBeCloseTo(plain.fail / 2);
+  });
+
+  it('ready blueprints keep the first two tiers, the factory start begins at ten billion', async () => {
+    const { newGame, recycle } = await import('../src/game/state');
+    const { RECYCLE_AT } = await import('../src/game/layers');
+    const { D } = await import('../src/game/num');
+    const s = newGame(0);
+    s.recycle.nodes = ['s1', 's2', 's3', 's4', 's5', 's6'];
+    s.upgrades = ['collector-1', 'collector-2', 'collector-3', 'cart-2'];
+    s.runTrash = RECYCLE_AT;
+    recycle(s);
+    expect(s.upgrades).toEqual(['collector-1', 'collector-2', 'cart-2']);
+    expect(s.trash.eq(D(1e10))).toBe(true);
+  });
+});

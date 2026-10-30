@@ -1,4 +1,5 @@
 import { D, Decimal } from './num';
+import { OFFLINE_EFFICIENCY } from './threat';
 
 /**
  * Prestige layers. Each layer resets everything below it for its own currency,
@@ -82,13 +83,14 @@ export function nextGainAt(runTrash: Decimal, mult = 1): Decimal {
   return next.div(GAIN_AT_THRESHOLD * mult).pow(GAIN_ROOT).mul(RECYCLE_AT).max(RECYCLE_AT).mul(1 + 1e-9);
 }
 
-export type Branch = 'production' | 'start' | 'automation' | 'offline';
+export type Branch = 'production' | 'start' | 'automation' | 'offline' | 'threat';
 
 export const BRANCHES: readonly [Branch, string][] = [
   ['production', 'Производство'],
   ['start', 'Старт'],
   ['automation', 'Автоматизация'],
   ['offline', 'Офлайн'],
+  ['threat', 'Свет'],
 ];
 
 export interface NodeDef {
@@ -100,6 +102,8 @@ export interface NodeDef {
   cost: Decimal;
   /** Node that must be bought first. */
   requires?: string;
+  /** Added after the endless nodes: not needed to open them, so nobody loses access they had. */
+  extra?: boolean;
 }
 
 export const NODES: readonly NodeDef[] = [
@@ -108,15 +112,28 @@ export const NODES: readonly NodeDef[] = [
   { id: 'p3', branch: 'production', name: 'Двойная смена', text: 'Весь доход ×3', cost: D(15), requires: 'p2' },
   { id: 'p4', branch: 'production', name: 'Стахановский порог', text: 'Пороги дают ×3 вместо ×2', cost: D(150), requires: 'p3' },
   { id: 'p5', branch: 'production', name: 'Промышленный масштаб', text: 'Весь доход ×5', cost: D(600), requires: 'p4' },
+  { id: 'p6', branch: 'production', name: 'Ночные тарифы', text: 'Весь доход ×3', cost: D(1e6), requires: 'p5', extra: true },
+  { id: 'p7', branch: 'production', name: 'Стальной порог', text: 'Пороги дают ×4', cost: D(1e8), requires: 'p6', extra: true },
+  { id: 'p8', branch: 'production', name: 'Индустриальная зона', text: 'Весь доход ×5', cost: D(1e10), requires: 'p7', extra: true },
   { id: 's1', branch: 'start', name: 'Подъёмные', text: 'Заход начинается с 10 сборщиками', cost: D(1) },
   { id: 's2', branch: 'start', name: 'Память о свалке', text: 'Открытые производители остаются, старт с 10 тыс кг', cost: D(4), requires: 's1' },
   { id: 's3', branch: 'start', name: 'Сохранённые чертежи', text: 'Первые улучшения производителей остаются', cost: D(12), requires: 's2' },
   { id: 's4', branch: 'start', name: 'Стартовый капитал', text: 'Старт со 100 млн кг', cost: D(60), requires: 's3' },
+  { id: 's5', branch: 'start', name: 'Готовые чертежи', text: 'Первые два улучшения каждого производителя остаются', cost: D(2e4), requires: 's4', extra: true },
+  { id: 's6', branch: 'start', name: 'Заводской старт', text: 'Старт с 10 млрд кг', cost: D(2e5), requires: 's5', extra: true },
   { id: 'a1', branch: 'automation', name: 'Автозакупщик', text: 'Сам покупает самого выгодного производителя раз в 2 с', cost: D(3) },
   { id: 'a2', branch: 'automation', name: 'Шустрый закупщик', text: 'Автозакупщик срабатывает 4 раза в секунду', cost: D(20), requires: 'a1' },
   { id: 'a3', branch: 'automation', name: 'Автопереработчик', text: 'Сам перерабатывает, когда награда достигает порога', cost: D(80), requires: 'a2' },
+  { id: 'a4', branch: 'automation', name: 'Бригадир', text: 'Скрипты покупок срабатывают 10 раз в секунду', cost: D(5000), requires: 'a3', extra: true },
+  { id: 'a5', branch: 'automation', name: 'Диспетчер', text: 'Скрипты buy.upgrades и buy.endless ставятся сами', cost: D(5e4), requires: 'a4', extra: true },
   { id: 'o1', branch: 'offline', name: 'Ночной сторож', text: 'Офлайн копится до 2 суток', cost: D(2) },
   { id: 'o2', branch: 'offline', name: 'Вахтовый метод', text: 'Офлайн копится до 7 суток', cost: D(8), requires: 'o1' },
+  { id: 'o3', branch: 'offline', name: 'Сторожевой пёс', text: 'Вне игры доход ×0.75 вместо ×0.5', cost: D(500), requires: 'o2', extra: true },
+  { id: 'o4', branch: 'offline', name: 'Ночной дозор', text: 'Офлайн копится до 30 суток', cost: D(5000), requires: 'o3', extra: true },
+  { id: 't1', branch: 'threat', name: 'Мощная лампа', text: 'Прожектор держать 1 с вместо 1,5', cost: D(5), extra: true },
+  { id: 't2', branch: 'threat', name: 'Тёмные очки', text: 'Бонус в темноте +0.2', cost: D(30), requires: 't1', extra: true },
+  { id: 't3', branch: 'threat', name: 'Толстые стены', text: 'Угроза растёт на четверть медленнее', cost: D(500), requires: 't2', extra: true },
+  { id: 't4', branch: 'threat', name: 'Второй прожектор', text: 'Автопрожектор ставится сам и отказывает вдвое реже', cost: D(5000), requires: 't3', extra: true },
 ];
 
 export function nodeById(id: string): NodeDef | undefined {
@@ -143,17 +160,29 @@ export function recycleProductionMult(layer: LayerState): Decimal {
   if (hasNode(layer, 'p1')) mult = mult.mul(2);
   if (hasNode(layer, 'p3')) mult = mult.mul(3);
   if (hasNode(layer, 'p5')) mult = mult.mul(5);
+  if (hasNode(layer, 'p6')) mult = mult.mul(3);
+  if (hasNode(layer, 'p8')) mult = mult.mul(5);
   return mult;
 }
 
 export const producerCostMult = (layer: LayerState) => (hasNode(layer, 'p2') ? 0.9 : 1);
 
-export const milestoneBase = (layer: LayerState) => (hasNode(layer, 'p4') ? 3 : 2);
+export const milestoneBase = (layer: LayerState) => (hasNode(layer, 'p7') ? 4 : hasNode(layer, 'p4') ? 3 : 2);
 
 export function offlineCapSeconds(layer: LayerState): number {
   const day = 24 * 60 * 60;
-  return hasNode(layer, 'o2') ? 7 * day : hasNode(layer, 'o1') ? 2 * day : day;
+  return hasNode(layer, 'o4') ? 30 * day : hasNode(layer, 'o2') ? 7 * day : hasNode(layer, 'o1') ? 2 * day : day;
 }
+
+/** Share of income earned while the game is closed. */
+export const offlineEfficiency = (layer: LayerState) => (hasNode(layer, 'o3') ? 0.75 : OFFLINE_EFFICIENCY);
+
+/** How long the floodlight button must be held, in ms. */
+export const holdMs = (layer: LayerState) => (hasNode(layer, 't1') ? 1000 : 1500);
+/** Extra peak of the dark bonus from the tree. */
+export const treeDarkPeak = (layer: LayerState) => (hasNode(layer, 't2') ? 0.2 : 0);
+/** Threat speed from the tree. */
+export const treeThreatSpeed = (layer: LayerState) => (hasNode(layer, 't3') ? 0.75 : 1);
 
 // ---- Endless nodes ------------------------------------------------------------
 

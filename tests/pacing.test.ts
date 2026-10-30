@@ -77,8 +77,9 @@ describe.runIf(process.env.PACE_SORT)('pacing: sorting', () => {
     expect(open, hm(open)).toBeLessThan(3 * hour);
   });
 
-  it('resorts cannot be chained: each takes at least 10 minutes of a cycle', () => {
+  // Chained resorts came a minute apart; right after a resort a short cycle is the point.
+  it('resorts cannot be chained: each takes at least 5 minutes of a cycle', () => {
     const ready = events.filter((e) => e.what.startsWith('пересортировка доступна')).slice(1);
-    for (const e of ready) expect(Number(/цикл (\d+)/.exec(e.what)![1]), e.what).toBeGreaterThanOrEqual(10);
+    for (const e of ready) expect(Number(/цикл (\d+)/.exec(e.what)![1]), e.what).toBeGreaterThanOrEqual(5);
   });
 });

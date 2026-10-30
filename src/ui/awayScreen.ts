@@ -1,6 +1,5 @@
 import { format } from '../game/num';
 import { uniqueById } from '../game/sorting';
-import { OFFLINE_EFFICIENCY } from '../game/threat';
 import type { AwayReport } from '../game/away';
 import { el } from './dom';
 
@@ -53,7 +52,7 @@ export class AwayScreen {
       if (note) line.append(el('span', 'away-note', note));
       return line;
     };
-    const lines: HTMLElement[] = [row('собрано', `+${format(r.trash)} кг`, `вне игры доход ×${OFFLINE_EFFICIENCY}`)];
+    const lines: HTMLElement[] = [row('собрано', `+${format(r.trash)} кг`, `вне игры доход ×${r.efficiency}`)];
     if (capped !== null) lines.push(row('копилось', `${Math.round(capped / 3600)} ч`, 'дольше не копится — дерево «Офлайн» продлит'));
     if (r.threatRose) {
       const pct = Math.round(r.threat * 100);

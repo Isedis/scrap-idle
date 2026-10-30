@@ -113,6 +113,8 @@ export const SORT_MINUTES = [10, 30, 60, 120] as const;
 /** Tick of the buying scripts without speed levels: as fast as the tree's auto-buyer. */
 export const BASE_TICK = 2;
 export const FAST_TICK = 0.25;
+/** With the foreman from the tree. */
+export const FOREMAN_TICK = 0.1;
 export const SPEED_STEP = 0.5;
 export const speedCost = (level: number) => D(20).mul(Decimal.pow(3, level));
 export const reliabilityCost = (level: number) => D(25).mul(Decimal.pow(2.5, level));

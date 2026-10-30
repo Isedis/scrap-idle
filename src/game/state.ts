@@ -15,9 +15,12 @@ import {
   repeatById,
   repeatCost,
   NODES,
+  offlineEfficiency,
+  treeDarkPeak,
+  treeThreatSpeed,
   type LayerState,
 } from './layers';
-import { DARK_BONUS, OFFLINE_CAP, OFFLINE_EFFICIENCY, climb, depthMeters, newThreat, stageIndex, threatActive, threatMult, type ThreatState } from './threat';
+import { DARK_BONUS, OFFLINE_CAP, climb, depthMeters, newThreat, stageIndex, threatActive, threatMult, type ThreatState } from './threat';
 import { COMPACT_DEPTH_DIGITS, TRACKS, compactMult, darkPeak, milestoneHeadStart, trackById, trackCost, type TrackLevels } from './infinite';
 import { achievementMult } from './achievements';
 import {
@@ -48,6 +51,7 @@ import {
 import {
   BASE_TICK,
   FAST_TICK,
+  FOREMAN_TICK,
   LIGHT_RETRY,
   SPEED_STEP,
   failChance,
@@ -156,7 +160,7 @@ export function milestoneUnits(state: GameState, id: string): number {
 /** Multiplier every producer shares: layers, the threat, the story, endless upgrades, achievements. */
 export function sharedMult(state: GameState): Decimal {
   return recycleProductionMult(state.recycle)
-    .mul(threatMult(state.threat.level, darkPeak(state.tracks, DARK_BONUS)))
+    .mul(threatMult(state.threat.level, darkPeakOf(state)))
     .mul(storyMult(state.story))
     .mul(compactMult(state.tracks))
     .mul(achievementMult(state.achievements))
@@ -180,7 +184,7 @@ export function incomeBreakdown(state: GameState): { base: Decimal; parts: Incom
   const so = state.sorting;
   const shared: IncomePart[] = [
     { label: 'Переработка', mult: recycleProductionMult(state.recycle), note: 'вторсырьё за всё время и дерево' },
-    { label: 'Тьма', mult: D(threatMult(state.threat.level, darkPeak(state.tracks, DARK_BONUS))), note: 'больше в темноте, меньше на краю' },
+    { label: 'Тьма', mult: D(threatMult(state.threat.level, darkPeakOf(state))), note: 'больше в темноте, меньше на краю' },
     { label: 'Дела и события', mult: D(storyMult(state.story)), note: 'открытые дела, ускорения с камеры' },
     { label: 'Уплотнение', mult: compactMult(state.tracks), note: 'бесконечное улучшение' },
     { label: 'Достижения', mult: D(achievementMult(state.achievements)), note: '+1% за каждое' },
@@ -262,14 +266,14 @@ export function advance(state: GameState, seconds: number, offline = false): voi
     const dt = Math.min(slice, left);
     const rate = ratePerSecond(state);
     let gained = rate.mul(dt);
-    if (offline) gained = gained.mul(OFFLINE_EFFICIENCY);
+    if (offline) gained = gained.mul(offlineEfficiency(state.recycle));
     state.trash = state.trash.add(gained);
     state.totalTrash = state.totalTrash.add(gained);
     state.runTrash = state.runTrash.add(gained);
     state.runSeconds += dt;
     if (!offline) state.story.boost = Math.max(0, state.story.boost - dt);
     // Tails off the sorting line feed the thing: it climbs faster.
-    state.threat.level = climb(state.threat.level, state.runTrash, dt * threatSpeed(state.sorting), offline);
+    state.threat.level = climb(state.threat.level, state.runTrash, dt * threatSpeed(state.sorting) * treeThreatSpeed(state.recycle), offline);
     const pushed = sortingTick(state.sorting, rate, dt, offline);
     // What falls back into the heap pushes it up, but never over the edge by itself.
     if (pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
@@ -433,6 +437,7 @@ const RANK_BRANCHES: [number, string][] = [
   [3, 'start'],
   [4, 'offline'],
   [5, 'production'],
+  [6, 'threat'],
 ];
 
 /**
@@ -454,7 +459,8 @@ export function resort(state: GameState): Decimal {
   layer.resets = old.resets;
   layer.bestSeconds = old.bestSeconds;
   const kept = new Set(RANK_BRANCHES.filter(([at]) => hasRank(n, at)).map(([, b]) => b));
-  layer.nodes = NODES.filter((node) => kept.has(node.branch)).map((node) => node.id);
+  // A rank keeps what was bought in its branch, not the whole branch: nobody gets nodes for free.
+  layer.nodes = old.nodes.filter((id) => kept.has(nodeById(id)!.branch));
   if (hasRank(n, 7)) for (const [id, lv] of Object.entries(old.repeats)) if (lv >= 2) layer.repeats[id] = Math.floor(lv / 2);
   if (hasRank(n, 15)) {
     layer.total = old.total.mul(0.1).floor();
@@ -488,13 +494,15 @@ export const ranksReached = (state: GameState) => RANKS.filter((r) => hasRank(st
 /** Starts the run over, keeping what the Recycling tree says to keep. */
 function startNewRun(state: GameState): void {
   const layer = state.recycle;
-  state.trash = D(hasNode(layer, 's4') ? 1e8 : hasNode(layer, 's2') ? 1e4 : 0);
+  state.trash = D(hasNode(layer, 's6') ? 1e10 : hasNode(layer, 's4') ? 1e8 : hasNode(layer, 's2') ? 1e4 : 0);
   state.runTrash = D(0);
   state.runSeconds = 0;
   state.owned = { collector: hasNode(layer, 's1') ? 10 : 1 };
   if (!hasNode(layer, 's2')) state.revealed = ['collector'];
   // Saved blueprints keep the first tier of every producer upgrade.
-  state.upgrades = hasNode(layer, 's3') ? state.upgrades.filter((id) => /-1$/.test(id)) : [];
+  // Saved blueprints keep the first tier of every producer upgrade, ready blueprints the first two.
+  const kept = hasNode(layer, 's5') ? /-[12]$/ : hasNode(layer, 's3') ? /-1$/ : null;
+  state.upgrades = kept ? state.upgrades.filter((id) => kept.test(id)) : [];
   state.threat.level = 0;
   state.story.traces = [];
   state.tracks = {};
@@ -534,7 +542,7 @@ export function buyTrack(state: GameState, id: string): boolean {
 }
 
 /** Endless Recycling nodes open once the whole tree is bought. */
-export const repeatsOpen = (state: GameState) => NODES.every((n) => state.recycle.nodes.includes(n.id));
+export const repeatsOpen = (state: GameState) => NODES.every((n) => n.extra || state.recycle.nodes.includes(n.id));
 
 export function buyRepeat(state: GameState, id: string): boolean {
   const def = repeatById(id);
@@ -580,6 +588,9 @@ const recycleRate = (state: GameState) => recycleGainRaw(state.runTrash, recycle
 export function scriptOwned(state: GameState, id: ScriptId): boolean {
   const def = scriptById(id)!;
   if (def.recipe) return state.sorting.recipes.includes(def.recipe);
+  // The dispatcher and the second floodlight install scripts on their own.
+  if ((id === 'upgrades' || id === 'endless') && hasNode(state.recycle, 'a5')) return true;
+  if (id === 'light' && hasNode(state.recycle, 't4')) return true;
   return def.node ? hasNode(state.recycle, def.node) : state.scripts.bought.includes(id);
 }
 
@@ -626,10 +637,14 @@ export function buyReliability(state: GameState): boolean {
 
 /** Seconds between ticks of the buying scripts. */
 export function scriptTick(state: GameState): number {
-  return (hasNode(state.recycle, 'a2') ? FAST_TICK : BASE_TICK) / (1 + SPEED_STEP * state.scripts.speed);
+  const tick = hasNode(state.recycle, 'a4') ? FOREMAN_TICK : hasNode(state.recycle, 'a2') ? FAST_TICK : BASE_TICK;
+  return tick / (1 + SPEED_STEP * state.scripts.speed);
 }
 
-export const lightFailChance = (state: GameState) => failChance(depthOf(state), state.scripts.reliability);
+export const lightFailChance = (state: GameState) => failChance(depthOf(state), state.scripts.reliability) * (hasNode(state.recycle, 't4') ? 0.5 : 1);
+
+/** Peak of the dark bonus: the base, the dark pact's levels and the tree. */
+export const darkPeakOf = (state: GameState) => darkPeak(state.tracks, DARK_BONUS) + treeDarkPeak(state.recycle);
 
 /** What a script did, for the log. */
 export interface ScriptNote {

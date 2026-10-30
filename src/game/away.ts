@@ -1,5 +1,6 @@
 import { D, Decimal } from './num';
 import { FRACS, type Inspection } from './sorting';
+import { offlineEfficiency } from './layers';
 import type { GameState } from './state';
 
 /**
@@ -16,6 +17,8 @@ export interface AwaySnapshot {
 
 export interface AwayReport {
   seconds: number;
+  /** Share of income earned while closed. */
+  efficiency: number;
   trash: Decimal;
   /** Threat level on return, and whether it rose. */
   threat: number;
@@ -38,6 +41,7 @@ export function awayReport(before: AwaySnapshot, s: GameState, seconds: number):
   const news: Inspection[] = s.sorting.news.slice(before.news);
   return {
     seconds,
+    efficiency: offlineEfficiency(s.recycle),
     trash: s.trash.sub(before.trash).max(0),
     threat: s.threat.level,
     threatRose: s.threat.level > before.threat + 0.001,

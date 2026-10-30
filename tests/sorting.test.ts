@@ -227,7 +227,7 @@ describe('resorting', () => {
     expect(s.recycle.total.toNumber()).toBe(0);
     expect(s.recycle.resets).toBe(30);
     expect(s.recycle.repeats).toEqual({});
-    expect([...s.recycle.nodes].sort()).toEqual(['a1', 'a2', 'a3']);
+    expect([...s.recycle.nodes].sort()).toEqual(['a1', 'a2', 'a3', 'a4', 'a5']);
     expect(s.scripts.bought).toEqual(['upgrades', 'endless', 'light']);
     expect(s.scripts.speed).toBe(0);
     expect(s.runTrash.toNumber()).toBe(0);
@@ -242,7 +242,7 @@ describe('resorting', () => {
     s.recycle.total = sortNeed(14);
     resort(s);
     const branches = new Set(s.recycle.nodes.map((id) => NODES.find((n) => n.id === id)!.branch));
-    expect(branches).toEqual(new Set(['automation', 'start', 'offline', 'production']));
+    expect(branches).toEqual(new Set(['automation', 'start', 'offline', 'production', 'threat']));
     expect(s.recycle.repeats).toEqual({ memory: 3, recipe: 1 });
     expect(s.scripts.speed).toBe(4);
     expect(s.recycle.total.toNumber()).toBe(1e18);
@@ -253,6 +253,15 @@ describe('resorting', () => {
     expect(fractionsIncome(D(0)).toNumber()).toBe(1);
     expect(fractionsIncome(D(100)).toNumber()).toBe(2);
     expect(fractionsIncome(D(1e4)).toNumber()).toBe(11);
+  });
+
+  it('a rank keeps the nodes bought in its branch, never ones that were not', () => {
+    const s = ready();
+    s.recycle.nodes = ['a1', 's1', 's2', 'p1'];
+    s.sorting.sorts = 14;
+    s.recycle.total = sortNeed(14);
+    resort(s);
+    expect([...s.recycle.nodes].sort()).toEqual(['a1', 'p1', 's1', 's2']);
   });
 
   it('every resort doubles income', () => {

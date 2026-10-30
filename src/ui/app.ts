@@ -16,6 +16,7 @@ import {
   lightUp,
   loseShift,
   depthOf,
+  darkPeakOf,
   incomeBreakdown,
   milestoneUnits,
   automationOpen,
@@ -45,12 +46,9 @@ import { checkAchievements, ACH_BONUS } from '../game/achievements';
 import { COMPACT_MILESTONE, type TrackDef } from '../game/infinite';
 import { Dread } from './dread';
 import { eventById, unwatched, watch, type EventKind, type Recording } from '../game/story';
-import { RECYCLE_AT, hasNode, milestoneBase, passiveBonus } from '../game/layers';
-import { DARK_BONUS, STAGES, stageIndex, threatActive, threatMult } from '../game/threat';
-import { darkPeak } from '../game/infinite';
+import { RECYCLE_AT, hasNode, holdMs, milestoneBase, passiveBonus } from '../game/layers';
+import { STAGES, stageIndex, threatActive, threatMult } from '../game/threat';
 
-/** How long the floodlight button must be held. */
-const HOLD_MS = 1500;
 /** How long the lost-shift screen stays up before the run starts over. */
 const LOST_MS = 4500;
 /** What the terminal says as the threat climbs into each stage. */
@@ -350,7 +348,7 @@ export class App {
     let started = 0;
     let raf = 0;
     const tick = () => {
-      const p = Math.min((performance.now() - started) / HOLD_MS, 1);
+      const p = Math.min((performance.now() - started) / holdMs(this.getState().recycle), 1);
       this.lightButton.style.setProperty('--hold', String(p));
       if (p >= 1) {
         stop();
@@ -1268,7 +1266,7 @@ export class App {
     this.knownStage = stage;
     this.threatBar.textContent = `угроза ${textBar(level, 10)} ${Math.floor(level * 100)}%`;
     // How the dark changes income right now: the reason to wait before the light, or not to.
-    const dark = threatMult(level, darkPeak(state.tracks, DARK_BONUS));
+    const dark = threatMult(level, darkPeakOf(state));
     this.stageEl.textContent = `${STAGES[stage].name.toUpperCase()} · тьма ×${dark.toFixed(2)}`;
     this.stageEl.classList.toggle('gain', dark > 1.005);
     this.stageEl.classList.toggle('loss', dark < 0.995);
