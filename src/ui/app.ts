@@ -1,19 +1,39 @@
-import { format, D, type Decimal } from '../game/num';
-import { PRODUCERS, costOf, type ProducerDef } from '../game/producers';
-import { buy, canBuy, newGame, ratePerSecond, type GameState } from '../game/state';
+import { format, type Decimal } from '../game/num';
+import { PRODUCERS, milestonesReached, nextMilestone, prevMilestone, producerById, type ProducerDef } from '../game/producers';
+import { UPGRADES, describeUpgrade, type UpgradeDef } from '../game/upgrades';
+import {
+  availableUpgrades,
+  buy,
+  buyUpgrade,
+  newGame,
+  producerRate,
+  purchasePlan,
+  ratePerSecond,
+  takeNewUpgrades,
+  type BuyMode,
+  type GameState,
+} from '../game/state';
 import { exportSave, importSave, wipeSave, writeSave } from '../game/save';
 import { ICONS } from './icons';
 import { Scene } from './scene';
 
-type Tab = 'dump' | 'settings';
+type Tab = 'dump' | 'upgrades' | 'settings';
 
 interface ProducerRow {
   def: ProducerDef;
   root: HTMLElement;
   count: HTMLElement;
   rate: HTMLElement;
+  milestone: HTMLElement;
   button: HTMLButtonElement;
+  label: HTMLElement;
   price: HTMLElement;
+}
+
+interface UpgradeRow {
+  def: UpgradeDef;
+  root: HTMLElement;
+  button: HTMLButtonElement;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -39,11 +59,29 @@ function progress(have: Decimal, need: Decimal): number {
   return have.div(need).toNumber();
 }
 
+/** Puts `wanted` into `parent` in order, touching the DOM only when something changed. */
+function syncChildren(parent: HTMLElement, wanted: HTMLElement[]): void {
+  if (wanted.length !== parent.children.length || wanted.some((n, i) => parent.children[i] !== n)) {
+    parent.replaceChildren(...wanted);
+  }
+}
+
 const pad2 = (n: number) => String(n).padStart(2, '0');
+
+const BUY_MODES: [BuyMode, string][] = [
+  ['one', '×1'],
+  ['ten', '×10'],
+  ['max', 'Макс'],
+];
+
+/** How long each notice stays up; several in a row play one after another. */
+const TOAST_MS = 2600;
+const TOAST_QUEUE_MAX = 4;
 
 /** Owns the DOM; the game loop calls `render` a few times a second and `frame` every frame. */
 export class App {
   private rows: ProducerRow[] = [];
+  private upgradeRows = new Map<string, UpgradeRow>();
   private trashEl!: HTMLElement;
   private rateEl!: HTMLElement;
   private clockEl!: HTMLElement;
@@ -51,12 +89,21 @@ export class App {
   private teaser!: HTMLElement;
   private teaserBar!: HTMLElement;
   private teaserText!: HTMLElement;
+  private upgradeList!: HTMLElement;
+  private upgradeEmpty!: HTMLElement;
+  private upgradeCount!: HTMLElement;
+  private upgradeBadge!: HTMLElement;
+  private modeButtons = new Map<BuyMode, HTMLButtonElement>();
   private panels = new Map<Tab, HTMLElement>();
   private tabs = new Map<Tab, HTMLButtonElement>();
   private toastEl!: HTMLElement;
+  private toastQueue: string[] = [];
   private toastTimer = 0;
   private updateEl!: HTMLElement;
   private scene!: Scene;
+  /** What the player has already been told about, so each event is announced once. */
+  private knownRevealed = 0;
+  private knownMilestones = new Map<string, number>();
 
   constructor(
     private root: HTMLElement,
@@ -64,6 +111,14 @@ export class App {
     private setState: (state: GameState) => void,
   ) {
     this.build();
+    this.resetKnown();
+  }
+
+  /** Treats producers and milestones in the current state as already seen (on load, import or reset). */
+  private resetKnown(): void {
+    const state = this.getState();
+    this.knownRevealed = state.revealed.length;
+    for (const def of PRODUCERS) this.knownMilestones.set(def.id, milestonesReached(state.owned[def.id] ?? 0));
   }
 
   private build(): void {
@@ -75,10 +130,14 @@ export class App {
     header.append(this.trashEl, unit, this.rateEl);
 
     const main = el('main', 'panels');
-    main.append(this.buildDump(), this.buildSettings());
+    main.append(this.buildDump(), this.buildUpgrades(), this.buildSettings());
 
     const nav = el('nav', 'tabs');
-    nav.append(this.tabButton('dump', 'Свалка', ICONS.heap), this.tabButton('settings', 'Настройки', ICONS.gear));
+    const upgradesTab = this.tabButton('upgrades', 'Улучшения', ICONS.upgrades);
+    this.upgradeBadge = el('span', 'badge');
+    this.upgradeBadge.hidden = true;
+    upgradesTab.append(this.upgradeBadge);
+    nav.append(this.tabButton('dump', 'Свалка', ICONS.heap), upgradesTab, this.tabButton('settings', 'Настройки', ICONS.gear));
 
     this.toastEl = el('div', 'toast');
     this.toastEl.setAttribute('role', 'status');
@@ -124,7 +183,26 @@ export class App {
     const panel = el('section', 'panel');
     this.panels.set('dump', panel);
     panel.append(this.buildFeed());
-    panel.append(el('h2', 'panel-title', 'Производство'));
+
+    const head = el('div', 'panel-head');
+    head.append(el('h2', 'panel-title', 'Производство'));
+    const modes = el('div', 'modes');
+    modes.setAttribute('role', 'group');
+    modes.setAttribute('aria-label', 'Сколько покупать');
+    for (const [mode, label] of BUY_MODES) {
+      const b = el('button', 'mode', label);
+      b.type = 'button';
+      b.id = `mode-${mode}`;
+      b.addEventListener('click', () => {
+        this.getState().buyMode = mode;
+        this.render();
+      });
+      this.modeButtons.set(mode, b);
+      modes.append(b);
+    }
+    head.append(modes);
+    panel.append(head);
+
     this.list = el('div', 'producers');
     for (const def of PRODUCERS) this.rows.push(this.buildRow(def));
 
@@ -132,11 +210,11 @@ export class App {
     const icon = el('div', 'p-icon');
     icon.innerHTML = ICONS.locked;
     const body = el('div', 'p-body');
-    const head = el('div', 'p-head');
+    const thead = el('div', 'p-head');
     this.teaserBar = el('span', 'p-bar');
-    head.append(el('span', 'p-name', '???'), this.teaserBar);
+    thead.append(el('span', 'p-name', '???'), this.teaserBar);
     this.teaserText = el('div', 'p-flavor');
-    body.append(head, this.teaserText);
+    body.append(thead, this.teaserText);
     this.teaser.append(icon, body);
 
     panel.append(this.list);
@@ -153,24 +231,64 @@ export class App {
     const count = el('span', 'p-count', '×0');
     head.append(el('span', 'p-name', def.name), count);
     const rate = el('div', 'p-rate');
-    body.append(head, el('div', 'p-flavor', def.flavor), rate);
+    const milestone = el('div', 'p-milestone');
+    body.append(head, el('div', 'p-flavor', def.flavor), rate, milestone);
 
     const button = el('button', 'buy');
     button.type = 'button';
     button.id = `buy-${def.id}`;
+    const label = el('span', 'buy-label', 'Купить');
     const price = el('span', 'buy-price');
-    button.append(el('span', 'buy-label', 'Купить'), price);
+    button.append(label, price);
     button.addEventListener('click', () => {
-      if (buy(this.getState(), def.id)) {
-        button.classList.remove('pop');
-        void button.offsetWidth; // restart the animation
-        button.classList.add('pop');
+      if (buy(this.getState(), def.id) > 0) {
+        this.pop(button);
         this.render();
       }
     });
 
     root.append(icon, body, button);
-    return { def, root, count, rate, button, price };
+    return { def, root, count, rate, milestone, button, label, price };
+  }
+
+  private buildUpgrades(): HTMLElement {
+    const panel = el('section', 'panel');
+    this.panels.set('upgrades', panel);
+    const head = el('div', 'panel-head');
+    head.append(el('h2', 'panel-title', 'Улучшения'));
+    this.upgradeCount = el('span', 'panel-meta');
+    head.append(this.upgradeCount);
+    panel.append(head);
+
+    this.upgradeEmpty = el('p', 'empty', 'Новых улучшений пока нет. Они открываются, когда растёт производство.');
+    this.upgradeList = el('div', 'producers');
+    for (const def of UPGRADES) this.upgradeRows.set(def.id, this.buildUpgradeRow(def));
+    panel.append(this.upgradeEmpty, this.upgradeList);
+    return panel;
+  }
+
+  private buildUpgradeRow(def: UpgradeDef): UpgradeRow {
+    const root = el('div', 'producer upgrade');
+    const icon = el('div', 'p-icon');
+    const e = def.effect;
+    icon.innerHTML = e.kind === 'global' ? ICONS.global : e.kind === 'synergy' ? ICONS.synergy : (ICONS[e.target] ?? ICONS.upgrades);
+
+    const body = el('div', 'p-body');
+    body.append(el('div', 'p-name', def.name), el('div', 'p-effect', describeUpgrade(def)), el('div', 'p-flavor', def.flavor));
+
+    const button = el('button', 'buy');
+    button.type = 'button';
+    button.id = `upgrade-${def.id}`;
+    button.append(el('span', 'buy-label', 'Купить'), el('span', 'buy-price', `${format(def.cost)} кг`));
+    button.addEventListener('click', () => {
+      if (buyUpgrade(this.getState(), def.id)) {
+        this.toast(`Куплено: ${def.name}`);
+        this.render();
+      }
+    });
+
+    root.append(icon, body, button);
+    return { def, root, button };
   }
 
   private buildSettings(): HTMLElement {
@@ -207,6 +325,7 @@ export class App {
       state.lastTick = Date.now();
       this.setState(state);
       writeSave(state);
+      this.resetKnown();
       this.toast('Сохранение загружено');
       this.render();
     });
@@ -235,6 +354,8 @@ export class App {
       reset.textContent = 'Сбросить игру';
       wipeSave();
       this.setState(newGame());
+      this.resetKnown();
+      this.toastQueue = [];
       this.show('dump');
       this.toast('Игра начата заново');
       this.render();
@@ -243,11 +364,29 @@ export class App {
     return panel;
   }
 
+  private pop(node: HTMLElement): void {
+    node.classList.remove('pop');
+    void node.offsetWidth; // restart the animation
+    node.classList.add('pop');
+  }
+
+  /** Shows a notice; ones that arrive while another is up wait their turn. */
   toast(message: string): void {
+    this.toastQueue.push(message);
+    if (this.toastQueue.length > TOAST_QUEUE_MAX) this.toastQueue.splice(0, this.toastQueue.length - TOAST_QUEUE_MAX);
+    if (this.toastEl.hidden) this.nextToast();
+  }
+
+  private nextToast(): void {
+    const message = this.toastQueue.shift();
+    clearTimeout(this.toastTimer);
+    if (message === undefined) {
+      this.toastEl.hidden = true;
+      return;
+    }
     this.toastEl.textContent = message;
     this.toastEl.hidden = false;
-    clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => (this.toastEl.hidden = true), 3500);
+    this.toastTimer = window.setTimeout(() => this.nextToast(), TOAST_MS);
   }
 
   /** Persistent strip offering a newer build; stays until the player taps it. */
@@ -271,20 +410,40 @@ export class App {
     this.scene.update(dt, ratePerSecond(state), state.totalTrash);
   }
 
+  /** Announces producers, upgrades and milestones that appeared since the last check. */
+  private announce(state: GameState): void {
+    for (const id of state.revealed.slice(this.knownRevealed)) {
+      this.toast(`Новый производитель: ${producerById(id)?.name}`);
+    }
+    this.knownRevealed = state.revealed.length;
+
+    for (const u of takeNewUpgrades(state)) this.toast(`Новое улучшение: ${u.name}`);
+
+    for (const def of PRODUCERS) {
+      const owned = state.owned[def.id] ?? 0;
+      const reached = milestonesReached(owned);
+      if (reached > (this.knownMilestones.get(def.id) ?? 0)) {
+        this.toast(`${def.name}: ${prevMilestone(owned)} шт, доход ×2`);
+      }
+      this.knownMilestones.set(def.id, reached);
+    }
+  }
+
   render(): void {
     const state = this.getState();
+    this.announce(state);
+
     this.trashEl.textContent = format(state.trash);
     this.rateEl.textContent = `поток: +${format(ratePerSecond(state))} кг/с`;
     const now = new Date();
     this.clockEl.textContent = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
 
-    // Rebuild the list order only when a new producer is revealed.
+    for (const [mode, b] of this.modeButtons) b.setAttribute('aria-pressed', String(state.buyMode === mode));
+
+    // Producers, plus a locked card for the next one.
     const visible = this.rows.filter((r) => state.revealed.includes(r.def.id));
     const next = PRODUCERS.find((p) => !state.revealed.includes(p.id));
-    const wanted = [...visible.map((r) => r.root), ...(next ? [this.teaser] : [])];
-    if (wanted.length !== this.list.children.length || wanted.some((n, i) => this.list.children[i] !== n)) {
-      this.list.replaceChildren(...wanted);
-    }
+    syncChildren(this.list, [...visible.map((r) => r.root), ...(next ? [this.teaser] : [])]);
     if (next) {
       const need = next.baseCost.div(2);
       const p = progress(state.totalTrash, need);
@@ -294,13 +453,34 @@ export class App {
 
     for (const row of visible) {
       const owned = state.owned[row.def.id] ?? 0;
-      const cost = costOf(row.def, owned);
+      const plan = purchasePlan(state, row.def.id);
       row.count.textContent = `×${owned}`;
-      row.rate.textContent = `+${format(row.def.baseRate)}/с за шт · всего +${format(row.def.baseRate.mul(D(owned)))}/с`;
-      row.price.textContent = `${format(cost)} кг`;
-      row.button.disabled = !canBuy(state, row.def.id);
+      row.rate.textContent = `даёт +${format(producerRate(state, row.def.id))}/с`;
+      const from = prevMilestone(owned);
+      const to = nextMilestone(owned);
+      row.milestone.textContent = `${textBar((owned - from) / (to - from), 8)} ${owned}/${to} → ×2`;
+      const amount = state.buyMode === 'one' ? '' : state.buyMode === 'ten' ? ' ×10' : plan.count > 1 ? ` ×${plan.count}` : '';
+      row.label.textContent = `Купить${amount}`;
+      row.price.textContent = `${format(plan.cost)} кг`;
+      row.button.disabled = plan.count === 0;
       // The button fills up as the player saves toward the price.
-      row.button.style.setProperty('--p', String(progress(state.trash, cost)));
+      row.button.style.setProperty('--p', String(progress(state.trash, plan.cost)));
     }
+
+    // Upgrades shop.
+    const shop = availableUpgrades(state);
+    syncChildren(this.upgradeList, shop.map((u) => this.upgradeRows.get(u.id)!.root));
+    this.upgradeEmpty.hidden = shop.length > 0;
+    this.upgradeCount.textContent = `куплено ${state.upgrades.length}/${UPGRADES.length}`;
+    let affordable = 0;
+    for (const u of shop) {
+      const row = this.upgradeRows.get(u.id)!;
+      const can = state.trash.gte(u.cost);
+      if (can) affordable++;
+      row.button.disabled = !can;
+      row.button.style.setProperty('--p', String(progress(state.trash, u.cost)));
+    }
+    this.upgradeBadge.hidden = affordable === 0;
+    this.upgradeBadge.textContent = String(affordable);
   }
 }

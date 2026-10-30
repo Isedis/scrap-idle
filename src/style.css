@@ -160,6 +160,65 @@ body::after {
 
 .panel-title::before { content: '## '; color: var(--dim); }
 
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+
+.panel-head .panel-title { margin: 0; }
+
+.panel-meta {
+  color: var(--mid);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Buy amount switch: ×1 / ×10 / Макс. */
+.modes {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.mode {
+  min-width: 52px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  color: var(--mid);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.mode:first-child { border-left: 0; }
+
+.mode[aria-pressed='true'] {
+  background: rgb(125 255 154 / 0.14);
+  color: var(--glow);
+  text-shadow: var(--glow-shadow);
+}
+
+.empty {
+  margin: 0;
+  padding: 16px 0;
+  color: var(--mid);
+  font-size: 13px;
+  border-top: 1px dashed var(--line);
+  border-bottom: 1px dashed var(--line);
+}
+
+.empty::before { content: '> '; }
+
 .producers {
   display: flex;
   flex-direction: column;
@@ -219,6 +278,22 @@ body::after {
   color: var(--mid);
   font-variant-numeric: tabular-nums;
 }
+
+.p-milestone {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--mid);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.p-effect {
+  color: var(--amber);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.upgrade .p-flavor { margin-top: 2px; }
 
 .teaser { grid-template-columns: 32px minmax(0, 1fr); }
 .teaser .p-icon,
@@ -360,7 +435,26 @@ button { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
+.tab { position: relative; }
+
 .tab svg { width: 20px; height: 20px; }
+
+/* Count of upgrades the player can afford right now. */
+.badge {
+  position: absolute;
+  top: 4px;
+  left: calc(50% + 8px);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--amber);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 
 .tab[aria-current='page'] {
   color: var(--glow);

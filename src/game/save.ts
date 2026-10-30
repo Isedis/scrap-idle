@@ -1,10 +1,11 @@
 import { parseNum } from './num';
-import { advance, newGame, type GameState } from './state';
+import { advance, newGame, type BuyMode, type GameState } from './state';
 import { PRODUCERS } from './producers';
+import { upgradeById } from './upgrades';
 
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
-const VERSION = 1;
+const VERSION = 2;
 
 /** Offline progress stops counting after a day away. */
 export const OFFLINE_CAP_SECONDS = 24 * 60 * 60;
@@ -18,13 +19,26 @@ interface SaveV1 {
   lastTick: number;
 }
 
+/** v2 adds upgrades and the buy mode. */
+interface SaveV2 extends Omit<SaveV1, 'v'> {
+  v: 2;
+  upgrades: string[];
+  seenUpgrades: string[];
+  buyMode: BuyMode;
+}
+
+const BUY_MODES: readonly BuyMode[] = ['one', 'ten', 'max'];
+
 export function serialize(state: GameState): string {
-  const data: SaveV1 = {
+  const data: SaveV2 = {
     v: VERSION,
     trash: state.trash.toString(),
     totalTrash: state.totalTrash.toString(),
     owned: state.owned,
     revealed: state.revealed,
+    upgrades: state.upgrades,
+    seenUpgrades: state.seenUpgrades,
+    buyMode: state.buyMode,
     lastTick: state.lastTick,
   };
   return JSON.stringify(data);
@@ -32,13 +46,13 @@ export function serialize(state: GameState): string {
 
 /** Parses a save; returns null for anything that is not a readable save. */
 export function deserialize(text: string): GameState | null {
-  let data: Partial<SaveV1>;
+  let data: Partial<SaveV2> | Partial<SaveV1>;
   try {
     data = JSON.parse(text);
   } catch {
     return null;
   }
-  if (!data || typeof data !== 'object' || data.v !== 1) return null;
+  if (!data || typeof data !== 'object' || (data.v !== 1 && data.v !== 2)) return null;
 
   const state = newGame(typeof data.lastTick === 'number' ? data.lastTick : Date.now());
   const trash = parseNum(data.trash ?? '0');
@@ -53,6 +67,14 @@ export function deserialize(text: string): GameState | null {
   }
   state.revealed = (data.revealed ?? []).filter((id) => known.has(id));
   if (!state.revealed.includes('collector')) state.revealed.unshift('collector');
+
+  // A v1 save simply has none of these yet.
+  if (data.v === 2) {
+    const ids = (list: unknown) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string' && upgradeById(id)) : []);
+    state.upgrades = [...new Set(ids(data.upgrades))];
+    state.seenUpgrades = [...new Set([...ids(data.seenUpgrades), ...state.upgrades])];
+    if (BUY_MODES.includes(data.buyMode as BuyMode)) state.buyMode = data.buyMode as BuyMode;
+  }
   return state;
 }
 

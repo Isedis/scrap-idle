@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advance, buy, newGame } from '../src/game/state';
+import { advance, buy, buyUpgrade, newGame } from '../src/game/state';
 import { applyOffline, deserialize, exportSave, importSave, OFFLINE_CAP_SECONDS, serialize } from '../src/game/save';
 import { D } from '../src/game/num';
 
@@ -9,7 +9,13 @@ describe('saves', () => {
     advance(s, 500);
     buy(s, 'collector');
     buy(s, 'cart');
+    buyUpgrade(s, 'collector-1');
+    s.seenUpgrades = ['collector-1', 'cart-1'];
+    s.buyMode = 'max';
     const back = deserialize(serialize(s))!;
+    expect(back.upgrades).toEqual(['collector-1']);
+    expect(back.seenUpgrades).toEqual(['collector-1', 'cart-1']);
+    expect(back.buyMode).toBe('max');
     expect(back.trash.eq(s.trash)).toBe(true);
     expect(back.owned).toEqual(s.owned);
     expect(back.revealed).toEqual(s.revealed);
@@ -27,6 +33,22 @@ describe('saves', () => {
     expect(deserialize('{"v":99}')).toBeNull();
     expect(deserialize('{"v":1,"trash":"abc"}')).toBeNull();
     expect(importSave('not a save')).toBeNull();
+  });
+
+  it('loads a v1 save with no upgrades yet', () => {
+    const s = deserialize('{"v":1,"trash":"500","totalTrash":"900","owned":{"collector":7,"cart":2},"revealed":["collector","cart"],"lastTick":123}')!;
+    expect(s.trash.toNumber()).toBe(500);
+    expect(s.owned).toEqual({ collector: 7, cart: 2 });
+    expect(s.upgrades).toEqual([]);
+    expect(s.buyMode).toBe('one');
+    expect(s.lastTick).toBe(123);
+  });
+
+  it('drops unknown upgrades and bad buy modes', () => {
+    const s = deserialize('{"v":2,"trash":"1","owned":{},"revealed":[],"upgrades":["collector-1","fake",5],"seenUpgrades":[],"buyMode":"all","lastTick":0}')!;
+    expect(s.upgrades).toEqual(['collector-1']);
+    expect(s.seenUpgrades).toEqual(['collector-1']);
+    expect(s.buyMode).toBe('one');
   });
 
   it('drops unknown producers and bad counts', () => {
