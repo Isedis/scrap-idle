@@ -108,6 +108,28 @@ interface Junk {
   color: string;
 }
 
+/** Screen background the dim bodies fade toward, and the brightest phosphor. */
+const PHOSPHOR_BG = [6, 20, 12];
+const PHOSPHOR_HI = [216, 255, 220];
+const phosphorCache = new Map<string, { body: string; edge: string }>();
+
+/** Splits a colour into a dim body and a bright edge for the vector-terminal look. */
+function phosphor(hex: string): { body: string; edge: string } {
+  let out = phosphorCache.get(hex);
+  if (out) return out;
+  const n = parseInt(hex.slice(1), 16);
+  const rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  const mix = (a: number[], b: number[], t: number) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(' ')})`;
+  const luma = (rgb[0] * 0.3 + rgb[1] * 0.59 + rgb[2] * 0.11) / 255;
+  out = {
+    body: mix(rgb, PHOSPHOR_BG, 0.72),
+    // Dark parts (tyres, outlines) still get a visible mid-green edge.
+    edge: luma < 0.25 ? '#4fa868' : mix(rgb, PHOSPHOR_HI, 0.3),
+  };
+  phosphorCache.set(hex, out);
+  return out;
+}
+
 const MAX_ITEMS = 24;
 const MAX_PARTICLES = 160;
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
@@ -171,7 +193,8 @@ export class Scene {
   }
 
   private resize(): void {
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // One canvas pixel per CSS pixel, scaled up without smoothing: a slightly coarse, CRT-like picture.
+    this.dpr = 1;
     const rect = this.canvas.getBoundingClientRect();
     this.w = rect.width;
     this.h = rect.height;
@@ -559,16 +582,23 @@ export class Scene {
     if (this.glitchLeft > 0) this.drawGlitch();
   }
 
-  /** Fills and outlines the current path. */
+  /**
+   * Draws the current path the way a vector terminal would: a dim body and a bright
+   * phosphor edge. `line` 0 means a plain solid fill.
+   */
   private paint(fill: string, line = 1.2): void {
     const { ctx } = this;
-    ctx.fillStyle = fill;
-    ctx.fill();
-    if (line > 0) {
-      ctx.strokeStyle = C.outline;
-      ctx.lineWidth = line;
-      ctx.stroke();
+    if (line <= 0) {
+      ctx.fillStyle = fill;
+      ctx.fill();
+      return;
     }
+    const { body, edge } = phosphor(fill);
+    ctx.fillStyle = body;
+    ctx.fill();
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = line;
+    ctx.stroke();
   }
 
   private box(x: number, y: number, bw: number, bh: number, fill: string, line = 1.2): void {
