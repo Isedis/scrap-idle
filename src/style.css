@@ -100,7 +100,7 @@ body::after {
 /* ---- Camera feed ---- */
 .feed {
   position: relative;
-  height: 168px;
+  height: 200px;
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
@@ -124,7 +124,7 @@ body::after {
 }
 
 .feed-label { left: 8px; top: 6px; }
-.feed-clock { left: 8px; bottom: 6px; font-variant-numeric: tabular-nums; }
+.feed-clock { right: 8px; top: 20px; font-variant-numeric: tabular-nums; }
 .feed-rec { right: 8px; top: 6px; color: var(--danger); }
 .feed-rec::before {
   content: '';
@@ -135,6 +135,54 @@ body::after {
   border-radius: 50%;
   background: var(--danger);
   animation: blink 1.2s steps(1) infinite;
+}
+
+/* Text burned into the picture during a bright moment. */
+.feed-caption {
+  position: absolute;
+  left: 50%;
+  top: 28px;
+  max-width: calc(100% - 24px);
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  border: 1px solid var(--amber);
+  background: rgb(5 13 7 / 0.75);
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feed-caption.show { animation: caption-in 2.4s ease forwards; }
+
+@keyframes caption-in {
+  0% { opacity: 0; transform: translate(-50%, -4px); }
+  8%, 80% { opacity: 1; transform: translate(-50%, 0); }
+  86% { opacity: 0.3; }
+  90% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Header rate swells when income jumps. */
+.rate.pulse { animation: pulse 0.6s ease; }
+
+@keyframes pulse {
+  40% { transform: scale(1.12); text-shadow: 0 0 14px rgb(255 191 71 / 0.8); }
+}
+
+.rate { transform-origin: left center; }
+
+/* A producer row lights up when it hits a milestone. */
+.producer.flash { animation: row-flash 1.2s ease; }
+
+@keyframes row-flash {
+  0% { background: rgb(125 255 154 / 0.22); }
+  100% { background: transparent; }
 }
 
 /* ---- Panels ---- */

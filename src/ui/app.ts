@@ -85,6 +85,8 @@ export class App {
   private trashEl!: HTMLElement;
   private rateEl!: HTMLElement;
   private clockEl!: HTMLElement;
+  private captionEl!: HTMLElement;
+  private captionTimer = 0;
   private list!: HTMLElement;
   private teaser!: HTMLElement;
   private teaserBar!: HTMLElement;
@@ -158,7 +160,9 @@ export class App {
     const label = el('div', 'feed-label', 'КАМ-01 · СВАЛКА');
     const rec = el('div', 'feed-rec', 'REC');
     this.clockEl = el('div', 'feed-clock', '00:00:00');
-    feed.append(canvas, label, rec, this.clockEl);
+    this.captionEl = el('div', 'feed-caption');
+    this.captionEl.hidden = true;
+    feed.append(canvas, label, rec, this.clockEl, this.captionEl);
     this.scene = new Scene(canvas);
     return feed;
   }
@@ -241,8 +245,15 @@ export class App {
     const price = el('span', 'buy-price');
     button.append(label, price);
     button.addEventListener('click', () => {
-      if (buy(this.getState(), def.id) > 0) {
+      const state = this.getState();
+      const before = state.owned[def.id] ?? 0;
+      if (buy(state, def.id) > 0) {
         this.pop(button);
+        if (before === 0) {
+          // The first unit shows up on camera: make an entrance.
+          this.scene.glitch(0.6);
+          this.caption(`Новое на камере: ${def.name}`);
+        }
         this.render();
       }
     });
@@ -283,6 +294,9 @@ export class App {
     button.addEventListener('click', () => {
       if (buyUpgrade(this.getState(), def.id)) {
         this.toast(`Куплено: ${def.name}`);
+        this.scene.flash('amber');
+        this.caption(describeUpgrade(def));
+        this.pop(this.rateEl, 'pulse');
         this.render();
       }
     });
@@ -364,10 +378,20 @@ export class App {
     return panel;
   }
 
-  private pop(node: HTMLElement): void {
-    node.classList.remove('pop');
+  /** Replays a one-shot CSS animation class on `node`. */
+  private pop(node: HTMLElement, cls = 'pop'): void {
+    node.classList.remove(cls);
     void node.offsetWidth; // restart the animation
-    node.classList.add('pop');
+    node.classList.add(cls);
+  }
+
+  /** Text burned into the camera picture for a moment. */
+  private caption(text: string): void {
+    this.captionEl.textContent = text;
+    this.captionEl.hidden = false;
+    this.pop(this.captionEl, 'show');
+    clearTimeout(this.captionTimer);
+    this.captionTimer = window.setTimeout(() => (this.captionEl.hidden = true), 2400);
   }
 
   /** Shows a notice; ones that arrive while another is up wait their turn. */
@@ -407,13 +431,14 @@ export class App {
   /** Every animation frame: only the camera feed. */
   frame(dt: number): void {
     const state = this.getState();
-    this.scene.update(dt, ratePerSecond(state), state.totalTrash);
+    this.scene.update(dt, { owned: state.owned, rate: ratePerSecond(state), total: state.totalTrash });
   }
 
   /** Announces producers, upgrades and milestones that appeared since the last check. */
   private announce(state: GameState): void {
     for (const id of state.revealed.slice(this.knownRevealed)) {
       this.toast(`Новый производитель: ${producerById(id)?.name}`);
+      this.scene.glitch(0.35);
     }
     this.knownRevealed = state.revealed.length;
 
@@ -424,6 +449,12 @@ export class App {
       const reached = milestonesReached(owned);
       if (reached > (this.knownMilestones.get(def.id) ?? 0)) {
         this.toast(`${def.name}: ${prevMilestone(owned)} шт, доход ×2`);
+        this.scene.flash('green');
+        this.scene.burst();
+        this.caption(`${def.name} ×2`);
+        this.pop(this.rateEl, 'pulse');
+        const row = this.rows.find((r) => r.def.id === def.id);
+        if (row) this.pop(row.root, 'flash');
       }
       this.knownMilestones.set(def.id, reached);
     }
