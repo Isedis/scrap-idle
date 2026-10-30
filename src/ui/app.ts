@@ -258,7 +258,6 @@ export class App {
     this.consoleEl.addEventListener('click', () => this.catchLive('typing') || this.catchLive('voice'));
     this.hearingBar = new HearingBar((noise) => {
       setNoise(this.getState().hearing, noise);
-      this.sound.setPlant(this.getState().hearing.noise);
       this.render();
     });
     // The floodlight and the noise live on their own tabs, by their cameras: in the header
@@ -1393,7 +1392,8 @@ export class App {
       this.toast('Новое: шум цеха, во вкладке «Слои» под камерой цеха. Выше 100% — больше дохода. Но что-то слушает');
     }
     this.hearingBar.render(h, open);
-    this.sound.setPlant(open ? h.noise : 0);
+    // The plant is heard only in the plant, on its own tab: elsewhere its din would never stop.
+    this.sound.setPlant(open && !this.recyclePanel.root.hidden ? h.noise : 0);
     const was = this.knownPhase;
     this.knownPhase = h.phase;
     if (h.phase === was) return;
