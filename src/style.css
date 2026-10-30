@@ -1455,3 +1455,119 @@ main.hunt-step { transform: translate(-2px, 2px); }
   animation: urge 1s steps(2) infinite;
 }
 .tab.danger { color: var(--danger); }
+
+/* ---- Journal: the review desk and its four parts ---- */
+.j-monitor { position: relative; }
+.j-monitor .feed { height: 200px; }
+.j-monitor .feed.plant { height: 210px; }
+#app[data-cams='off'] .j-monitor .feed { height: 200px; }
+#app[data-cams='off'] .j-monitor .feed.plant { height: 210px; }
+#app[data-cams='off'] .j-monitor .feed-canvas,
+#app[data-cams='off'] .j-monitor .feed-playback { display: block; }
+#app[data-cams='off'] .j-monitor .feed-paper:not([hidden]) { display: block; }
+#app[data-cams='off'] .j-monitor .feed-label,
+#app[data-cams='off'] .j-monitor .feed-rec { top: 6px; transform: none; }
+#app[data-cams='off'] .j-monitor .feed-rec { right: 8px; }
+.j-monitor-idle {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  background: rgb(0 0 0 / 0.55);
+  color: var(--mid);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+.j-monitor-terminal {
+  position: absolute;
+  inset: auto 10px 30px;
+  padding: 6px 8px;
+  background: rgb(0 0 0 / 0.7);
+  color: var(--danger);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 8px rgb(255 107 87 / 0.5);
+}
+.j-tab-mark {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--amber);
+  color: var(--ink);
+  font-size: 10px;
+  line-height: 16px;
+  text-shadow: none;
+}
+.j-view { display: flex; flex-direction: column; gap: 10px; }
+.j-play-all { width: 100%; }
+.j-sub { margin-top: 6px; color: var(--dim); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+button.j-rec {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px dashed var(--line);
+  background: transparent;
+  color: var(--glow);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+button.j-rec:disabled { opacity: 0.5; cursor: default; }
+.j-rec-body { display: flex; flex-direction: column; min-width: 0; }
+.j-rec-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.j-rec-play {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--glow);
+}
+.j-rec.new .j-rec-play { border-color: var(--danger); color: var(--danger); }
+.j-chapters { display: flex; flex-direction: column; gap: 14px; }
+.j-chapter { border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px 6px; }
+.j-chapter-head { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.j-chapter-title { color: var(--glow); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; }
+.j-case:last-child { border-bottom: 0; }
+.j-case-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--glow);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.j-chev { color: var(--mid); }
+.j-case.locked { padding-block: 8px; }
+.j-case-hint { color: var(--dim); font-size: 11px; }
+.j-again { margin-top: 8px; width: 100%; }
+.j-find-name { display: flex; flex-direction: column; min-width: 0; }
+.j-clue { display: flex; flex-direction: column; gap: 8px; }
+.j-heard {
+  padding: 10px 12px;
+  border-left: 2px solid var(--danger);
+  background: rgb(0 0 0 / 0.35);
+  color: var(--mid);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.5;
+}

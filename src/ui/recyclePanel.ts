@@ -1,7 +1,7 @@
 import { format, type Decimal } from '../game/num';
 import { BRANCHES, LAYERS, NODES, RECYCLE_AT, REPEATS, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, repeatCost, type NodeDef, type RepeatDef } from '../game/layers';
 import { recycleAdvice } from '../game/advice';
-import { PlantCam } from './plantCam';
+import { PlantCam, type PlantView } from './plantCam';
 import { recycleMult, buyNode, buyRepeat, canRecycle, currentGain, repeatsOpen, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
 
@@ -222,15 +222,20 @@ export class RecyclePanel {
 
   /** Every animation frame while the tab is on screen: the camera. */
   frame(dt: number, state: GameState): void {
-    const run = state.runTrash.add(1).log10().toNumber();
-    this.camera.update(dt, {
-      progress: canRecycle(state) ? 1 : Math.min(run / RECYCLE_AT.log10().toNumber(), 0.99),
-      pointsLog: state.recycle.points.add(1).log10().toNumber(),
-      nodes: state.recycle.nodes,
-      allNodes: NODES.map((n) => n.id),
-      threat: state.threat.level,
-      noise: state.sorting.open ? state.hearing.noise : 1,
-      loud: state.sorting.open,
-    });
+    this.camera.update(dt, plantView(state));
   }
+}
+
+/** What camera 03 shows of the game; the journal's monitor uses it too. */
+export function plantView(state: GameState): PlantView {
+  const run = state.runTrash.add(1).log10().toNumber();
+  return {
+    progress: canRecycle(state) ? 1 : Math.min(run / RECYCLE_AT.log10().toNumber(), 0.99),
+    pointsLog: state.recycle.points.add(1).log10().toNumber(),
+    nodes: state.recycle.nodes,
+    allNodes: NODES.map((n) => n.id),
+    threat: state.threat.level,
+    noise: state.sorting.open ? state.hearing.noise : 1,
+    loud: state.sorting.open,
+  };
 }

@@ -30,8 +30,8 @@ import { exportSave, importSave, wipeSave, writeSave } from '../game/save';
 import { ICONS } from './icons';
 import { el, progress, syncChildren, textBar } from './dom';
 export { textBar } from './dom';
-import { Scene } from './scene';
-import { RecyclePanel } from './recyclePanel';
+import { Scene, type SceneView } from './scene';
+import { RecyclePanel, plantView } from './recyclePanel';
 import { JournalPanel } from './journalPanel';
 import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
@@ -174,13 +174,11 @@ export class App {
   private journalBadge!: HTMLElement;
   private feedLabel!: HTMLElement;
   private motionEl!: HTMLElement;
-  private playbackEl!: HTMLElement;
   private paperEl!: HTMLElement;
   private consoleEl!: HTMLElement;
   private typingTimer = 0;
   /** Live events on screen right now, by kind, with the recording a tap would catch. */
   private live = new Map<EventKind, Recording>();
-  private replaying = false;
   private dread!: Dread;
   private hearingBar!: HearingBar;
   private alertEl!: HTMLButtonElement;
@@ -323,7 +321,7 @@ export class App {
     }
 
     const main = el('main', 'panels');
-    this.journalPanel = new JournalPanel((rec) => this.watchRecord(rec, false));
+    this.journalPanel = new JournalPanel((rec) => this.watchRecord(rec));
     this.panels.set('journal', this.journalPanel.root);
 
     this.automationPanel = new AutomationPanel(this.getState, (message) => {
@@ -391,7 +389,8 @@ export class App {
 
     this.root.append(header, main, nav, this.toastEl, this.hearingBar.hush, this.lostEl, this.intro.root, this.awayScreen.root);
     // Every camera can fold away to a thin strip; one choice for all of them.
-    for (const feed of this.root.querySelectorAll<HTMLElement>('.feed')) this.addCameraFold(feed);
+    // The journal's monitor is where recordings are watched: it never folds.
+    for (const feed of this.root.querySelectorAll<HTMLElement>('.feed')) if (!feed.closest('.j-monitor')) this.addCameraFold(feed);
     this.setCamerasFolded(camerasFolded());
     this.dread = new Dread(this.root, main, (line) => this.typeLine(line), this.sound);
     this.sharpButton.setAttribute('aria-pressed', String(this.dread.sharp));
@@ -495,12 +494,10 @@ export class App {
     (this.motionEl as HTMLButtonElement).type = 'button';
     this.motionEl.hidden = true;
     this.motionEl.addEventListener('click', () => this.show('journal'));
-    this.playbackEl = el('div', 'feed-playback');
-    this.playbackEl.hidden = true;
     this.paperEl = el('div', 'feed-paper');
     this.paperEl.hidden = true;
     this.paperEl.addEventListener('click', () => (this.paperEl.hidden = true));
-    feed.append(canvas, this.feedLabel, rec, this.clockEl, this.captionEl, this.motionEl, this.playbackEl, this.paperEl);
+    feed.append(canvas, this.feedLabel, rec, this.clockEl, this.captionEl, this.motionEl, this.paperEl);
     this.scene = new Scene(canvas);
     // A tap on something moving catches it live.
     canvas.addEventListener('pointerdown', (e) => {
@@ -594,42 +591,24 @@ export class App {
     return true;
   }
 
-  /** Plays a recording from the archive on the camera, then reveals what it shows. */
-  private watchRecord(rec: Recording, live: boolean): void {
+  /** Plays a recording from the archive on the journal's own monitor, then reveals what it shows. */
+  private watchRecord(rec: Recording): void {
     const event = eventById(rec.event);
-    if (!event || this.replaying || this.losing) return;
-    if (live) {
-      this.applyWatch(rec);
-      return;
-    }
-    const d = new Date(rec.at);
-    const p2 = (n: number) => String(n).padStart(2, '0');
-    const mark = `◀◀ ЗАПИСЬ ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
-    this.replaying = true;
-    let seconds: number;
-    if (PLANT_KINDS.includes(event.kind)) {
-      // Camera 03's recordings play on camera 03.
-      this.layerView = 'recycle';
-      this.show('recycle');
-      this.recyclePanel.camera.root.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      seconds = this.recyclePanel.camera.playEvent(event.kind, mark);
-      if (event.kind === 'plantEcho') this.sound.echo();
-    } else {
-      this.show('dump');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      this.playbackEl.textContent = mark;
-      this.playbackEl.hidden = false;
-      this.glitch(0.4);
-      seconds = this.playKind(event.kind, rec.phrase, true);
-    }
+    const monitor = this.journalPanel.monitor;
+    if (!event || monitor.busy || this.losing) return;
+    const seconds = monitor.play(rec, event);
+    if (event.kind === 'plantEcho') this.sound.echo();
+    if (event.kind === 'voice' || event.kind === 'cam00') this.sound.static(0.4);
+    this.render();
     window.setTimeout(() => {
-      this.playbackEl.hidden = true;
-      this.replaying = false;
-      this.applyWatch(rec);
+      this.applyWatch(rec, true);
+      this.journalPanel.watched();
+      this.render();
     }, seconds * 1000 + 300);
   }
 
-  private applyWatch(rec: Recording): void {
+  /** Hands out what a recording reveals; `onDesk` when it was watched on the journal's monitor. */
+  private applyWatch(rec: Recording, onDesk = false): void {
     const event = eventById(rec.event)!;
     const result = watch(this.getState().story, rec.seq);
     if (result.opened) {
@@ -638,9 +617,12 @@ export class App {
       this.pop(this.rateEl, 'pulse');
     }
     if (result.note) {
-      this.paperEl.textContent = result.note;
-      this.paperEl.hidden = false;
-      window.setTimeout(() => (this.paperEl.hidden = true), 9000);
+      if (onDesk) this.journalPanel.monitor.showNote(result.note);
+      else {
+        this.paperEl.textContent = result.note;
+        this.paperEl.hidden = false;
+        window.setTimeout(() => (this.paperEl.hidden = true), 9000);
+      }
     }
     if (result.boosted) this.toast(`${event.title}: ускорение ×1.5 на 30 с`);
     writeSave(this.getState());
@@ -1165,6 +1147,8 @@ export class App {
     const state = this.getState();
     if (!this.losing) this.dread.update(dt, stageIndex(state.threat.level));
     if (!this.losing) this.huntFrame(dt, state);
+    // The journal's monitor shows camera 01 live, or the recording it plays, folded or not.
+    if (!this.journalPanel.root.hidden) this.journalPanel.monitor.frame(dt, this.yardView(state), plantView(state));
     // Folded cameras draw nothing, which also spares the battery.
     if (this.root.dataset.cams === 'off') return;
     if (!this.sortingPanel.root.hidden) this.sortingPanel.frame(dt, state);
@@ -1180,14 +1164,19 @@ export class App {
         threat: state.threat.level,
       });
     }
-    this.scene.update(dt, {
+    this.scene.update(dt, this.yardView(state));
+  }
+
+  /** What camera 01 shows of the game. */
+  private yardView(state: GameState): SceneView {
+    return {
       owned: state.owned,
       rate: ratePerSecond(state),
       total: state.runTrash,
       recycles: state.recycle.resets,
       threat: state.threat.level,
       traces: state.story.traces,
-    });
+    };
   }
 
   /** Interference on camera 01, heard as static when it is more than a flicker. */
@@ -1368,7 +1357,7 @@ export class App {
     const pending = unwatched(state.story);
     this.journalBadge.hidden = pending === 0;
     this.journalBadge.textContent = String(pending);
-    this.motionEl.hidden = pending === 0 || this.replaying;
+    this.motionEl.hidden = pending === 0;
     this.motionEl.textContent = `● движение · ${pending}`;
     this.layerEl.hidden = layer.total.lte(0);
     this.layerEl.textContent = `${format(layer.points)} ВС · ×${format(passiveBonus(layer.total))}`;
