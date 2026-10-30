@@ -156,7 +156,7 @@ export class Sound {
 
   // ---- One-off sounds ------------------------------------------------------------
 
-  private tone(type: OscillatorType, from: number, to: number, seconds: number, gain: number, delay = 0, it = false): void {
+  private tone(type: OscillatorType, from: number, to: number, seconds: number, gain: number, delay = 0, it = false, out?: AudioNode): void {
     if (!this.ctx || !this.master || (this.hushed && !it)) return;
     const t = this.ctx.currentTime + delay;
     const o = this.ctx.createOscillator();
@@ -166,12 +166,12 @@ export class Sound {
     o.frequency.exponentialRampToValueAtTime(Math.max(to, 1), t + seconds);
     g.gain.setValueAtTime(gain, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + seconds);
-    o.connect(g).connect(this.master);
+    o.connect(g).connect(out ?? this.master);
     o.start(t);
     o.stop(t + seconds + 0.02);
   }
 
-  private burst(seconds: number, gain: number, filter: BiquadFilterType, freq: number, delay = 0, q = 1, it = false): void {
+  private burst(seconds: number, gain: number, filter: BiquadFilterType, freq: number, delay = 0, q = 1, it = false, out?: AudioNode): void {
     if (!this.ctx || !this.master || !this.noise || (this.hushed && !it)) return;
     const t = this.ctx.currentTime + delay;
     const src = this.ctx.createBufferSource();
@@ -184,9 +184,18 @@ export class Sound {
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(gain, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + seconds);
-    src.connect(f).connect(g).connect(this.master);
+    src.connect(f).connect(g).connect(out ?? this.master);
     src.start(t, Math.random() * 0.5);
     src.stop(t + seconds + 0.02);
+  }
+
+  /** Somewhere to the left (-1) or right (1) of the listener; the middle where panning is not supported. */
+  private side(pan: number): AudioNode | undefined {
+    if (!this.ctx || !this.master || !this.ctx.createStereoPanner) return undefined;
+    const p = this.ctx.createStereoPanner();
+    p.pan.value = Math.min(Math.max(pan, -1), 1);
+    p.connect(this.master);
+    return p;
   }
 
   /** A purchase: a short dry tick. */
@@ -349,13 +358,85 @@ export class Sound {
     this.setPlant(this.plantLoad);
   }
 
-  /** A footstep somewhere in the plant: a heavy thud and grit, louder as it comes. */
-  step(near: number): void {
+  /** The music falls away for a moment, as if something stopped to listen. */
+  duck(on: boolean): void {
+    if (!this.hushed) this.music?.hush(on);
+  }
+
+  /**
+   * A footstep somewhere in the plant, from one side: a heavy thud and grit, then the
+   * other leg dragged after it along the floor. Louder as it comes.
+   */
+  step(near: number, pan = 0, drag = true): void {
+    const out = this.side(pan);
     const g = 0.06 + 0.22 * near;
-    this.tone('sine', 150, 55, 0.35, g, 0, true);
-    this.burst(0.18, g * 1.4, 'lowpass', 900, 0.01, 1, true);
+    this.tone('sine', 150, 55, 0.35, g, 0, true, out);
+    this.burst(0.18, g * 1.4, 'lowpass', 900, 0.01, 1, true, out);
     // Metal underfoot.
-    this.burst(0.06, g * 0.6, 'bandpass', 2600, 0.03, 4, true);
+    this.burst(0.06, g * 0.6, 'bandpass', 2600, 0.03, 4, true, out);
+    if (drag) this.drag(g, out);
+  }
+
+  /** The leg that does not lift: a scrape along the floor, falling in pitch. */
+  private drag(gain: number, out?: AudioNode): void {
+    if (!this.ctx || !this.master || !this.noise) return;
+    const t = this.ctx.currentTime + 0.32;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    const f = this.ctx.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.setValueAtTime(900, t);
+    f.frequency.linearRampToValueAtTime(380, t + 0.55);
+    f.Q.value = 3;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain * 0.7, t + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    src.connect(f).connect(g).connect(out ?? this.master);
+    src.start(t, Math.random() * 0.5);
+    src.stop(t + 0.65);
+  }
+
+  /** The step that ends a stop: closer and harder than the others. */
+  lunge(pan: number): void {
+    const out = this.side(pan);
+    this.tone('square', 120, 40, 0.5, 0.3, 0, true, out);
+    this.burst(0.3, 0.6, 'lowpass', 1400, 0, 1, true, out);
+    this.burst(0.1, 0.3, 'bandpass', 3000, 0.02, 3, true, out);
+  }
+
+  /** Three knocks on the booth door: dull, slow, even, as Ignatyev wrote. */
+  knock(): void {
+    for (let i = 0; i < 3; i++) {
+      this.tone('sine', 110, 60, 0.25, 0.35, i * 0.55, true);
+      this.burst(0.07, 0.45, 'bandpass', 700, i * 0.55, 2, true);
+    }
+  }
+
+  /** The door handle tried from outside: a rattle of loose metal. */
+  rattle(): void {
+    for (let i = 0; i < 9; i++) this.burst(0.03, 0.25 + Math.random() * 0.15, 'bandpass', 2800 + Math.random() * 800, i * 0.07 + Math.random() * 0.02, 6, true);
+    this.tone('sawtooth', 60, 50, 0.7, 0.05, 0, true);
+  }
+
+  /** A whisper through the door, heard in the silence too. */
+  whisperIt(): void {
+    const was = this.hushed;
+    this.hushed = false;
+    this.whisper();
+    this.hushed = was;
+  }
+
+  /** It leaves: steps going away, quieter, to one side. */
+  walkAway(): void {
+    const side = Math.random() < 0.5 ? -1 : 1;
+    for (let i = 0; i < 5; i++) {
+      const g = 0.2 * (1 - i / 5);
+      const out = this.side(side * (0.2 + i * 0.18));
+      this.tone('sine', 140, 55, 0.3, g, i * 0.9, true, out);
+      this.burst(0.15, g * 1.2, 'lowpass', 800, i * 0.9 + 0.01, 1, true, out);
+    }
   }
 
   /** Breathing: a slow draw in and a longer breath out, close enough to hear the wet in it. */

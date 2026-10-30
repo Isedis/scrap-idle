@@ -190,6 +190,13 @@ export class App {
   private knownPhase: HearingPhase = 'idle';
   /** Seconds to the next footstep, breath, terminal line and flicker while it walks. */
   private huntClocks = { step: 1, breath: 3, say: 8, flicker: 2, near: 1.5 };
+  /** Mid-walk it stops to listen now and then: seconds of the stop left, and to the next one. */
+  private stopFor = 0;
+  private stopIn = 12;
+  /** Seconds into the walk, for which side of the plant the steps come from. */
+  private walkT = 0;
+  /** What has already happened at the door during this silence. */
+  private doorBeats = new Set<string>();
   private sharpButton!: HTMLButtonElement;
   private panels = new Map<Tab, HTMLElement>();
   private tabs = new Map<Tab, HTMLButtonElement>();
@@ -1474,7 +1481,13 @@ export class App {
     const dangers: (Danger | false)[] = [
       h.phase === 'check' && { key: 'check', at: 'plant', text: `ОНО У ДВЕРИ · 0:${pad2(Math.max(0, Math.ceil(h.left)))} · шум на 0 → Цех` },
       level >= 0.9 && { key: 'edge', at: 'dump', text: `Угроза ${pct(level)}! Прожектор → Свалка` },
-      h.phase === 'walk' && { key: 'walk', at: 'plant', text: `ОНО ИДЁТ · ${Math.floor(Math.ceil(h.left) / 60)}:${pad2(Math.ceil(h.left) % 60)} · готовьте тишину → Цех` },
+      h.phase === 'walk' && {
+        key: 'walk',
+        at: 'plant',
+        text: this.hearingBar.listening
+          ? 'ОНО ОСТАНОВИЛОСЬ. СЛУШАЕТ → Цех'
+          : `ОНО ИДЁТ · ${Math.floor(Math.ceil(h.left) / 60)}:${pad2(Math.ceil(h.left) % 60)} · готовьте тишину → Цех`,
+      },
       level >= 0.7 && { key: 'threat', at: 'dump', text: `Угроза ${pct(level)} · прожектор → Свалка` },
     ];
     // The tabs themselves show where the trouble is, whichever tab is open.
@@ -1527,15 +1540,53 @@ export class App {
     this.root.style.setProperty('--near', near.toFixed(3));
     if (h.phase === 'walk' || h.phase === 'check') this.root.dataset.hunt = holding ? 'hold' : h.phase;
     else delete this.root.dataset.hunt;
+    if (!holding) this.doorBeats.clear();
+    // A walk over: the next one starts from the far side, with no stop pending.
+    if (h.phase !== 'walk' && this.walkT > 0) {
+      this.walkT = 0;
+      this.stopIn = 12;
+      if (this.stopFor > 0) this.sound.duck(false);
+      this.stopFor = 0;
+      this.hearingBar.listening = false;
+    }
     if (near === 0) return;
 
     const c = this.huntClocks;
     for (const k of Object.keys(c) as (keyof typeof c)[]) c[k] -= dt;
     if (h.phase === 'walk') {
+      this.walkT += dt;
+      // The steps wander from one side of the plant to the other.
+      const pan = Math.sin(this.walkT * 0.22) * 0.85;
+      if (this.stopFor > 0) {
+        // It stopped to listen: nothing moves until it does.
+        this.stopFor -= dt;
+        if (this.stopFor > 0) {
+          this.root.dataset.hunt = 'stop';
+          return;
+        }
+        this.root.dataset.hunt = 'walk';
+        this.hearingBar.listening = false;
+        this.sound.duck(false);
+        this.sound.lunge(pan);
+        this.glitch(0.5);
+        this.pop(this.root.querySelector('main')!, 'hunt-lunge');
+        navigator.vibrate?.(200);
+        this.stopIn = 14 + Math.random() * 12;
+        c.step = 1.2;
+      }
+      this.stopIn -= dt;
+      if (this.stopIn <= 0 && near > 0.12 && near < 0.9) {
+        this.stopFor = 5 + Math.random() * 3;
+        this.hearingBar.listening = true;
+        this.sound.duck(true);
+        this.typeLine('ОНО ОСТАНОВИЛОСЬ. СЛУШАЕТ');
+        this.root.dataset.hunt = 'stop';
+        return;
+      }
       if (c.step <= 0) {
-        // Every 4 seconds at first, nearly every second at the end.
-        c.step = (4 - 3.1 * near) * (0.85 + Math.random() * 0.3);
-        this.sound.step(near);
+        // Every 4 seconds at first, nearly every second at the end, never quite even.
+        c.step = (4 - 3.1 * near) * (0.75 + Math.random() * 0.5);
+        this.sound.step(near, pan);
         this.scene.glitch(0.08 + 0.15 * near);
         const main = this.root.querySelector('main');
         main?.classList.add('hunt-step');
@@ -1554,7 +1605,18 @@ export class App {
         this.dread.flicker();
       }
     } else if (holding) {
-      // Silence: only it, right by the door.
+      // Silence: only it, right by the door. It knocks, tries the handle, speaks.
+      const beats: ['knock' | 'rattle' | 'whisper', number, () => void][] = [
+        ['knock', 1.8, () => this.sound.knock()],
+        ['rattle', 4.6, () => this.sound.rattle()],
+        ['whisper', 6.8, () => this.sound.whisperIt()],
+      ];
+      for (const [beat, at, play] of beats) {
+        if (h.held < at || this.doorBeats.has(beat)) continue;
+        this.doorBeats.add(beat);
+        play();
+        this.hearingBar.beat(beat);
+      }
       if (c.breath <= 0) {
         c.breath = 3.2;
         this.sound.breath(1, true);
@@ -1607,6 +1669,7 @@ export class App {
   /** The silence held: it leaves, and what was heard in it is written down. */
   private itLeft(survived: number): void {
     this.sound.hush(false);
+    this.sound.walkAway();
     const line = heardLine(survived);
     const box = el('div', 'lost left');
     box.setAttribute('role', 'status');
