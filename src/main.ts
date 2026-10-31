@@ -7,6 +7,7 @@ import { AWAY_SCREEN_SECONDS, awayReport, awaySnapshot, type AwayReport } from '
 import { App } from './ui/app';
 import { holdCheck } from './game/hearing';
 import { CHECK_EVERY_MS, latestBuild, reloadInto } from './update';
+import { debugOn, mountDebug } from './ui/debugPanel';
 
 const AUTOSAVE_MS = 10_000;
 const RENDER_MS = 100;
@@ -29,6 +30,7 @@ const app = new App(
   () => state,
   (next) => (state = next),
 );
+if (debugOn()) mountDebug(app, () => state);
 app.render();
 welcomeBack(away, awayFirst, awayRaw);
 

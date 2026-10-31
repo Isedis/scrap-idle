@@ -1,0 +1,116 @@
+{
+ "v": 11,
+ "trash": "0",
+ "totalTrash": "0",
+ "owned": {
+  "collector": 1
+ },
+ "revealed": [
+  "collector"
+ ],
+ "upgrades": [],
+ "seenUpgrades": [],
+ "buyMode": "one",
+ "runTrash": "0",
+ "runSeconds": 0,
+ "layers": {
+  "recycle": {
+   "points": "0",
+   "total": "0",
+   "resets": 0,
+   "nodes": [],
+   "bestSeconds": null,
+   "repeats": {}
+  },
+  "sorting": {
+   "open": false,
+   "fractions": {
+    "plastic": "0",
+    "metal": "0",
+    "glass": "0",
+    "paper": "0"
+   },
+   "total": "0",
+   "sorts": 0,
+   "line": [
+    "optic",
+    "blower"
+   ],
+   "levels": {},
+   "recipes": [],
+   "alloys": 0,
+   "queue": 0,
+   "progress": 0,
+   "arrival": 0,
+   "inspected": 0,
+   "found": [],
+   "cycleSeconds": 0
+  },
+  "city": {
+   "open": false,
+   "points": "0",
+   "total": "0",
+   "reforms": 0,
+   "owned": [
+    "dump"
+   ]
+  }
+ },
+ "autobuy": true,
+ "threat": {
+  "level": 0,
+  "losses": 0,
+  "lights": 0,
+  "bravest": 0
+ },
+ "story": {
+  "cases": [],
+  "notes": 0,
+  "voices": [],
+  "records": [],
+  "traces": [],
+  "nextIn": 20,
+  "boost": 0,
+  "seq": 0
+ },
+ "tracks": {},
+ "compacted": 0,
+ "achievements": [],
+ "autoRecycle": {
+  "on": false,
+  "factor": 1
+ },
+ "scripts": {
+  "bought": [],
+  "speed": 0,
+  "reliability": 0,
+  "producerMode": "one",
+  "producerOff": [],
+  "upgradesOn": true,
+  "upgradesShare": 0.1,
+  "endlessOn": true,
+  "endlessOff": [],
+  "recycleMode": "gain",
+  "recycleMinutes": 5,
+  "lightOn": true,
+  "lightAt": 0.9,
+  "failures": 0,
+  "sortOn": false,
+  "treeOn": true,
+  "lineOn": true,
+  "sortMode": "share",
+  "sortShare": 0.25,
+  "sortMinutes": 60
+ },
+ "hearing": {
+  "noise": 1,
+  "meter": 0,
+  "phase": "idle",
+  "left": 0,
+  "walk": 0,
+  "held": 0,
+  "survived": 0,
+  "losses": 0
+ },
+ "lastTick": 0
+}

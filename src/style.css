@@ -1626,3 +1626,47 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .r-branch.folded .r-fold { color: var(--dim); }
 .s-level.maxed { border-color: var(--line); color: var(--dim); }
 .s-level.maxed .buy-price { color: var(--dim); }
+
+/* Debug panel, behind ?debug. */
+.dbg-toggle {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom) + 84px);
+  right: 4px;
+  z-index: 90;
+  min-width: 44px;
+  min-height: 44px;
+  font: 700 10px var(--font);
+  color: var(--danger);
+  background: rgb(0 0 0 / 0.6);
+  border: 1px dashed var(--danger);
+  border-radius: 6px;
+}
+.dbg-panel {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom) + 132px);
+  left: 4px;
+  right: 4px;
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 90;
+  padding: 10px;
+  background: rgb(4 20 10 / 0.97);
+  border: 1px dashed var(--danger);
+  border-radius: 8px;
+}
+.dbg-head {
+  margin: 4px 0 6px;
+  font: 700 11px var(--font);
+  color: var(--danger);
+  text-transform: uppercase;
+}
+.dbg-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.dbg-btn {
+  min-height: 44px;
+  font-size: 12px;
+}

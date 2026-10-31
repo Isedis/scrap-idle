@@ -1,0 +1,184 @@
+{
+ "v": 11,
+ "trash": "0",
+ "totalTrash": "3.538485498343104e26",
+ "owned": {
+  "collector": 1
+ },
+ "revealed": [
+  "collector"
+ ],
+ "upgrades": [],
+ "seenUpgrades": [
+  "collector-1",
+  "cart-1",
+  "collector-2",
+  "night-shift",
+  "collector-3",
+  "truck-1",
+  "hitch",
+  "cart-2",
+  "union",
+  "sorter-1",
+  "cart-3",
+  "collector-4",
+  "truck-2",
+  "city-contract",
+  "press-1",
+  "truck-3",
+  "feed-sorter",
+  "sorter-2",
+  "plant-1",
+  "sorter-3",
+  "state-order",
+  "truck-4",
+  "cart-4",
+  "press-2",
+  "landfill-1",
+  "press-3",
+  "bales",
+  "plant-2",
+  "space-license",
+  "incinerator-1",
+  "plant-3",
+  "sorter-4",
+  "press-4",
+  "orbital-1",
+  "landfill-2",
+  "scrap-exchange",
+  "landfill-3",
+  "waste-fuel",
+  "incinerator-2",
+  "galactic-tender",
+  "singularity-1",
+  "incinerator-3",
+  "plant-4",
+  "landfill-4",
+  "orbital-2",
+  "orbital-3",
+  "orbital-drop",
+  "singularity-2",
+  "singularity-3",
+  "incinerator-4",
+  "orbital-4",
+  "singularity-4"
+ ],
+ "buyMode": "one",
+ "runTrash": "0",
+ "runSeconds": 0,
+ "layers": {
+  "recycle": {
+   "points": "0",
+   "total": "0",
+   "resets": 14,
+   "nodes": [
+    "a1",
+    "a2",
+    "a3",
+    "a4",
+    "a5"
+   ],
+   "bestSeconds": 6.218110006663895,
+   "repeats": {}
+  },
+  "sorting": {
+   "open": true,
+   "fractions": {
+    "plastic": "26",
+    "metal": "0",
+    "glass": "0",
+    "paper": "12"
+   },
+   "total": "106",
+   "sorts": 1,
+   "line": [
+    "optic",
+    "blower"
+   ],
+   "levels": {
+    "optic": {
+     "speed": 2,
+     "purity": 1
+    },
+    "blower": {
+     "speed": 1,
+     "purity": 1
+    }
+   },
+   "recipes": [],
+   "alloys": 0,
+   "queue": 0,
+   "progress": 0,
+   "arrival": 0,
+   "inspected": 0,
+   "found": [],
+   "cycleSeconds": 0
+  },
+  "city": {
+   "open": false,
+   "points": "0",
+   "total": "0",
+   "reforms": 0,
+   "owned": [
+    "dump"
+   ]
+  }
+ },
+ "autobuy": true,
+ "threat": {
+  "level": 0,
+  "losses": 0,
+  "lights": 13,
+  "bravest": 0.5195954155673675
+ },
+ "story": {
+  "cases": [],
+  "notes": 0,
+  "voices": [],
+  "records": [],
+  "traces": [],
+  "nextIn": 20,
+  "boost": 0,
+  "seq": 0
+ },
+ "tracks": {},
+ "compacted": 160,
+ "achievements": [],
+ "autoRecycle": {
+  "on": false,
+  "factor": 1
+ },
+ "scripts": {
+  "bought": [],
+  "speed": 0,
+  "reliability": 0,
+  "producerMode": "one",
+  "producerOff": [],
+  "upgradesOn": true,
+  "upgradesShare": 0.1,
+  "endlessOn": true,
+  "endlessOff": [],
+  "recycleMode": "gain",
+  "recycleMinutes": 5,
+  "lightOn": true,
+  "lightAt": 0.9,
+  "failures": 0,
+  "sortOn": false,
+  "treeOn": true,
+  "lineOn": true,
+  "sortMode": "share",
+  "sortShare": 0.25,
+  "sortMinutes": 60
+ },
+ "hearing": {
+  "noise": 1.6,
+  "meter": 1,
+  "phase": "walk",
+  "left": 45,
+  "walk": 90,
+  "held": 0,
+  "survived": 0,
+  "losses": 0
+ },
+ "lastTick": 0
+}

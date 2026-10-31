@@ -37,11 +37,17 @@ Idle-хоррор про мусор: свалка → переработка →
 - Автор не любит: полноэкранные оверлеи поверх игры (хоррор показывать в кадре камер), людей-монстров (всё — из мусора), спам уведомлений, интерфейс «сеткой кнопок».
 - Хоррор должен работать и без звука: каждому звуковому пугалу — визуальная пара.
 
-## Скриншоты
+## Скриншоты, сохранения, отладка
 
-- `npx vite preview --port 4181` после `npm run build`, адрес `http://localhost:4181/scrap-idle/`. Playwright уже стоит (`require('playwright')`, `NODE_PATH=$(npm root -g)`).
-- Сохранение подкладывать через `addInitScript` с флагом в `sessionStorage`, иначе `pagehide` перезапишет его. Ключ — `scrap-idle-save`; ставь `lastTick` в будущее, чтобы не было экрана «пока вас не было»; `scrap-idle-intro-sorting` и `scrap-idle-intro-noise` = `1` убирают вступления.
-- Тосты перехватывают клики — прячь `.toast` перед кликами.
+- Скриншот одной командой (после `npm run build`; сервер `vite preview` на 4181 скрипт поднимет и погасит сам):
+  `npm run shot -- city --tab recycle --layer city --el .town-plan --out /tmp/shots/plan.png`.
+  Флаги: `--tab`, `--layer`, `--click <css>`, `--tap <css>@x,y`, `--el`, `--full`, `--wait`, `--debug`. Описание — в шапке `scripts/shot.cjs`.
+  Вьюпорт 390×844, ×2. Смотри результат через Read, автору отправляй через SendUserFile.
+- Готовые сохранения — `tests/fixtures/*.json`: `start`, `recycle-ready`, `recycle-tree`, `sorting`, `hearing-walk`, `city`, `city-late`.
+  Пересобрать после смены формата или баланса: `FIXTURES=1 npx vitest run tests/fixtures.gen.test.ts` (бот, около 3 минут). `tests/fixtures.test.ts` следит, что они грузятся.
+- Отладка в игре: `?debug` в адресе включает кнопку DBG (запоминается, `?debug=0` выключает). Кнопки — в `src/game/debug.ts`, там же добавлять новые; сохранения из `tests/fixtures` грузятся отдельными чанками.
+- Чтобы воспроизвести баг автора, проси строку из Настройки → «Сохранение» → «Экспорт» и клади её в файл: `importSave` понимает и base64, и JSON.
+- Свой Playwright-скрипт: сохранение подкладывать через `addInitScript` с флагом в `sessionStorage`, иначе `pagehide` перезапишет его; тосты перехватывают клики — прятать `.toast`.
 
 ## Карта кода
 

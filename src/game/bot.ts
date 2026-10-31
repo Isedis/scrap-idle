@@ -89,10 +89,18 @@ const LIGHT_AT = 0.5;
 /** Station order the bot builds: biggest fractions first, the press after them, the crusher last. */
 const BOT_LINE: StationId[] = ['optic', 'blower', 'magnet', 'sieve', 'briquetter', 'crusher'];
 
-export function simulate(seconds: number, opts: { recycle?: boolean; sort?: boolean } = {}): Simulation {
+export function simulate(
+  seconds: number,
+  opts: { recycle?: boolean; sort?: boolean; snap?: (s: GameState, what: string) => void } = {},
+): Simulation {
   const s = newGame(0);
   s.buyMode = 'one';
   const events: PaceEvent[] = [];
+  // Every logged moment can also hand the live state out, for save fixtures.
+  const log = (e: PaceEvent) => {
+    events.push(e);
+    opts.snap?.(s, e.what);
+  };
   const runs: RunReport[] = [];
   let run: RunReport = { recycleReadyAt: null, seconds: 0, gain: 0 };
   let t = 0;
@@ -102,17 +110,17 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
   const note = () => {
     revealProducers(s);
     // advance() reveals on its own, so compare against what was already logged.
-    for (const id of s.revealed.slice(shown)) events.push({ t, what: `производитель: ${producerById(id)!.name}` });
+    for (const id of s.revealed.slice(shown)) log({ t, what: `производитель: ${producerById(id)!.name}` });
     shown = s.revealed.length;
-    for (const u of takeNewUpgrades(s)) events.push({ t, what: `улучшение: ${u.name}` });
+    for (const u of takeNewUpgrades(s)) log({ t, what: `улучшение: ${u.name}` });
     for (const id of s.revealed) {
       const m = milestonesReached(milestoneUnits(s, id));
-      if (m > (milestones[id] ?? 0)) events.push({ t, what: `порог: ${producerById(id)!.name} ${s.owned[id]}` });
+      if (m > (milestones[id] ?? 0)) log({ t, what: `порог: ${producerById(id)!.name} ${s.owned[id]}` });
       milestones[id] = m;
     }
     if (run.recycleReadyAt === null && canRecycle(s)) {
       run.recycleReadyAt = s.runSeconds;
-      events.push({ t, what: 'переработка доступна' });
+      log({ t, what: 'переработка доступна' });
     }
   };
 
@@ -180,7 +188,7 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
     for (;;) {
       const node = NODES.filter((n) => canBuyNode(s.recycle, n)).sort((a, b) => a.cost.cmp(b.cost))[0];
       if (!node || !buyNode(s, node.id)) break;
-      events.push({ t, what: `дерево: ${node.name}` });
+      log({ t, what: `дерево: ${node.name}` });
     }
     // Then the endless nodes, cheapest first.
     while (repeatsOpen(s)) {
@@ -197,7 +205,7 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
         (a, b) => Object.values(a.cost).reduce((x, y) => x + y, 0) - Object.values(b.cost).reduce((x, y) => x + y, 0),
       )[0];
       if (!recipe || !buyRecipe(so, recipe.id)) break;
-      events.push({ t, what: `рецепт: ${recipe.name}` });
+      log({ t, what: `рецепт: ${recipe.name}` });
     }
     // Fill new slots in the bot's order.
     const wanted = BOT_LINE.filter((id) => stationOpen(so, STATIONS.find((d) => d.id === id)!)).slice(0, slotCount(so));
@@ -207,7 +215,7 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
       const cheapest = options.sort((a, b) => a.cost.cmp(b.cost)).find((o) => buyLevel(so, o.id, o.kind));
       if (!cheapest) break;
     }
-    while (buyAlloy(so)) events.push({ t, what: `сплав ${so.alloys}` });
+    while (buyAlloy(so)) log({ t, what: `сплав ${so.alloys}` });
   };
 
   let lastSpend = -Infinity;
@@ -218,7 +226,7 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
   while (t < seconds) {
     if (opts.sort && canResort(s) && !sortReadyLogged) {
       sortReadyLogged = true;
-      events.push({ t, what: `пересортировка доступна (цикл ${Math.round(s.sorting.cycleSeconds / 60)} мин)` });
+      log({ t, what: `пересортировка доступна (цикл ${Math.round(s.sorting.cycleSeconds / 60)} мин)` });
     }
     if (opts.sort && canResort(s)) {
       const gain = resortGain(s);
@@ -226,8 +234,8 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
       if (gain.gt(0)) {
         resort(s);
         sortReadyLogged = false;
-        events.push({ t, what: `ПЕРЕСОРТИРОВКА #${s.sorting.sorts}: +${gain.toString()} · ${FRACS.map((f) => s.sorting.fractions[f].floor().toString()).join('/')}` });
-        if (s.city.open && !cityLogged) events.push({ t, what: 'город открыт' });
+        log({ t, what: `ПЕРЕСОРТИРОВКА #${s.sorting.sorts}: +${gain.toString()} · ${FRACS.map((f) => s.sorting.fractions[f].floor().toString()).join('/')}` });
+        if (s.city.open && !cityLogged) log({ t, what: 'город открыт' });
         cityLogged ||= s.city.open;
         shown = 0;
         milestones = {};
@@ -239,7 +247,7 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
     }
     if (opts.sort && s.sorting.open && t - lastSpend >= 300) {
       lastSpend = t;
-      if (!sortOpenLogged) events.push({ t, what: 'сортировка открыта' });
+      if (!sortOpenLogged) log({ t, what: 'сортировка открыта' });
       sortOpenLogged = true;
       spendSorting();
     }
@@ -249,7 +257,7 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
         run.seconds = s.runSeconds;
         run.gain = recycle(s).toNumber();
         runs.push(run);
-        events.push({ t, what: `ПЕРЕРАБОТКА #${s.recycle.resets}: +${run.gain}` });
+        log({ t, what: `ПЕРЕРАБОТКА #${s.recycle.resets}: +${run.gain}` });
         run = { recycleReadyAt: null, seconds: 0, gain: 0 };
         shown = 0;
         milestones = {};

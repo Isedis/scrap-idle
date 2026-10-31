@@ -230,6 +230,16 @@ export class App {
     this.resetKnown();
   }
 
+  /** Replaces the game with another state (an imported save, a debug fixture) and saves it. */
+  loadState(state: GameState, note: string): void {
+    state.lastTick = Date.now();
+    this.setState(state);
+    writeSave(state);
+    this.resetKnown();
+    this.toast(note);
+    this.render();
+  }
+
   /** Treats producers and milestones in the current state as already seen (on load, import or reset). */
   private resetKnown(): void {
     const state = this.getState();
@@ -1146,12 +1156,7 @@ export class App {
         this.toast('Строка не читается. Проверьте, что она скопирована целиком');
         return;
       }
-      state.lastTick = Date.now();
-      this.setState(state);
-      writeSave(state);
-      this.resetKnown();
-      this.toast('Сохранение загружено');
-      this.render();
+      this.loadState(state, 'Сохранение загружено');
     });
 
     const row = el('div', 'btn-row');
