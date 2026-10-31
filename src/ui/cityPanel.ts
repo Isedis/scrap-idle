@@ -5,6 +5,7 @@ import {
   CITY_OPEN_SORTS,
   REFORM_SORTS,
   STREETS,
+  TOWN_PEOPLE,
   TYPE_NAMES,
   TYPE_TEXT,
   annex,
@@ -224,7 +225,7 @@ export class CityPanel {
   /** Every frame while the view is on screen: the camera and the plan. */
   frame(dt: number, state: GameState): void {
     const city = state.city;
-    this.camera.update(dt, { taken: (city.owned.length - 1) / (DISTRICTS.length - 1), pit: city.owned.includes('pit') });
+    this.camera.update(dt, { owned: city.owned, selected: this.plan.selected, people: peopleLeft(city) / TOWN_PEOPLE });
     this.plan.draw(dt, city);
   }
 
