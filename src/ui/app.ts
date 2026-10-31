@@ -42,7 +42,7 @@ import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
 import { CityPanel } from './cityPanel';
 import { BottomPanel } from './bottomPanel';
-import { LETTERS, REFORM_SORTS, districtById } from '../game/city';
+import { LETTERS, REFORM_SORTS } from '../game/city';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
 import { Sound } from './sound';
@@ -119,9 +119,9 @@ const BUY_MODES: [BuyMode, string][] = [
 ];
 
 /** How long each notice stays up; several in a row play one after another. */
-const TOAST_MS = 2600;
+const TOAST_MS = 2000;
 /** Each extra line of a bundled notice stays up this much longer. */
-const TOAST_LINE_MS = 900;
+const TOAST_LINE_MS = 600;
 const TOAST_QUEUE_MAX = 12;
 
 /** Owns the DOM; the game loop calls `render` a few times a second and `frame` every frame. */
@@ -323,7 +323,7 @@ export class App {
       this.getState,
       () => this.doRecycle(),
       (node) => {
-        this.toast(`Дерево: ${node.name}`);
+        // The player's own purchase: the click and the caption on camera say enough.
         this.sound.click();
         this.caption(node.text);
         this.pop(this.rateEl, 'pulse');
@@ -343,10 +343,8 @@ export class App {
       this.getState,
       () => this.doResort(false),
       (message) => {
-        if (message) {
-          this.sound.click();
-          this.toast(message);
-        }
+        // Purchases the player made: a click, no notice over the screen.
+        if (message) this.sound.click();
         this.render();
       },
       () => this.intro.show(SORTING_INTRO),
@@ -361,11 +359,10 @@ export class App {
       () => this.doReform(),
       () => this.doDescend(),
     );
-    this.bottomPanel = new BottomPanel(this.getState, (message) => {
-      if (message) {
-        this.sound.click();
-        this.toast(message);
-      }
+    this.bottomPanel = new BottomPanel(this.getState, (message, loud) => {
+      if (message) this.sound.click();
+      // Only what is worth a notice: a relic or an anomaly, the УМЕ.
+      if (message && loud) this.toast(message);
       this.render();
     });
     for (const [view, label] of [['recycle', 'Переработка'], ['sorting', 'Сортировка'], ['city', 'Город'], ['bottom', 'Дно']] as const) {
@@ -391,10 +388,7 @@ export class App {
     this.panels.set('journal', this.journalPanel.root);
 
     this.automationPanel = new AutomationPanel(this.getState, (message) => {
-      if (message) {
-        this.sound.click();
-        this.toast(message);
-      }
+      if (message) this.sound.click();
       this.render();
     });
     this.panels.set('auto', this.automationPanel.root);
@@ -772,7 +766,6 @@ export class App {
     this.autoButton.addEventListener('click', () => {
       const state = this.getState();
       state.autobuy = !state.autobuy;
-      this.toast(state.autobuy ? 'Автозакупщик включён' : 'Автозакупщик выключен');
       this.render();
     });
     const controls = el('div', 'controls');
@@ -853,7 +846,6 @@ export class App {
       const bought = buyAllUpgrades(this.getState());
       if (bought.length === 0) return;
       this.sound.click();
-      for (const u of bought) this.toast(`Куплено: ${u.name}`);
       this.workshop.bought(bought.map(u => u.id));
       this.pop(this.rateEl, 'pulse');
       this.render();
@@ -891,7 +883,6 @@ export class App {
     if (gain.lte(0)) return;
     writeSave(state);
     this.resetKnown();
-    this.toast(`Автопереработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
     this.recyclePanel.camera.slam();
     this.sound.press();
     this.automationPanel.note(`recycle: №${state.recycle.resets}, +${format(gain)} ВС`);
@@ -944,9 +935,7 @@ export class App {
   /** A district taken: the stain spreads, the town writes. */
   private onAnnex(id: string): void {
     const state = this.getState();
-    const d = districtById(id)!;
     this.sound.press();
-    this.toast(`${d.name} отдан под свалку`);
     const letter = LETTERS[state.city.owned.length - 2];
     if (letter) this.typeLine('ГОРСОВЕТ: НОВОЕ ПИСЬМО');
     if (id === 'pit') {
@@ -1074,7 +1063,6 @@ export class App {
     button.addEventListener('click', () => {
       if (buyUpgrade(this.getState(), def.id)) {
         this.sound.click();
-        this.toast(`Куплено: ${def.name}`);
         this.workshop.bought([def.id]);
         this.caption(describeUpgrade(def));
         this.pop(this.rateEl, 'pulse');
@@ -1300,7 +1288,7 @@ export class App {
 
   /** Shows everything that waited as one notice, the same kinds of news folded together. */
   private nextToast(): void {
-    const lines = bundle(this.toastQueue.splice(0));
+    const lines = bundle(this.toastQueue.splice(0), 2);
     clearTimeout(this.toastTimer);
     if (lines.length === 0) {
       this.toastEl.hidden = true;
@@ -1423,7 +1411,8 @@ export class App {
       for (const a of earned) this.toast(`Достижение: ${a.name} (+${Math.round(ACH_BONUS * 100)}%)`);
     }
 
-    for (const u of takeNewUpgrades(state)) this.toast(`Новое улучшение: ${u.name}`);
+    // New upgrades show as the badge on their tab; marking them seen keeps it right.
+    takeNewUpgrades(state);
 
     if (!this.knownRecycleReady && canRecycle(state)) {
       this.knownRecycleReady = true;
@@ -1440,7 +1429,6 @@ export class App {
         if (reached > (this.announced.milestones[def.id] ?? 0)) {
           this.announced.milestones[def.id] = reached;
           saveAnnounced(this.announced);
-          this.toast(`${def.name}: ${prevMilestone(units)} шт, доход ×${base}`);
         }
         this.scene.burst();
         this.caption(`${def.name} ×${base}`);

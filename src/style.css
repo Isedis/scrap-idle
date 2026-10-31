@@ -949,23 +949,23 @@ button { font: inherit; color: inherit; }
 /* ---- Toast ---- */
 .toast {
   /* Under the header (set when shown): down by the tab bar it covered the buy buttons,
-     over the header it covered the floodlight. A tap clears it. */
+     over the header it covered the floodlight. Small and see-through, and taps go
+     through it to whatever is underneath: a notice never stands in the way. */
   position: fixed;
   left: 50%;
   top: calc(env(safe-area-inset-top, 0px) + 6px);
-  min-height: 44px;
-  cursor: pointer;
+  pointer-events: none;
   z-index: 20;
   width: max-content;
   max-width: calc(100% - 32px);
   transform: translateX(-50%);
-  padding: 10px 14px;
-  border: 1px solid var(--amber);
+  padding: 5px 10px;
+  border: 1px solid rgb(255 191 71 / 0.6);
   border-radius: 4px;
-  background: var(--panel);
+  background: rgb(14 32 21 / 0.88);
   color: var(--amber);
-  box-shadow: 0 0 18px rgb(255 191 71 / 0.2);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.35;
   animation: toast-in 0.2s ease;
 }
 

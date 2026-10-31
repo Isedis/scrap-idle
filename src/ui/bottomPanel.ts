@@ -74,7 +74,7 @@ export class BottomPanel {
 
   constructor(
     private getState: () => GameState,
-    private onChange: (message?: string) => void,
+    private onChange: (message?: string, loud?: boolean) => void,
   ) {
     this.root = el('section', 'panel bottom');
     this.build();
@@ -257,7 +257,7 @@ export class BottomPanel {
     const go = (times: number) => {
       const b = this.getState().bottom;
       const n = melt(b, from, times);
-      if (n > 0) this.onChange(from === 'anomaly' ? `УМЕ +${n}` : undefined);
+      if (n > 0) this.onChange(from === 'anomaly' ? `УМЕ +${n}` : 'melt', from === 'anomaly');
     };
     one.addEventListener('click', () => go(1));
     all.addEventListener('click', () => go(1e9));
@@ -319,7 +319,7 @@ export class BottomPanel {
     this.result.textContent = `${o.fresh ? 'НОВОЕ · ' : ''}${o.item.name} — ${o.item.text} +${format(o.amount)} · ${RARITY_NAMES[r].toLowerCase()}`;
     this.result.className = `b-result r-${r}`;
     if (RARITIES.indexOf(r) >= 3) this.camera.find(RARITY_COLOR[r]);
-    this.onChange(RARITIES.indexOf(r) >= 4 ? `${RARITY_NAMES[r]}: ${o.item.name}` : undefined);
+    this.onChange(RARITIES.indexOf(r) >= 4 ? `${RARITY_NAMES[r]}: ${o.item.name}` : undefined, true);
   }
 
   /** Opens every container of a kind the money allows, without the strip; says what came out. */
