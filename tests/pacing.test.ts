@@ -120,7 +120,17 @@ describe.runIf(process.env.PACE_REFORM)('pacing: the reform and the pit', () => 
     console.log(`кварталов: ${districts.length}, реформ: ${events.filter((e) => e.what.startsWith('РЕФОРМА')).length}`);
   }, 60 * 60 * 1000);
 
-  it('the first reform comes', () => {
-    expect(events.some((e) => e.what.startsWith('РЕФОРМА'))).toBe(true);
+  // The town layer is meant to take 8-12 hours: the first reform a few hours in, the pit
+  // late enough to be the end of something, early enough to be reached.
+  it('the first reform comes between 3 and 5 hours in', () => {
+    const first = events.find((e) => e.what.startsWith('РЕФОРМА'))?.t ?? Infinity;
+    expect(first, hm(first)).toBeGreaterThan(3 * hour);
+    expect(first, hm(first)).toBeLessThan(5 * hour);
+  });
+
+  it('the pit is not taken before 12 hours, and most of the town is by the end', () => {
+    const pit = events.find((e) => e.what.startsWith('ЯМА'))?.t ?? Infinity;
+    expect(pit, hm(pit)).toBeGreaterThan(12 * hour);
+    expect(events.filter((e) => e.what.startsWith('квартал')).length).toBeGreaterThanOrEqual(hours >= 13 ? 38 : 0);
   });
 });

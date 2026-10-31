@@ -358,7 +358,7 @@ function computeEffects(city: CityState): CityEffects {
  * resort past it, so holding on for one more pays.
  */
 /** Hectares per reform at the plain rate, as a multiple of the formula. */
-const REFORM_SCALE = 2.5;
+const REFORM_SCALE = 3;
 /**
  * Each resort past the seventh makes the reform this much richer. Doubling was too much:
  * with the town's income behind it a cycle reaches 15-18 resorts, and the bot took the
