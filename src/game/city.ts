@@ -154,14 +154,20 @@ export interface Plan {
   streets: [Point, Point][];
 }
 
-/** Keeps the part of a convex polygon on the side of the bisector nearer to `a`. */
-function clip(poly: Point[], a: Point, b: Point): Point[] {
-  const mx = (a[0] + b[0]) / 2;
-  const my = (a[1] + b[1]) / 2;
-  const nx = b[0] - a[0];
-  const ny = b[1] - a[1];
+/** How much more ground a site claims than its plain Voronoi share: only the pit, which is wide. */
+const WEIGHT: Record<string, number> = { pit: 0.022 };
+const weight = (i: number) => WEIGHT[DISTRICTS[i].id] ?? 0;
+
+/** Power of a point from a weighted site: squared distance less the weight; lower is nearer. */
+const pow = (p: Point, s: Point, w: number) => (p[0] - s[0]) ** 2 + (p[1] - s[1]) ** 2 - w;
+
+/**
+ * Keeps the part of a convex polygon nearer to `a` than to `b` by power (a weighted
+ * Voronoi, so a heavier site pushes the street away from itself; the edge stays straight).
+ */
+function clip(poly: Point[], a: Point, wa: number, b: Point, wb: number): Point[] {
   // Positive on b's side.
-  const side = (p: Point) => (p[0] - mx) * nx + (p[1] - my) * ny;
+  const side = (p: Point) => pow(p, a, wa) - pow(p, b, wb);
   const out: Point[] = [];
   for (let i = 0; i < poly.length; i++) {
     const p = poly[i];
@@ -191,18 +197,14 @@ export function plan(): Plan {
       [0, PLAN_H],
     ];
     sites.forEach((o, j) => {
-      if (j !== i) poly = clip(poly, s, o);
+      if (j !== i) poly = clip(poly, s, weight(i), o, weight(j));
     });
     return poly;
   });
-  // Two cells are neighbours when an edge of one lies on their bisector.
+  // Two cells are neighbours when an edge of one lies on the line between them.
   const neighbours = new Map<string, string[]>(DISTRICTS.map((d) => [d.id, []]));
   const streets: [Point, Point][] = [];
-  const eq = (p: Point, i: number, j: number) => {
-    const di = Math.hypot(p[0] - sites[i][0], p[1] - sites[i][1]);
-    const dj = Math.hypot(p[0] - sites[j][0], p[1] - sites[j][1]);
-    return Math.abs(di - dj) < 1e-7;
-  };
+  const eq = (p: Point, i: number, j: number) => Math.abs(pow(p, sites[i], weight(i)) - pow(p, sites[j], weight(j))) < 1e-9;
   cells.forEach((cell, i) => {
     for (let k = 0; k < cell.length; k++) {
       const p = cell[k];

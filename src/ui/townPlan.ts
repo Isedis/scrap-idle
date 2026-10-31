@@ -29,6 +29,50 @@ function inside(p: Point, poly: Point[]): boolean {
 }
 
 /**
+ * A small tile of soft cloud: value noise on a coarse grid, summed over two octaves,
+ * as alpha over a grey-green. Drawn stretched, it blurs into murk. Wraps at its edges.
+ */
+function cloudNoise(): HTMLCanvasElement {
+  const W = 64;
+  const H = 64;
+  let seed = 1234;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const grid = (n: number) => Array.from({ length: n * n }, rnd);
+  const sample = (g: number[], n: number, x: number, y: number) => {
+    const gx = (x / W) * n;
+    const gy = (y / H) * n;
+    const x0 = Math.floor(gx);
+    const y0 = Math.floor(gy);
+    const fx = gx - x0;
+    const fy = gy - y0;
+    const at = (i: number, j: number) => g[((j + n) % n) * n + ((i + n) % n)];
+    const sx = fx * fx * (3 - 2 * fx);
+    const sy = fy * fy * (3 - 2 * fy);
+    const top = at(x0, y0) * (1 - sx) + at(x0 + 1, y0) * sx;
+    const bottom = at(x0, y0 + 1) * (1 - sx) + at(x0 + 1, y0 + 1) * sx;
+    return top * (1 - sy) + bottom * sy;
+  };
+  const g1 = grid(4);
+  const g2 = grid(8);
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(W, H);
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const v = sample(g1, 4, x, y) * 0.65 + sample(g2, 8, x, y) * 0.35;
+      const k = (y * W + x) * 4;
+      img.data[k] = 92;
+      img.data[k + 1] = 116;
+      img.data[k + 2] = 102;
+      img.data[k + 3] = Math.max(0, Math.min(255, (v - 0.3) * 2.2 * 255));
+    }
+  ctx.putImageData(img, 0, 0);
+  return c;
+}
+
+/**
  * The plan of Glukhovo, drawn like an old survey sheet on a terminal: districts as the
  * shapes the streets cut, each marked with what it is; the landfill's stain spreading
  * over the ones it holds; the ones it can take next pulsing, with their price. A tap
@@ -41,6 +85,8 @@ export class TownPlan {
   private w = 0;
   private h = 0;
   private t = 0;
+  private fogCanvas: HTMLCanvasElement | null = null;
+  private noise: HTMLCanvasElement | null = null;
   selected = 'dump';
 
   constructor(private onPick: (id: string) => void) {
@@ -90,50 +136,65 @@ export class TownPlan {
     for (let x = 0; x < w; x += w / 12) this.seg([x, 0], [x, h]);
     for (let y = 0; y < h; y += w / 12) this.seg([0, y], [w, y]);
 
+    const pitIndex = DISTRICTS.findIndex((d) => d.type === 'pit');
+    const seen = DISTRICTS.map((d) => visible(city, d.id));
+    const shapes = cells.map((c) => inset(c, 0.008).map(S));
+
+    // The districts: what the landfill can see in full, the rest only as streets under the fog.
     DISTRICTS.forEach((d, i) => {
-      const cell = inset(cells[i], 0.008).map(S);
+      if (i === pitIndex) return;
+      const cell = shapes[i];
       const owned = city.owned.includes(d.id);
-      const seen = visible(city, d.id);
-      const next = !owned && seen && (d.type !== 'pit' || pitReady(city));
-      // The pit shows through the fog: everyone in town knows where it is.
-      if (!seen && d.type !== 'pit') {
-        this.fog(cell, i, d.id === this.selected);
+      this.path(cell);
+      if (!seen[i]) {
+        ctx.fillStyle = '#081109';
+        ctx.fill();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgb(61 122 80 / 0.22)';
+        ctx.stroke();
         return;
       }
-      this.path(cell);
-      ctx.fillStyle = d.type === 'pit' ? '#000' : d.type === 'river' ? '#081d1c' : '#0c2216';
+      ctx.fillStyle = d.type === 'river' ? '#081d1c' : '#0c2216';
       ctx.fill();
       ctx.save();
       this.path(cell);
       ctx.clip();
       const [cx, cy] = S([d.x, d.y]);
-      const size = w * 0.05;
       if (d.type === 'river') this.water(cell);
       if (owned) this.heap(cell, i, d.type === 'dump');
-      else this.glyph(d.type, cx, cy, size, seen || d.type !== 'pit' ? 1 : 0.6);
+      else this.glyph(d.type, cx, cy, w * 0.05, 1);
       ctx.restore();
-      // Outlines: the landfill's own in green, the next ones pulsing amber, the pit in red.
       this.path(cell);
       ctx.lineWidth = 1;
-      ctx.strokeStyle = d.type === 'pit' ? RED : owned ? GLOW : DIM;
+      ctx.strokeStyle = owned ? GLOW : DIM;
       ctx.globalAlpha = owned ? 0.8 : 0.6;
       ctx.stroke();
       ctx.globalAlpha = 1;
-      if (next) {
+    });
+
+    this.drawFog(shapes, seen, pitIndex);
+    // The pit goes over the fog: everyone in town knows where it is.
+    this.abyss(shapes[pitIndex], S([DISTRICTS[pitIndex].x, DISTRICTS[pitIndex].y]), city.owned.includes('pit'));
+
+    // Prices and the picked district, crisp over everything.
+    DISTRICTS.forEach((d, i) => {
+      const cell = shapes[i];
+      const owned = city.owned.includes(d.id);
+      const [cx, cy] = S([d.x, d.y]);
+      const size = w * 0.05;
+      if (!owned && seen[i] && (d.type !== 'pit' || pitReady(city))) {
         this.path(cell);
         ctx.lineWidth = 1.6;
         ctx.strokeStyle = AMBER;
         ctx.globalAlpha = 0.45 + 0.4 * Math.sin(this.t * 3 + i);
         ctx.stroke();
         ctx.globalAlpha = 1;
-        this.text(`${format(annexCost(city, d.id))} га`, cx, cy + size * 1.1, AMBER, 9);
-      } else if (d.type === 'pit' && !owned) {
-        this.text('ПОСЛЕДНЯЯ', cx, cy + size * 1.5, RED, 8);
+        this.text(`${format(annexCost(city, d.id))} га`, cx, cy + size * (d.type === 'pit' ? 2.2 : 1.1), AMBER, 9);
       }
       if (d.id === this.selected) {
         this.path(cell);
         ctx.lineWidth = 2.4;
-        ctx.strokeStyle = owned ? GLOW : AMBER;
+        ctx.strokeStyle = owned ? GLOW : seen[i] || d.type === 'pit' ? AMBER : 'rgb(170 190 178 / 0.7)';
         ctx.stroke();
       }
     });
@@ -169,37 +230,173 @@ export class TownPlan {
     ctx.fillText(s, x, y);
   }
 
-  /** A district nobody from the landfill has seen yet: grey murk, drifting. */
-  private fog(cell: Point[], seedBase: number, picked: boolean): void {
-    const { ctx } = this;
-    this.path(cell);
-    ctx.fillStyle = '#0a0f0c';
+  /**
+   * One sheet of fog over the whole plan, drifting in two layers; it thins out over what
+   * the landfill holds and borders, with soft edges that follow the streets.
+   */
+  private drawFog(shapes: Point[][], seen: boolean[], skip: number): void {
+    const { w, h } = this;
+    if (!this.fogCanvas || this.fogCanvas.width !== Math.ceil(w) || this.fogCanvas.height !== Math.ceil(h)) {
+      this.fogCanvas = document.createElement('canvas');
+      this.fogCanvas.width = Math.ceil(w);
+      this.fogCanvas.height = Math.ceil(h);
+    }
+    const noise = (this.noise ??= cloudNoise());
+    const f = this.fogCanvas.getContext('2d')!;
+    f.globalCompositeOperation = 'source-over';
+    f.clearRect(0, 0, w, h);
+    f.fillStyle = 'rgb(5 11 8 / 0.86)';
+    f.fillRect(0, 0, w, h);
+    // Two layers of cloud, sliding at different speeds and scales: the murk moves.
+    f.imageSmoothingEnabled = true;
+    const layer = (scale: number, speed: number, alpha: number) => {
+      const tw = w * scale;
+      const th = tw * (noise.height / noise.width);
+      const ox = -((this.t * speed) % tw);
+      const oy = -((this.t * speed * 0.35) % th);
+      f.globalAlpha = alpha;
+      for (let x = ox; x < w; x += tw) for (let y = oy; y < h; y += th) f.drawImage(noise, x, y, tw, th);
+      f.globalAlpha = 1;
+    };
+    layer(1.3, 5, 0.55);
+    layer(0.8, 9, 0.35);
+    // Clear the fog over what is seen, feathered: each cell again, a little larger and fainter.
+    f.globalCompositeOperation = 'destination-out';
+    shapes.forEach((cell, i) => {
+      if (!seen[i] || i === skip) return;
+      const cx = cell.reduce((a, p) => a + p[0], 0) / cell.length;
+      const cy = cell.reduce((a, p) => a + p[1], 0) / cell.length;
+      [
+        [1, 1],
+        [1.1, 0.45],
+        [1.22, 0.25],
+        [1.36, 0.12],
+      ].forEach(([k, a]) => {
+        f.globalAlpha = a;
+        f.beginPath();
+        cell.forEach(([x, y], n) => {
+          const px = cx + (x - cx) * k;
+          const py = cy + (y - cy) * k;
+          if (n) f.lineTo(px, py);
+          else f.moveTo(px, py);
+        });
+        f.closePath();
+        f.fill();
+      });
+    });
+    f.globalAlpha = 1;
+    f.globalCompositeOperation = 'source-over';
+    this.ctx.drawImage(this.fogCanvas, 0, 0, w, h);
+  }
+
+  /**
+   * The black pit: wider than any district, deeper than the sheet. Rings sink into it,
+   * junk spirals down, cracks run out into the streets around, and far down something
+   * glows. Once it is the landfill's, it glows back.
+   */
+  private abyss(cell: Point[], centre: Point, open: boolean): void {
+    const { ctx, t } = this;
+    const [cx, cy] = centre;
+    const r = Math.max(...cell.map(([x, y]) => Math.hypot(x - cx, y - cy)));
+    // Shadow over the streets around: the ground sags toward it.
+    const halo = ctx.createRadialGradient(cx, cy, r * 0.6, cx, cy, r * 1.5);
+    halo.addColorStop(0, 'rgb(0 0 0 / 0.7)');
+    halo.addColorStop(1, 'rgb(0 0 0 / 0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.5, 0, Math.PI * 2);
     ctx.fill();
+    // Cracks into the neighbours, flickering faintly red.
+    ctx.strokeStyle = RED;
+    ctx.lineWidth = 1;
+    for (let k = 0; k < 9; k++) {
+      let seed = 3 + k * 53;
+      const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      const a0 = (k / 9) * Math.PI * 2 + rnd() * 0.5;
+      ctx.globalAlpha = 0.15 + 0.15 * Math.sin(t * 1.3 + k * 1.7);
+      ctx.beginPath();
+      let x = cx + Math.cos(a0) * r * 0.75;
+      let y = cy + Math.sin(a0) * r * 0.75;
+      ctx.moveTo(x, y);
+      const len = r * (0.5 + rnd() * 0.5);
+      for (let d = 0; d < len; d += r * 0.12) {
+        const a = a0 + (rnd() - 0.5) * 0.9;
+        x += Math.cos(a) * r * 0.12;
+        y += Math.sin(a) * r * 0.12;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
     ctx.save();
     this.path(cell);
     ctx.clip();
-    const xs = cell.map((p) => p[0]);
-    const ys = cell.map((p) => p[1]);
-    const x0 = Math.min(...xs);
-    const y0 = Math.min(...ys);
-    const bw = Math.max(...xs) - x0;
-    const bh = Math.max(...ys) - y0;
-    let seed = 7 + seedBase * 131;
-    const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    for (let k = 0; k < 5; k++) {
-      const px = x0 + ((r() * bw + this.t * (2 + k)) % bw);
-      const py = y0 + r() * bh;
-      const g = ctx.createRadialGradient(px, py, 0, px, py, bw * 0.45);
-      g.addColorStop(0, 'rgb(120 140 128 / 0.14)');
-      g.addColorStop(1, 'rgb(120 140 128 / 0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(x0, y0, bw, bh);
+    // Depth: black at the middle, the faintest red at the lip.
+    const deep = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    deep.addColorStop(0, '#000');
+    deep.addColorStop(0.7, '#050102');
+    deep.addColorStop(1, open ? '#2a0806' : '#140405');
+    ctx.fillStyle = deep;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    // Rings sinking in: born at the lip, fading as they shrink toward the middle.
+    for (let k = 0; k < 6; k++) {
+      const p = (t * 0.07 + k / 6) % 1;
+      const rr = r * (1 - p) * 0.95;
+      ctx.strokeStyle = `rgb(255 107 87 / ${0.32 * (1 - p) * p * 4 * (open ? 1.5 : 1)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rr, rr * 0.82, t * 0.05, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Spiral arms, turning slowly the way water goes down a drain.
+    ctx.lineWidth = 1.2;
+    for (let arm = 0; arm < 3; arm++) {
+      ctx.strokeStyle = 'rgb(255 107 87 / 0.18)';
+      ctx.beginPath();
+      for (let s = 0; s <= 1; s += 0.04) {
+        const a = -t * 0.25 + arm * ((Math.PI * 2) / 3) + s * 4.2;
+        const rr = r * (1 - s) * 0.92;
+        const x = cx + Math.cos(a) * rr;
+        const y = cy + Math.sin(a) * rr * 0.82;
+        if (s === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    // Junk going down: each speck spirals in and starts again at the lip.
+    for (let k = 0; k < 22; k++) {
+      const p = (t * (0.04 + (k % 5) * 0.012) + k * 0.137) % 1;
+      const rr = r * (1 - p) * 0.9;
+      const a = k * 2.4 - t * (0.3 + p * 1.6);
+      ctx.globalAlpha = 0.8 * (1 - p);
+      ctx.fillStyle = ['#6a9f74', '#4f8a60', '#9fe8a8'][k % 3];
+      const size = 2.2 * (1 - p) + 0.6;
+      ctx.fillRect(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.82, size, size);
+    }
+    ctx.globalAlpha = 1;
+    // Far down: a slow ember, now and then an opening of light, as if it looked up.
+    const beat = 0.5 + 0.5 * Math.sin(t * 0.9);
+    const ember = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.35);
+    ember.addColorStop(0, `rgb(255 80 60 / ${(open ? 0.55 : 0.25) + 0.2 * beat})`);
+    ember.addColorStop(1, 'rgb(255 80 60 / 0)');
+    ctx.fillStyle = ember;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    if (Math.sin(t * 0.37) > 0.97) {
+      ctx.fillStyle = 'rgb(255 190 170 / 0.8)';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r * 0.12, r * 0.025, 0, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
+    // The lip.
     this.path(cell);
-    ctx.lineWidth = picked ? 2 : 1;
-    ctx.strokeStyle = picked ? 'rgb(150 170 158 / 0.7)' : 'rgb(80 100 88 / 0.35)';
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = RED;
+    ctx.globalAlpha = 0.55 + 0.2 * Math.sin(t * 0.8);
     ctx.stroke();
+    ctx.globalAlpha = 1;
+    this.text(open ? 'ЯМА ОТКРЫТА' : 'ЧЁРНАЯ ЯМА', cx, cy + r * 0.78, 'rgb(255 107 87 / 0.75)', 8);
   }
 
   /** Water: lines drifting across the cell. */
@@ -405,15 +602,6 @@ export class TownPlan {
         break;
       case 'river':
         break;
-      case 'pit': {
-        for (let k = 4; k >= 1; k--) {
-          ctx.strokeStyle = `rgb(255 107 87 / ${0.12 * k})`;
-          ctx.beginPath();
-          ctx.ellipse(x, y, s * 0.35 * k + Math.sin(this.t * 0.8 + k) * 1.5, s * 0.22 * k, 0, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        break;
-      }
       default:
         break;
     }
