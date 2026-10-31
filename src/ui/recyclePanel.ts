@@ -1,7 +1,6 @@
 import { ResetPreview } from './resetPreview';
 import { format, type Decimal } from '../game/num';
 import { BRANCHES, LAYERS, NODES, RECYCLE_AT, REPEATS, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, repeatCost, type NodeDef, type RepeatDef } from '../game/layers';
-import { recycleAdvice } from '../game/advice';
 import { PlantCam, type PlantView } from './plantCam';
 import { CorridorCam, type CorridorView } from './corridorCam';
 import { nearness } from '../game/hearing';
@@ -19,6 +18,15 @@ interface NodeRow {
 const mmss = (s: number) => (s < 0 ? '—' : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
 
 /** The Recycling tab: what a recycle gives now, the button, and the tree. */
+const RECYCLE_VIEW_KEY = 'scrap-idle-recycle-view';
+function savedView(): 'run' | 'tree' {
+  try {
+    return localStorage.getItem(RECYCLE_VIEW_KEY) === 'tree' ? 'tree' : 'run';
+  } catch {
+    return 'run';
+  }
+}
+
 export class RecyclePanel {
   private preview = new ResetPreview();
   readonly root: HTMLElement;
@@ -39,6 +47,11 @@ export class RecyclePanel {
   /** Tree branches that fold away once bought out. */
   private folds: { fold: Fold; ids: string[] }[] = [];
   private armed = 0;
+  private view: 'run' | 'tree' = savedView();
+  private viewTabs!: HTMLElement;
+  private viewButtons = new Map<'run' | 'tree', HTMLButtonElement>();
+  private runView!: HTMLElement;
+  private treeView!: HTMLElement;
   private repeatsBox!: HTMLElement;
   private repeatsLocked!: HTMLElement;
   private repeatRows: { def: RepeatDef; level: HTMLElement; button: HTMLButtonElement }[] = [];
@@ -53,20 +66,40 @@ export class RecyclePanel {
   }
 
   private build(): void {
-    const head = el('div', 'panel-head');
-    head.append(el('h2', 'panel-title', 'Переработка'));
     this.now = el('div', 's-now');
     this.corridor.root.hidden = true;
     this.camSlot.append(this.camera.root, this.corridor.root);
-    this.root.append(
-      this.camSlot,
-      head,
-      el('p', 's-why', 'Заход → вторсырьё: постоянный бонус к доходу и узлы дерева.'),
-      this.now,
-    );
+    // Two views under the camera: the run with its recycle, and the tree. One long page
+    // took a lot of scrolling to get from the button to the nodes.
+    this.viewTabs = el('div', 'modes s-tabs r-views');
+    this.viewTabs.setAttribute('role', 'group');
+    this.viewTabs.setAttribute('aria-label', 'Раздел переработки');
+    for (const [view, label] of [['run', 'Заход'], ['tree', 'Дерево']] as const) {
+      const b = el('button', 'mode', label);
+      b.type = 'button';
+      b.id = `recycle-view-${view}`;
+      b.addEventListener('click', () => {
+        this.view = view;
+        try {
+          localStorage.setItem(RECYCLE_VIEW_KEY, view);
+        } catch {
+          /* only a convenience */
+        }
+        this.showView();
+        this.render(this.getState());
+      });
+      this.viewButtons.set(view, b);
+      this.viewTabs.append(b);
+    }
+    this.runView = el('div', 'r-view');
+    this.treeView = el('div', 'r-view');
+    // No heading: the layer switch above already says where this is.
+    this.root.append(this.camSlot, this.viewTabs, this.runView, this.treeView);
+    // The advice line lives in the header's goal now; kept out of the layout so nothing jumps.
+    this.now.hidden = true;
 
     this.stats = el('div', 'r-stats');
-    this.root.append(this.stats);
+    this.runView.append(el('p', 's-why', 'Заход → вторсырьё: постоянный бонус к доходу и узлы дерева.'), this.stats);
 
     this.action = el('div', 'r-action');
     this.actionTitle = el('div', 'r-title');
@@ -82,9 +115,8 @@ export class RecyclePanel {
       el('div', '', 'Останутся: вторсырьё и всё дерево ниже.'),
     );
     this.action.append(this.actionTitle, this.actionBar, this.actionNote, this.preview.root, this.button, keeps);
-    this.root.append(this.action);
+    this.runView.append(this.action);
 
-    this.root.append(el('h2', 'panel-title', 'Дерево переработки'));
     for (const [branch, label] of BRANCHES) {
       const group = el('div', 'r-branch');
       const fold = new Fold(group, label, `tree:${branch}`);
@@ -96,19 +128,26 @@ export class RecyclePanel {
         this.nodeRows.push(row);
         group.append(row.root);
       });
-      this.root.append(group);
+      this.treeView.append(group);
     }
 
-    this.root.append(this.buildRepeats());
+    this.treeView.append(this.buildRepeats());
 
     // The next layers, shown as closed doors, while there are any.
-    if (LAYERS.some((l) => !l.playable)) this.root.append(el('h2', 'panel-title', 'Дальше'));
+    if (LAYERS.some((l) => !l.playable)) this.treeView.append(el('h2', 'panel-title', 'Дальше'));
     for (const layer of LAYERS.filter((l) => !l.playable)) {
       const door = el('div', 'r-door');
       const first = layer === LAYERS.find((l) => !l.playable);
       door.append(el('div', 'r-door-name', first ? layer.name : '???'), el('div', 'r-door-text', first ? `${layer.teaser}. Откроется в одном из следующих обновлений.` : 'Сигнал не распознан.'));
-      this.root.append(door);
+      this.treeView.append(door);
     }
+    this.showView();
+  }
+
+  private showView(): void {
+    this.runView.hidden = this.view !== 'run';
+    this.treeView.hidden = this.view !== 'tree';
+    for (const [view, b] of this.viewButtons) b.setAttribute('aria-pressed', String(view === this.view));
   }
 
   private buildNode(def: NodeDef, last: boolean): NodeRow {
@@ -176,9 +215,6 @@ export class RecyclePanel {
   render(state: GameState): void {
     this.preview.render(state, 'recycle');
     for (const { fold, ids } of this.folds) fold.update(ids.filter((id) => state.recycle.nodes.includes(id)).length, ids.length);
-    this.now.textContent = recycleAdvice(state);
-    // Ready to recycle, the box with the button says it already: no second line for it.
-    this.now.hidden = canRecycle(state) || !this.now.textContent;
     const layer = state.recycle;
     const lines: string[] = [];
     lines.push(`вторсырьё: ${format(layer.points)}`);
@@ -198,7 +234,7 @@ export class RecyclePanel {
       this.actionNote.textContent = `${format(state.runTrash)} / ${format(RECYCLE_AT)} кг за заход`;
     } else {
       const next: Decimal = nextGainAt(state.runTrash, recycleMult(state));
-      this.actionTitle.textContent = `Переработать сейчас: +${format(gain)} вторсырья`;
+      this.actionTitle.textContent = `Переработать: +${format(gain)} ВС`;
       this.actionBar.textContent = `${textBar(progress(state.runTrash, next), 16)} до +${format(gain.add(1))}`;
       this.actionNote.textContent = `следующая единица при ${format(next)} кг`;
     }
@@ -215,6 +251,8 @@ export class RecyclePanel {
       r.button.style.setProperty('--p', String(open ? progress(layer.points, cost) : 0));
     }
 
+    // A dot on the tree's tab when a node can be bought.
+    this.viewButtons.get('tree')!.classList.toggle('marked', NODES.some((n) => canBuyNode(layer, n)) && this.view !== 'tree');
     for (const row of this.nodeRows) {
       const owned = hasNode(layer, row.def.id);
       const open = isNodeOpen(layer, row.def);

@@ -1766,3 +1766,10 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 /* Bought nodes fold to a single line: no button, no explanation. */
 .r-node.owned { padding-block: 2px; min-height: 0; }
 .r-node.owned .r-node-buy { display: none; }
+/* The recycling box holds its size whether a recycle is ready or not: the auto-recycler
+   flips it every few seconds, and a box that grows and shrinks makes the page jump. */
+.r-action .r-title, .r-action .r-bar, .r-action .r-note, .reset-preview > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-action .reset-preview { margin: 8px 0; padding: 8px 12px; }
+/* Price buttons in the tree keep one width, whatever the price: no row reflows as it changes. */
+.r-node-buy { width: 104px; min-width: 104px; flex: 0 0 104px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-views { margin: 8px 0; }

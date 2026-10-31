@@ -7,7 +7,8 @@ type Kind = 'recycle' | 'sorting' | 'city';
 /** Preview the real reset on a detached save; never mutate the live game. */
 export function resetPreview(state: GameState, kind: Kind): string[] {
   const ready = { recycle: canRecycle, sorting: canResort, city: canReform }[kind];
-  if (!ready(state)) return [];
+  // Two lines either way, so the box keeps its height when the reset comes and goes.
+  if (!ready(state)) return ['Получите: —', 'Старт: —'];
   const after = deserialize(serialize(state))!;
   const gain = { recycle, sorting: resort, city: reform }[kind](after);
   // Two lines: what comes, and where the next run starts; what burns is said by the panel itself.

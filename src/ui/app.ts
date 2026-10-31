@@ -1416,8 +1416,12 @@ export class App {
 
     if (!this.knownRecycleReady && canRecycle(state)) {
       this.knownRecycleReady = true;
-      this.toast(state.recycle.resets === 0 ? 'Открыта переработка! Загляните во вкладку' : 'Переработка снова доступна');
-      this.caption('Доступна переработка');
+      // News once: the first time ever. After that the tab's badge says it, and the
+      // auto-recycler would have it pop up every few seconds.
+      if (state.recycle.resets === 0) {
+        this.toast('Открыта переработка! Загляните во вкладку');
+        this.caption('Доступна переработка');
+      }
     }
 
     for (const def of PRODUCERS) {
