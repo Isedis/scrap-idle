@@ -370,7 +370,7 @@ function loadStory(data: Partial<StoryState> | undefined): StoryState {
   story.records = Array.isArray(data.records)
     ? data.records
         .filter((r): r is Recording => !!r && known(r.event) && Number.isFinite(r.seq) && Number.isFinite(r.at))
-        .map((r) => ({ seq: r.seq, event: r.event, at: r.at, watched: r.watched === true, ...(r.away ? { away: true } : {}), ...(typeof r.phrase === 'string' ? { phrase: r.phrase } : {}) }))
+        .map((r) => ({ seq: r.seq, event: r.event, at: r.at, watched: r.watched === true || eventById(r.event)?.caseNo === undefined, ...(r.away ? { away: true } : {}), ...(typeof r.phrase === 'string' ? { phrase: r.phrase } : {}) }))
     : [];
   story.traces = Array.isArray(data.traces) ? data.traces.filter((t) => t === 'fridge' || t === 'lamp') : [];
   story.nextIn = Number.isFinite(data.nextIn) && data.nextIn! > 0 ? data.nextIn! : story.nextIn;

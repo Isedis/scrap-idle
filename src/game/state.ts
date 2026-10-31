@@ -85,6 +85,8 @@ import { START_HEAP, aboveIncome, autoOpen, bottomTick, fallPerMinute, newBottom
 import {
   FIRST_EVENT_SECONDS,
   FRESH_CASE_FACTOR,
+  QUIET_FACTOR,
+  CASES,
   eventById,
   eventInterval,
   freshCase,
@@ -1058,7 +1060,9 @@ export function storyTick(state: GameState, dt: number, now = new Date()): Recor
   const plant = state.sorting.open;
   const rec = record(story, pickEvent(story, stage, state.owned, Math.random, plant), now.getTime());
   // While a new case is waiting to be caught, the camera does not keep the player waiting long.
-  const sooner = freshCase(story, stage, state.owned, plant) ? FRESH_CASE_FACTOR : 1;
+  // Every case caught: only everyday scenes remain, and fewer of them.
+  const done = CASES.every((c) => story.cases.includes(c.id) || story.records.some((r) => r.event === c.id));
+  const sooner = freshCase(story, stage, state.owned, plant) ? FRESH_CASE_FACTOR : done ? QUIET_FACTOR : 1;
   story.nextIn = eventInterval(stage, isNight(now)) * sooner;
   return rec;
 }

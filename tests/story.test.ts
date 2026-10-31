@@ -101,8 +101,10 @@ describe('archive', () => {
   it('ambient events give a short boost', () => {
     const s = newGame(0);
     const rate = producerRate(s, 'collector').toNumber();
+    // An everyday scene takes effect as it is recorded and goes in as seen: no badge for it.
     const rec = record(s.story, EVENTS.find((e) => e.id === 'gull')!, 1);
-    expect(watch(s.story, rec.seq).boosted).toBe(true);
+    expect(rec.watched).toBe(true);
+    expect(watch(s.story, rec.seq).boosted).toBeUndefined();
     expect(producerRate(s, 'collector').toNumber()).toBeCloseTo(rate * BOOST_MULT);
     advance(s, 31);
     expect(s.story.boost).toBe(0);

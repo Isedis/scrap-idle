@@ -226,6 +226,8 @@ export function freshCase(story: StoryState, stage: number, owned: Record<string
 const CASE_LOOKAHEAD = 1;
 /** While a new case is waiting, events come this much sooner. */
 export const FRESH_CASE_FACTOR = 0.5;
+/** With no new case to catch, the cameras record this many times less often. */
+export const QUIET_FACTOR = 3;
 /** The very first event comes this soon after the threat wakes. */
 export const FIRST_EVENT_SECONDS = 120;
 
@@ -238,6 +240,10 @@ export function record(story: StoryState, event: EventDef, at: number, opts: { a
   story.records.unshift(rec);
   story.records.length = Math.min(story.records.length, MAX_RECORDS);
   if (event.trace && !story.traces.includes(event.trace)) story.traces.push(event.trace);
+  // Only a case waits to be watched. An everyday scene takes effect as it is recorded (its
+  // short boost, a note) and goes into the archive as seen: the journal's badge counts what
+  // matters and does not grow every few minutes.
+  if (event.caseNo === undefined) watch(story, rec.seq);
   return rec;
 }
 
