@@ -1,3 +1,4 @@
+import { ResetPreview } from './resetPreview';
 import { format, type Decimal } from '../game/num';
 import { BRANCHES, LAYERS, NODES, RECYCLE_AT, REPEATS, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, repeatCost, type NodeDef, type RepeatDef } from '../game/layers';
 import { recycleAdvice } from '../game/advice';
@@ -19,6 +20,7 @@ const mmss = (s: number) => (s < 0 ? '—' : `${Math.floor(s / 60)}:${String(Mat
 
 /** The Recycling tab: what a recycle gives now, the button, and the tree. */
 export class RecyclePanel {
+  private preview = new ResetPreview();
   readonly root: HTMLElement;
   private stats!: HTMLElement;
   private now!: HTMLElement;
@@ -74,12 +76,12 @@ export class RecyclePanel {
     this.button.type = 'button';
     this.button.id = 'recycle';
     this.button.addEventListener('click', () => this.press());
-    const keeps = el('div', 'r-keeps');
+    const keeps = el('div', 'r-keeps classic-reset');
     keeps.append(
       el('div', '', 'Начнутся заново: мусор, производители, улучшения.'),
       el('div', '', 'Останутся: вторсырьё и всё дерево ниже.'),
     );
-    this.action.append(this.actionTitle, this.actionBar, this.actionNote, this.button, keeps);
+    this.action.append(this.actionTitle, this.actionBar, this.actionNote, this.preview.root, this.button, keeps);
     this.root.append(this.action);
 
     this.root.append(el('h2', 'panel-title', 'Дерево переработки'));
@@ -172,6 +174,7 @@ export class RecyclePanel {
   }
 
   render(state: GameState): void {
+    this.preview.render(state, 'recycle');
     for (const { fold, ids } of this.folds) fold.update(ids.filter((id) => state.recycle.nodes.includes(id)).length, ids.length);
     this.now.textContent = recycleAdvice(state);
     const layer = state.recycle;

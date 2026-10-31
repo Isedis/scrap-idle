@@ -1,3 +1,4 @@
+import { ResetPreview } from './resetPreview';
 import { D, format, type Decimal } from '../game/num';
 import {
   FRACS,
@@ -114,6 +115,7 @@ interface RecipeRow {
 
 /** The Sorting view on the Layers tab, in four parts: the line, the table, recipes, the reset. */
 export class SortingPanel {
+  private preview = new ResetPreview();
   /** The belts and bins before a rebuild, so what rides on them carries over. */
   private oldBelts: Belt[] = [];
   private oldBins: Bin[] = [];
@@ -304,14 +306,13 @@ export class SortingPanel {
   private buildReset(): HTMLElement {
     const box = el('div', 's-view');
     box.append(this.why('Пересортировка — большой сброс. Сжигаешь всю переработку и получаешь силу, которая остаётся навсегда.'));
-    const deal = el('div', 's-deal');
+    const deal = el('div', 's-deal classic-reset');
     const lose = el('div', 's-deal-col lose');
     lose.append(el('div', 's-deal-title', 'Сгорит'), ...['вторсырьё', 'дерево переработки', 'бесконечные узлы', 'скрипты автоматики', 'текущий заход'].map((t) => el('div', '', `✕ ${t}`)));
     const get = el('div', 's-deal-col get');
     this.resortGainEl = el('div', '');
     get.append(el('div', 's-deal-title', 'Получишь'), this.resortGainEl, el('div', '', '+ весь доход ×2 навсегда'), el('div', '', '+ новый разряд'));
     deal.append(lose, get);
-    const keep = el('div', 'a-text', 'Не сгорят: линия, фракции, рецепты, находки, достижения.');
     this.resortNeed = el('div', 'r-bar');
     this.resortButton = el('button', 'btn r-go', 'Пересортировать');
     this.resortButton.type = 'button';
@@ -326,7 +327,8 @@ export class SortingPanel {
       ranks.append(row);
       this.rankRows.push(row);
     }
-    box.append(deal, keep, this.resortNeed, this.resortButton, ranks);
+    const keep = el('div', 'a-text classic-reset', 'Не сгорят: линия, фракции, рецепты, находки, достижения.');
+    box.append(deal, keep, this.preview.root, this.resortNeed, this.resortButton, ranks);
     return box;
   }
 
@@ -532,6 +534,7 @@ export class SortingPanel {
   }
 
   render(state: GameState): void {
+    this.preview.render(state, 'sorting');
     for (const { fold, ids } of this.recipeFolds) fold.update(ids.filter((id) => state.sorting.recipes.includes(id)).length, ids.length);
     const so = state.sorting;
     this.closed.hidden = so.open;

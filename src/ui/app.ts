@@ -1,3 +1,4 @@
+import { nextGoal } from './guidance';
 import { format } from '../game/num';
 import { PRODUCERS, milestonesReached, nextMilestone, prevMilestone, producerById, type ProducerDef } from '../game/producers';
 import { UPGRADES, describeUpgrade, type UpgradeDef } from '../game/upgrades';
@@ -145,6 +146,8 @@ export class App {
   private recycleBadge!: HTMLElement;
   /** Recycling was announced as ready for this run. */
   private knownRecycleReady = false;
+  private goalEl!: HTMLButtonElement;
+  private threatEffect!: HTMLElement;
   private threatEl!: HTMLElement;
   private threatBar!: HTMLElement;
   private stageEl!: HTMLElement;
@@ -301,7 +304,15 @@ export class App {
     this.alertEl.type = 'button';
     this.alertEl.hidden = true;
     this.alertEl.addEventListener('click', () => this.goToDanger());
-    header.append(figures, this.incomeEl, this.alertEl, this.consoleEl);
+    this.goalEl = el('button', 'operator-goal');
+    this.goalEl.type = 'button';
+    this.goalEl.addEventListener('click', () => {
+      const goal = nextGoal(this.getState());
+      this.layerView = goal.layer;
+      this.show(goal.tab);
+      this.render();
+    });
+    header.append(figures, this.incomeEl, this.alertEl, this.consoleEl, this.goalEl);
 
     this.recyclePanel = new RecyclePanel(
       this.getState,
@@ -447,7 +458,8 @@ export class App {
     const text = el('div', 'threat-text');
     this.threatBar = el('div', 'threat-bar');
     this.stageEl = el('div', 'threat-stage');
-    text.append(this.threatBar, this.stageEl);
+    this.threatEffect = el('div', 'threat-effect');
+    text.append(this.threatBar, this.stageEl, this.threatEffect);
 
     this.lightButton = el('button', 'light', 'Прожектор');
     this.lightButton.type = 'button';
@@ -1066,6 +1078,29 @@ export class App {
     });
     panel.append(this.updateStatus, this.updateButton);
 
+    panel.append(el('h2', 'panel-title', 'Вид интерфейса'));
+    const interfaceStatus = el('p', 'note');
+    const rollback = el('button', 'btn update-btn');
+    rollback.type = 'button';
+    rollback.id = 'rollback-ui';
+    let classic = false;
+    try { classic = localStorage.getItem('scrap-idle-classic-ui') === '1'; } catch { /* Storage may be unavailable. */ }
+    const showInterface = () => {
+      this.root.classList.toggle('classic-ui', classic);
+      rollback.textContent = classic ? 'Вернуть новый интерфейс' : 'Вернуть прежний интерфейс';
+      interfaceStatus.textContent = classic
+        ? 'Прежний вид: без строки цели и новых пояснений. Прогресс и обновления сохранены.'
+        : 'Новый вид: ближайшая цель, пояснения угроз и предпросмотр сброса. Можно вернуться к прежнему виду в любой момент.';
+    };
+    showInterface();
+    rollback.addEventListener('click', () => {
+      classic = !classic;
+      showInterface();
+      try { localStorage.setItem('scrap-idle-classic-ui', classic ? '1' : '0'); }
+      catch { interfaceStatus.textContent += ' Выбор действует до закрытия игры: хранилище недоступно.'; }
+    });
+    panel.append(interfaceStatus, rollback);
+
     panel.append(el('h2', 'panel-title', 'Звук'));
     panel.append(el('p', 'note', 'Музыка, которая темнеет с угрозой, свет, помехи и то, что шепчет. Звук включается с первым касанием в игре.'));
     const volumeRow = el('label', 'volume');
@@ -1367,6 +1402,8 @@ export class App {
     const state = this.getState();
     this.announce(state);
 
+    this.goalEl.textContent = `ЦЕЛЬ · ${nextGoal(state).text} →`;
+    this.goalEl.hidden = state.hearing.phase !== 'idle' || state.threat.level >= 0.7;
     this.trashEl.textContent = format(state.trash);
     this.rateEl.textContent = `+${format(ratePerSecond(state))} кг/с`;
     const now = new Date();
@@ -1755,6 +1792,9 @@ export class App {
 
   private renderThreat(state: GameState): void {
     const level = state.threat.level;
+    this.threatEffect.textContent = level >= 0.7
+      ? 'На 100% — потеря смены. Удерживайте прожектор.'
+      : 'На 100% — потеря смены; вторсырьё и дерево останутся.';
     const active = threatActive(state.runTrash) || level > 0 || state.threat.losses > 0;
     if (active && this.threatEl.hidden) {
       this.threatEl.hidden = false;

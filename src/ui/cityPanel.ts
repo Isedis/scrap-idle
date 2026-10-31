@@ -1,3 +1,4 @@
+import { ResetPreview } from './resetPreview';
 import {
   ARCHIVE_PAGES,
   DISTRICTS,
@@ -34,6 +35,7 @@ const LETTERS_SHOWN = 3;
  * reform that burns nearly everything for hectares.
  */
 export class CityPanel {
+  private preview = new ResetPreview();
   readonly root: HTMLElement;
   readonly camera = new TownCam();
   private plan: TownPlan;
@@ -104,8 +106,9 @@ export class CityPanel {
     this.reformButton.addEventListener('click', () => this.pressReform());
     reform.append(
       this.reformText,
-      el('div', 'c-keeps', 'Сгорает: мусор, производители, улучшения, переработка и дерево, сортировка и линия, автоматика.'),
-      el('div', 'c-keeps', 'Остаются: город, достижения, находки со стола, журнал.'),
+      el('div', 'c-keeps classic-reset', 'Сгорает: мусор, производители, улучшения, переработка и дерево, сортировка и линия, автоматика.'),
+      el('div', 'c-keeps classic-reset', 'Остаются: город, достижения, находки со стола, журнал.'),
+      this.preview.root,
       this.reformButton,
     );
 
@@ -147,6 +150,7 @@ export class CityPanel {
   }
 
   render(state: GameState): void {
+    this.preview.render(state, 'city');
     const city = state.city;
     this.locked.hidden = city.open;
     this.openPart.hidden = !city.open;

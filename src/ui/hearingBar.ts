@@ -17,6 +17,7 @@ export class HearingBar {
   private slider: HTMLInputElement;
   private load: HTMLElement;
   private heard: HTMLElement;
+  private effect: HTMLElement;
   /** A finger is on the slider. */
   private dragging = false;
   /** It stopped mid-walk to listen. */
@@ -39,12 +40,19 @@ export class HearingBar {
     this.slider.addEventListener('input', () => onNoise(Number(this.slider.value) / 100));
     this.slider.addEventListener('pointerdown', () => (this.dragging = true));
     for (const ev of ['pointerup', 'pointercancel', 'change']) this.slider.addEventListener(ev, () => (this.dragging = false));
-    this.root.append(top, this.slider);
+    this.effect = el('div', 'threat-effect');
+    this.root.append(top, this.slider, this.effect);
   }
 
   render(h: HearingState, open: boolean): void {
     this.root.hidden = !open;
     if (!open) return;
+    this.effect.textContent = h.phase === 'check'
+      ? (h.held > 0 ? 'Держите тишину. Любой шум прервёт проверку.' : 'Шум на 0, затем 10 секунд тишины. Иначе потеря переработки.')
+      : h.phase === 'walk' ? 'Идёт к будке. У двери потребуется 10 секунд тишины.'
+      : h.phase === 'caught' ? 'Переработка потеряна. Сортировка останется.'
+      : h.noise > 1 ? 'Доход выше, но слух накапливается. Свет не поможет.'
+      : 'До 100% нагрузки слух не накапливается.';
     const pct = Math.round(h.noise * 100);
     // Never move the thumb under a finger that is dragging it.
     if (!this.dragging) this.slider.value = String(pct);

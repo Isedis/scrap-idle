@@ -1665,3 +1665,18 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
   min-height: 44px;
   font-size: 12px;
 }
+
+/* Operator guidance stays compact on phone screens. */
+.operator-goal { display: block; width: 100%; min-height: 44px; padding: 8px 12px; border: 0; border-top: 1px solid #234631; background: #08160e; color: #b6ce9d; font: inherit; font-size: 11px; line-height: 1.5; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.operator-goal:focus-visible { outline: 2px solid #d4b76c; outline-offset: -2px; }
+.operator-goal[hidden] { display: none; }
+.threat-effect { font-size: 10px; line-height: 1.5; color: #a4b5a5; margin-top: 5px; }
+.reset-preview { margin: 12px 0; padding: 12px; border-left: 2px solid #c5a76a; background: #0a1810; color: #a4b5a5; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.reset-preview > div + div { margin-top: 6px; }
+.reset-gain { color: #d4c18b; }
+
+/* The previous interface is a per-device preference, independent of save data. */
+.classic-reset { display: none; }
+.classic-ui .classic-reset { display: block; }
+.classic-ui .s-deal.classic-reset { display: grid; }
+.classic-ui .operator-goal, .classic-ui .threat-effect, .classic-ui .reset-preview { display: none; }
