@@ -73,6 +73,40 @@ interface LogLine {
 /** Short names on the racks of camera 04. */
 const RACK_NAMES: Record<ScriptId, string> = { producers: 'PROD', upgrades: 'UPG', endless: 'END', recycle: 'RCY', light: 'LGT', sort: 'SRT', tree: 'TRE', line: 'LIN' };
 
+type AutoView = 'dump' | 'recycle' | 'sort' | 'log';
+const AUTO_VIEWS: [AutoView, string][] = [
+  ['dump', 'Свалка'],
+  ['recycle', 'Переработка'],
+  ['sort', 'Сортировка'],
+  ['log', 'Журнал'],
+];
+const VIEW_TEXT: Record<Exclude<AutoView, 'log'>, string> = {
+  dump: 'Работают на свалке: покупают производителей, улучшения и бесконечные улучшения, включают прожектор. Разгон ускоряет скрипты покупок.',
+  recycle: 'Сдают заход на переработку и тратят вторсырьё на дерево переработки.',
+  sort: 'Пересортировывают и налаживают линию: станции, уровни, рецепты, сплавы.',
+};
+/** Which view each script lives in. */
+const VIEW_OF: Record<ScriptId, Exclude<AutoView, 'log'>> = {
+  producers: 'dump',
+  upgrades: 'dump',
+  endless: 'dump',
+  light: 'dump',
+  recycle: 'recycle',
+  tree: 'recycle',
+  sort: 'sort',
+  line: 'sort',
+};
+const VIEW_KEY = 'scrap-idle-auto-view';
+function savedView(): AutoView {
+  try {
+    const v = localStorage.getItem(VIEW_KEY);
+    if (AUTO_VIEWS.some(([id]) => id === v)) return v as AutoView;
+  } catch {
+    /* only a convenience */
+  }
+  return 'dump';
+}
+
 /** Whether a script is switched on, and how to flip it. */
 const SWITCHES: Record<ScriptId, [(s: GameState) => boolean, (s: GameState, on: boolean) => void]> = {
   producers: [(s) => s.autobuy, (s, on) => (s.autobuy = on)],
@@ -104,6 +138,9 @@ export class AutomationPanel {
   /** Purchases since the last flush: per script, what and how many times. */
   private pending = new Map<ScriptId, Map<string, number>>();
   private flushedAt = 0;
+  private view: AutoView = savedView();
+  private views = new Map<AutoView, HTMLElement>();
+  private viewButtons = new Map<AutoView, HTMLButtonElement>();
 
   constructor(
     private getState: () => GameState,
@@ -131,20 +168,56 @@ export class AutomationPanel {
     });
     speed.append(speedText, this.speedButton);
 
-    const list = el('div', 'a-cards');
+    // One view per layer the scripts work on, and the log on its own.
+    const views = new Map<AutoView, HTMLElement>();
+    for (const [view] of AUTO_VIEWS) {
+      const part = el('div', 'a-view');
+      if (view !== 'log') part.append(el('p', 's-why', VIEW_TEXT[view]));
+      views.set(view, part);
+    }
+    views.get('dump')!.append(speed);
     for (const def of SCRIPTS) {
       const card = this.buildCard(def);
       this.cards.push(card);
-      list.append(card.root);
+      const list = views.get(VIEW_OF[def.id])!;
+      let cards = list.querySelector<HTMLElement>('.a-cards');
+      if (!cards) list.append((cards = el('div', 'a-cards')));
+      cards.append(card.root);
     }
 
-    const logHead = el('div', 'panel-head');
-    logHead.append(el('h2', 'panel-title', 'Журнал скриптов'));
     this.logEmpty = el('p', 'empty', 'Пока тихо. Здесь видно всё, что скрипты делают без вас.');
     this.logList = el('div', 'a-log');
     this.logList.setAttribute('aria-live', 'off');
+    views.get('log')!.append(this.logEmpty, this.logList);
 
-    this.root.append(this.camera.root, head, speed, list, logHead, this.logEmpty, this.logList);
+    const tabs = el('div', 'modes s-tabs');
+    tabs.setAttribute('role', 'group');
+    tabs.setAttribute('aria-label', 'Раздел автоматики');
+    for (const [view, label] of AUTO_VIEWS) {
+      const b = el('button', 'mode', label);
+      b.type = 'button';
+      b.id = `auto-view-${view}`;
+      b.addEventListener('click', () => {
+        this.view = view;
+        try {
+          localStorage.setItem(VIEW_KEY, view);
+        } catch {
+          /* only a convenience */
+        }
+        this.showView();
+        this.render(this.getState());
+      });
+      this.viewButtons.set(view, b);
+      tabs.append(b);
+    }
+    this.views = views;
+    this.root.append(this.camera.root, head, tabs, ...views.values());
+    this.showView();
+  }
+
+  private showView(): void {
+    for (const [view, part] of this.views) part.hidden = view !== this.view;
+    for (const [view, b] of this.viewButtons) b.setAttribute('aria-pressed', String(view === this.view));
   }
 
   private buildCard(def: ScriptDef): Card {
@@ -330,6 +403,20 @@ export class AutomationPanel {
 
   render(state: GameState): void {
     const sc = state.scripts;
+    // The sorting view appears with the line; until then there is nothing in it.
+    const sortTab = this.viewButtons.get('sort')!;
+    sortTab.hidden = !state.sorting.open;
+    if (sortTab.hidden && this.view === 'sort') {
+      this.view = 'dump';
+      this.showView();
+    }
+    // Each view says how many of its scripts are running.
+    for (const [view, label] of AUTO_VIEWS) {
+      if (view === 'log') continue;
+      const ids = SCRIPTS.filter((d) => VIEW_OF[d.id] === view && scriptOwned(state, d.id)).map((d) => d.id);
+      const on = ids.filter((id) => SWITCHES[id][0](state)).length;
+      this.viewButtons.get(view)!.textContent = ids.length ? `${label} ${on}/${ids.length}` : label;
+    }
     this.speedMeta.textContent = `такт ${scriptTick(state).toFixed(2)} с`;
     const cost = speedCost(sc.speed);
     this.speedPrice.textContent = `ур. ${sc.speed} · ${format(cost)} ВС`;
