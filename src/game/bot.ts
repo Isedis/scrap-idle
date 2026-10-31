@@ -212,6 +212,7 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
 
   let lastSpend = -Infinity;
   let sortOpenLogged = false;
+  let cityLogged = false;
   let sortReadyLogged = false;
   note();
   while (t < seconds) {
@@ -226,6 +227,8 @@ export function simulate(seconds: number, opts: { recycle?: boolean; sort?: bool
         resort(s);
         sortReadyLogged = false;
         events.push({ t, what: `ПЕРЕСОРТИРОВКА #${s.sorting.sorts}: +${gain.toString()} · ${FRACS.map((f) => s.sorting.fractions[f].floor().toString()).join('/')}` });
+        if (s.city.open && !cityLogged) events.push({ t, what: 'город открыт' });
+        cityLogged ||= s.city.open;
         shown = 0;
         milestones = {};
         spendTree();
