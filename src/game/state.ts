@@ -54,6 +54,8 @@ import {
   FOREMAN_TICK,
   LIGHT_RETRY,
   SPEED_STEP,
+  SPEED_MAX,
+  RELIABILITY_MAX,
   failChance,
   newScripts,
   reliabilityCost,
@@ -673,9 +675,15 @@ export function installScript(state: GameState, id: ScriptId): boolean {
 export const automationOpen = (state: GameState) =>
   hasNode(state.recycle, 'a1') || state.scripts.bought.length > 0 || cityEffects(state.city).schools > 0;
 
+/**
+ * Whether speed can still be bought and still does something: under the cap, and with no
+ * school in town (a school makes the buyers instant, and a tick no longer matters).
+ */
+export const speedUseful = (state: GameState) => automationOpen(state) && state.scripts.speed < SPEED_MAX && cityEffects(state.city).schools === 0;
+
 export function buySpeed(state: GameState): boolean {
   const cost = speedCost(state.scripts.speed);
-  if (!automationOpen(state) || state.recycle.points.lt(cost)) return false;
+  if (!speedUseful(state) || state.recycle.points.lt(cost)) return false;
   state.recycle.points = state.recycle.points.sub(cost);
   state.scripts.speed += 1;
   return true;
@@ -683,7 +691,7 @@ export function buySpeed(state: GameState): boolean {
 
 export function buyReliability(state: GameState): boolean {
   const cost = reliabilityCost(state.scripts.reliability);
-  if (!scriptOwned(state, 'light') || state.recycle.points.lt(cost)) return false;
+  if (!scriptOwned(state, 'light') || state.scripts.reliability >= RELIABILITY_MAX || state.recycle.points.lt(cost)) return false;
   state.recycle.points = state.recycle.points.sub(cost);
   state.scripts.reliability += 1;
   return true;
@@ -852,8 +860,8 @@ export function autoTree(state: GameState): string | null {
   if (repeatsOpen(state)) {
     for (const r of REPEATS) options.push({ name: r.name, cost: repeatCost(r, state.recycle.repeats[r.id] ?? 0), buy: () => buyRepeat(state, r.id) });
   }
-  if (automationOpen(state)) options.push({ name: 'Разгон', cost: speedCost(state.scripts.speed), buy: () => buySpeed(state) });
-  if (scriptOwned(state, 'light')) options.push({ name: 'Надёжность', cost: reliabilityCost(state.scripts.reliability), buy: () => buyReliability(state) });
+  if (speedUseful(state)) options.push({ name: 'Разгон', cost: speedCost(state.scripts.speed), buy: () => buySpeed(state) });
+  if (scriptOwned(state, 'light') && state.scripts.reliability < RELIABILITY_MAX) options.push({ name: 'Надёжность', cost: reliabilityCost(state.scripts.reliability), buy: () => buyReliability(state) });
   const cheapest = options.sort((a, b) => a.cost.cmp(b.cost))[0];
   return cheapest && cheapest.buy() ? cheapest.name : null;
 }

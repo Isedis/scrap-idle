@@ -21,8 +21,7 @@ import {
   SORT_SHARES,
   UPGRADE_SHARES,
   newScripts,
-  type ScriptsState,
-} from './scripts';
+  type ScriptsState, RELIABILITY_MAX, SPEED_MAX } from './scripts';
 
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
@@ -252,8 +251,9 @@ function loadScripts(data: Partial<ScriptsSave> | undefined): ScriptsState {
   if (!data || typeof data !== 'object') return sc;
   const buyable = SCRIPTS.filter((d) => d.cost).map((d) => d.id);
   sc.bought = Array.isArray(data.bought) ? [...new Set(data.bought.filter((id) => buyable.includes(id)))] : [];
-  sc.speed = count(data.speed);
-  sc.reliability = count(data.reliability);
+  // Both used to level without end; anything past the cap counts as the cap.
+  sc.speed = Math.min(count(data.speed), SPEED_MAX);
+  sc.reliability = Math.min(count(data.reliability), RELIABILITY_MAX);
   sc.failures = count(data.failures);
   sc.producerMode = oneOf(BUY_MODES, data.producerMode, sc.producerMode);
   const producers = new Set(PRODUCERS.map((p) => p.id));

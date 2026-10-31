@@ -13,7 +13,7 @@ import {
   scriptTick,
   trackLevel,
 } from '../src/game/state';
-import { BASE_TICK, FAST_TICK, LIGHT_RETRY, failChance, newScripts } from '../src/game/scripts';
+import { BASE_TICK, FAST_TICK, LIGHT_RETRY, RELIABILITY_MAX, SPEED_MAX, failChance, newScripts } from '../src/game/scripts';
 import { deserialize, serialize } from '../src/game/save';
 import { D } from '../src/game/num';
 
@@ -64,6 +64,17 @@ describe('installing scripts', () => {
     expect(scriptTick(s)).toBe(BASE_TICK);
     expect(buySpeed(s)).toBe(true);
     expect(scriptTick(s)).toBeCloseTo(BASE_TICK / 1.5);
+  });
+
+  it('speed stops at its cap, and is not sold once a school makes the buyers instant', () => {
+    const s = veteran();
+    s.recycle.points = D(1e9);
+    while (buySpeed(s));
+    expect(s.scripts.speed).toBe(SPEED_MAX);
+    const t = veteran();
+    t.recycle.points = D(1e9);
+    t.city.owned.push('school1');
+    expect(buySpeed(t)).toBe(false);
   });
 });
 
@@ -158,6 +169,24 @@ describe('automatic floodlight', () => {
     const before = lightFailChance(s);
     expect(buyReliability(s)).toBe(true);
     expect(lightFailChance(s)).toBeLessThan(before);
+  });
+
+  it('the last level of reliability stops the failures, and nothing is sold past it', () => {
+    expect(failChance(D('1e-50'), RELIABILITY_MAX)).toBe(0);
+    const s = lit();
+    s.recycle.points = D(1e9);
+    while (buyReliability(s));
+    expect(s.scripts.reliability).toBe(RELIABILITY_MAX);
+    expect(lightFailChance(s)).toBe(0);
+  });
+
+  it('old saves past the caps load at the caps', () => {
+    const s = veteran();
+    s.scripts.speed = 40;
+    s.scripts.reliability = 30;
+    const back = deserialize(serialize(s))!;
+    expect(back.scripts.speed).toBe(SPEED_MAX);
+    expect(back.scripts.reliability).toBe(RELIABILITY_MAX);
   });
 
   it('does not count as the brave manual floodlight', () => {

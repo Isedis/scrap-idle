@@ -11,6 +11,8 @@ import {
   SCRIPTS,
   UPGRADE_SHARES,
   reliabilityCost,
+  RELIABILITY_MAX,
+  SPEED_MAX,
   scriptById,
   speedCost,
   type RecycleMode,
@@ -33,6 +35,7 @@ import {
   type ScriptNote,
 } from '../game/state';
 import { nodeById } from '../game/layers';
+import { cityEffects } from '../game/city';
 import { recipeById } from '../game/sorting';
 import { stageIndex } from '../game/threat';
 import { el, progress } from './dom';
@@ -130,6 +133,7 @@ export class AutomationPanel {
   private speedMeta!: HTMLElement;
   private speedButton!: HTMLButtonElement;
   private speedPrice!: HTMLElement;
+  private speedText!: HTMLElement;
   private chips!: HTMLElement;
   private chipsFor = '';
   private logList!: HTMLElement;
@@ -157,7 +161,8 @@ export class AutomationPanel {
 
     const speed = el('div', 'a-speed');
     const speedText = el('div', 'a-speed-text');
-    speedText.append(el('div', 'a-title', 'Разгон скриптов'), el('div', 'a-text', 'Скрипты покупок срабатывают на 50% чаще за уровень.'));
+    this.speedText = el('div', 'a-text');
+    speedText.append(el('div', 'a-title', 'Разгон скриптов'), this.speedText);
     this.speedButton = el('button', 'buy');
     this.speedButton.type = 'button';
     this.speedButton.id = 'script-speed';
@@ -366,13 +371,14 @@ export class AutomationPanel {
         });
         this.updaters.push((s) => {
           const sc = s.scripts;
-          chance.textContent = `Шанс отказа ${(lightFailChance(s) * 100).toFixed(1)}% · ур. ${sc.reliability}`;
-          const why = 'Чем больше куча за всю игру, тем чаще отказы.';
-          failures.textContent = sc.failures > 0 ? `Отказов: ${sc.failures}. ${why}` : why;
+          const done = sc.reliability >= RELIABILITY_MAX;
+          chance.textContent = done ? 'Прожектор больше не отказывает' : `Шанс отказа ${(lightFailChance(s) * 100).toFixed(1)}% · ур. ${sc.reliability}/${RELIABILITY_MAX}`;
+          const why = done ? '' : `Чем больше куча за всю игру, тем чаще отказы. ${RELIABILITY_MAX}-й уровень убирает их совсем.`;
+          failures.textContent = sc.failures > 0 ? `Отказов было: ${sc.failures}. ${why}` : why;
           const cost = reliabilityCost(sc.reliability);
-          price.textContent = `${format(cost)} ВС`;
-          button.disabled = s.recycle.points.lt(cost);
-          button.style.setProperty('--p', String(progress(s.recycle.points, cost)));
+          price.textContent = done ? 'МАКС' : `${format(cost)} ВС`;
+          button.disabled = done || s.recycle.points.lt(cost);
+          button.style.setProperty('--p', done ? '1' : String(progress(s.recycle.points, cost)));
         });
         row.append(info, button);
         box.append(row);
@@ -419,9 +425,20 @@ export class AutomationPanel {
     }
     this.speedMeta.textContent = `такт ${scriptTick(state).toFixed(2)} с`;
     const cost = speedCost(sc.speed);
-    this.speedPrice.textContent = `ур. ${sc.speed} · ${format(cost)} ВС`;
-    this.speedButton.disabled = state.recycle.points.lt(cost);
-    this.speedButton.style.setProperty('--p', String(progress(state.recycle.points, cost)));
+    const school = cityEffects(state.city).schools > 0;
+    if (school || sc.speed >= SPEED_MAX) {
+      this.speedPrice.textContent = school ? 'не нужен' : `ур. ${SPEED_MAX} · МАКС`;
+      this.speedText.textContent = school
+        ? 'Школа в городе: скрипты покупок срабатывают сразу, такт им больше не нужен.'
+        : 'Скрипты покупок срабатывают так часто, как только можно.';
+      this.speedButton.disabled = true;
+      this.speedButton.style.setProperty('--p', '1');
+    } else {
+      this.speedPrice.textContent = `ур. ${sc.speed}/${SPEED_MAX} · ${format(cost)} ВС`;
+      this.speedText.textContent = `Скрипты покупок срабатывают на 50% чаще за уровень, до ${SPEED_MAX}-го.`;
+      this.speedButton.disabled = state.recycle.points.lt(cost);
+      this.speedButton.style.setProperty('--p', String(progress(state.recycle.points, cost)));
+    }
 
     this.syncChips(state);
     for (const b of this.chips.children) {

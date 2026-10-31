@@ -5,7 +5,8 @@ import type { TrackDef } from './infinite';
 /**
  * Scripts on the Automation tab: each does one chore on its own. Two come from the
  * Recycling tree (the auto-buyer and the auto-recycler); the rest are installed for
- * Recycled material. Speed and the floodlight's reliability level up without end.
+ * Recycled material. Speed and the floodlight's reliability level up to a cap; the last
+ * reliability level stops the floodlight failing.
  */
 
 export type ScriptId = 'producers' | 'upgrades' | 'endless' | 'recycle' | 'light' | 'sort' | 'tree' | 'line';
@@ -124,6 +125,10 @@ export const FAST_TICK = 0.25;
 /** With the foreman from the tree. */
 export const FOREMAN_TICK = 0.1;
 export const SPEED_STEP = 0.5;
+/** Speed stops here: the scripts tick four times as often, about as often as anything needs buying. */
+export const SPEED_MAX = 6;
+/** The last level of reliability fixes the floodlight for good: it no longer fails. */
+export const RELIABILITY_MAX = 8;
 export const speedCost = (level: number) => D(20).mul(Decimal.pow(3, level));
 export const reliabilityCost = (level: number) => D(25).mul(Decimal.pow(2.5, level));
 
@@ -139,6 +144,7 @@ const START_DEPTH_M = 5000;
 /** Chance the automatic floodlight fails: the closer the thing, the likelier. */
 export function failChance(depth: Decimal, reliability: number): number {
   const closer = Math.max(0, D(START_DEPTH_M).div(depth.max(D('1e-300'))).log10().toNumber());
+  if (reliability >= RELIABILITY_MAX) return 0;
   return Math.min(FAIL_MAX, FAIL_BASE + FAIL_PER_DIGIT * closer) * RELIABILITY_STEP ** reliability;
 }
 
