@@ -375,7 +375,11 @@ export class SortingPanel {
       parts.push(this.belt(letters(after), i === n - 1 ? 'last' : '').el);
     }
     parts.push(el('div', 's-heap bad', '▼ ОБРАТНО В КУЧУ'));
+    // Hold the old height until the new list has laid out, or the page shrinks for a moment
+    // under the finger and the browser scrolls it.
+    this.lineList.style.minHeight = `${this.lineList.offsetHeight}px`;
     this.lineList.replaceChildren(...parts);
+    window.setTimeout(() => (this.lineList.style.minHeight = ''), 500);
   }
 
   private stationCard(state: GameState, i: number, id: StationId | null, slot: { caught: number; spoiled: number } | undefined): HTMLElement {
@@ -560,13 +564,21 @@ export class SortingPanel {
     const so = state.sorting;
     const n = slotCount(so);
     const sig = `${n}|${so.line.slice(0, n).join()}|${so.recipes.join()}|${JSON.stringify(so.levels)}`;
+    // The list is rebuilt under the finger that just bought a level: the page must not move.
+    // Its belts fill in a moment later, so the scroll goes back only once everything is in.
+    let keep: { y: number; focused?: string } | null = null;
     if (sig !== this.lineFor) {
       this.lineFor = sig;
+      keep = { y: window.scrollY, focused: document.activeElement?.id };
       this.buildLineList(state);
     }
     const rate = ratePerSecond(state);
     for (const update of this.slotUpdaters) update(state, rate);
     this.animate();
+    if (keep) {
+      window.scrollTo(0, keep.y);
+      if (keep.focused) document.getElementById(keep.focused)?.focus({ preventScroll: true });
+    }
     const { tails } = runLine(so.line.slice(0, n), so.levels);
     this.tails.textContent = `${Math.round(tails * 100)}% мусора уходит обратно в кучу — угроза растёт в ${threatSpeed(so).toFixed(2)} раза быстрее.`;
     this.tails.classList.toggle('bad', tails > 0.5);
