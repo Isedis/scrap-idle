@@ -16,7 +16,7 @@ import {
 } from '../game/city';
 import { format } from '../game/num';
 import { canReform, reformGainOf, type GameState } from '../game/state';
-import { el } from './dom';
+import { el, textBar } from './dom';
 import { TownCam } from './townCam';
 import { TownPlan } from './townPlan';
 
@@ -46,6 +46,10 @@ export class CityPanel {
   private reformButton!: HTMLButtonElement;
   private armed = 0;
   private shown = '';
+  private locked!: HTMLElement;
+  private lockedText!: HTMLElement;
+  private lockedBar!: HTMLElement;
+  private openPart!: HTMLElement;
 
   constructor(
     private getState: () => GameState,
@@ -100,19 +104,21 @@ export class CityPanel {
       this.reformButton,
     );
 
+    // Before the town opens: the plan behind glass, and how far there is to go.
+    this.locked = el('div', 'c-locked');
+    this.lockedText = el('div', 'c-card-text');
+    this.lockedBar = el('div', 'c-locked-bar');
+    this.locked.append(el('div', 'c-card-title', 'Город закрыт'), this.lockedText, this.lockedBar);
+    this.openPart = el('div', 'c-open');
+    this.openPart.append(this.card, this.effects, lettersHead, this.letters, this.moreLetters, reformHead, reform);
     this.root.append(
       this.camera.root,
       head,
       el('p', 's-why', 'Город отдаёт кварталы под полигон. Присоединять можно только те, что граничат со свалкой; каждый следующий дороже. Квартал сильнее рядом со своими.'),
+      this.locked,
       this.people,
       this.plan.root,
-      this.card,
-      this.effects,
-      lettersHead,
-      this.letters,
-      this.moreLetters,
-      reformHead,
-      reform,
+      this.openPart,
     );
   }
 
@@ -137,6 +143,14 @@ export class CityPanel {
 
   render(state: GameState): void {
     const city = state.city;
+    this.locked.hidden = city.open;
+    this.openPart.hidden = !city.open;
+    this.plan.root.classList.toggle('closed', !city.open);
+    if (!city.open) {
+      const n = state.sorting.sorts;
+      this.lockedText.textContent = `Горсовет отдаст город после ${REFORM_SORTS} пересортировок за один цикл сортировки. Сейчас: ${n} из ${REFORM_SORTS}. Реформа сожжёт почти всё, но город останется навсегда.`;
+      this.lockedBar.textContent = textBar(n / REFORM_SORTS, 18);
+    }
     this.meta.textContent = `кварталов ${city.owned.length - 1}/${DISTRICTS.length - 1} · ${format(city.points)} га`;
     this.people.textContent = `жителей: ${peopleLeft(city).toLocaleString('ru-RU')}`;
 

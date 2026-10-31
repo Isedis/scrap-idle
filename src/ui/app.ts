@@ -899,7 +899,8 @@ export class App {
   /** The town: its button on the switch once it opens, and the view when it is on screen. */
   private renderCity(state: GameState): void {
     const city = state.city;
-    this.layerButtons.get('city')!.hidden = !city.open;
+    // The town shows on the switch with the line, closed until it offers itself: a goal in sight.
+    this.layerButtons.get('city')!.hidden = !state.sorting.open && !city.open;
     if (city.open && !this.knownCityOpen) {
       this.knownCityOpen = true;
       if (city.reforms === 0 && city.owned.length === 1) {
