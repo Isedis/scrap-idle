@@ -25,6 +25,7 @@ import {
   fractionsIncome,
   inspectSeconds,
   levelCost,
+  MAX_LEVEL,
   levelsOf,
   lineRates,
   moveStation,
@@ -460,7 +461,18 @@ export class SortingPanel {
         const level = lvNow[kind];
         const cost = levelCost(level, kind);
         const have = so.fractions[def.pays];
-        lbl.textContent = `${label} · ур. ${level}`;
+        // At the top the button says so and stays out of the way.
+        if (level >= MAX_LEVEL) {
+          lbl.textContent = `${label} · макс`;
+          change.textContent = levelEffect(id, kind, level);
+          gain.textContent = '';
+          price.textContent = 'МАКС';
+          b.disabled = true;
+          b.classList.add('maxed');
+          b.style.setProperty('--p', '1');
+          return;
+        }
+        lbl.textContent = `${label} · ур. ${level}/${MAX_LEVEL}`;
         change.textContent = `${levelEffect(id, kind, level)} → ${levelEffect(id, kind, level + 1)}`;
         // What the next level adds to the whole line, per minute, and to the tails.
         const next = { ...so, levels: { ...so.levels, [id]: { ...lvNow, [kind]: level + 1 } } };

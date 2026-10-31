@@ -67,6 +67,13 @@ export const press = (speed: number) => 1.5 + 0.1 * speed;
 /** Share of what passes that the crusher grinds away. */
 export const crush = (purity: number) => 1 - 0.5 * 0.85 ** purity;
 
+/**
+ * Station levels stop here: past it each level added under a percent. At the top a station
+ * catches 95% of its fraction and spoils under 1% of the rest, the briquetter presses ×3,
+ * the crusher grinds 96% of the tails.
+ */
+export const MAX_LEVEL = 15;
+
 export const speedCost = (level: number) => D(10).mul(Decimal.pow(1.8, level));
 export const purityCost = (level: number) => D(15).mul(Decimal.pow(2, level));
 
@@ -435,6 +442,7 @@ export function buyLevel(s: SortingState, id: StationId, kind: LevelKind): boole
   const def = stationById(id);
   if (!def || !stationOpen(s, def)) return false;
   const lv = levelsOf(s, id);
+  if (lv[kind] >= MAX_LEVEL) return false;
   const cost = levelCost(lv[kind], kind);
   if (s.fractions[def.pays].lt(cost)) return false;
   s.fractions[def.pays] = s.fractions[def.pays].sub(cost);

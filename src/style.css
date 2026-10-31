@@ -1624,3 +1624,5 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .r-fold-meta { color: var(--mid); font-weight: 400; letter-spacing: 0; }
 .r-branch.folded > :not(.r-fold) { display: none; }
 .r-branch.folded .r-fold { color: var(--dim); }
+.s-level.maxed { border-color: var(--line); color: var(--dim); }
+.s-level.maxed .buy-price { color: var(--dim); }

@@ -362,3 +362,18 @@ describe('save v8', () => {
     for (const f of FRACS) expect(back.sorting.fractions[f].gte(0)).toBe(true);
   });
 });
+
+describe('station levels', () => {
+  it('stop at the top, where another level would add under a percent', async () => {
+    const { MAX_LEVEL, buyLevel, newSorting, capture } = await import('../src/game/sorting');
+    const { D } = await import('../src/game/num');
+    const s = newSorting();
+    s.open = true;
+    s.fractions = { plastic: D(1e30), metal: D(1e30), glass: D(1e30), paper: D(1e30) };
+    for (let i = 0; i < MAX_LEVEL; i++) expect(buyLevel(s, 'optic', 'speed')).toBe(true);
+    expect(buyLevel(s, 'optic', 'speed')).toBe(false);
+    expect(s.levels.optic!.speed).toBe(MAX_LEVEL);
+    expect(capture(MAX_LEVEL) - capture(MAX_LEVEL - 1)).toBeLessThan(0.01);
+  });
+});
+
