@@ -199,12 +199,12 @@ export interface RepeatDef {
 /** Bought with Recycled material, any number of times, after the tree; never reset by recycling. */
 export const REPEATS: readonly RepeatDef[] = [
   { id: 'memory', name: 'Память кучи', text: 'Весь доход ×1.2 за уровень', baseCost: D(50), growth: 2.5 },
-  { id: 'recipe', name: 'Рецепт переработки', text: 'Вторсырья за переработку ×1.1 за уровень', baseCost: D(100), growth: 3 },
+  { id: 'recipe', name: 'Рецепт переработки', text: 'Вторсырья за переработку ×1.05 за уровень', baseCost: D(100), growth: 3 },
 ];
 
 export const MEMORY_MULT = 1.2;
 /** Each level multiplies the gain: a fixed +10% soon stopped mattering against a price that triples. */
-export const RECIPE_MULT = 1.1;
+export const RECIPE_MULT = 1.05;
 
 export const repeatById = (id: string) => REPEATS.find((r) => r.id === id);
 

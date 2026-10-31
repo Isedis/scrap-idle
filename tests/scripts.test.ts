@@ -293,9 +293,9 @@ describe('the audit fixes', () => {
     const { darkPeak } = await import('../src/game/infinite');
     const { gainMult, newLayer } = await import('../src/game/layers');
     expect(darkPeak({ dark: 0 }, 0.5)).toBeCloseTo(1.5);
-    expect(darkPeak({ dark: 10 }, 0.5)).toBeCloseTo(1 + 0.5 * 1.2 ** 10);
+    expect(darkPeak({ dark: 10 }, 0.5)).toBeCloseTo(1 + 0.5 * 1.1 ** 10);
     const layer = newLayer();
     layer.repeats.recipe = 10;
-    expect(gainMult(layer)).toBeCloseTo(1.1 ** 10);
+    expect(gainMult(layer)).toBeCloseTo(1.05 ** 10);
   });
 });

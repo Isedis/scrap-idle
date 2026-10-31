@@ -42,10 +42,10 @@ export const TRACKS: readonly TrackDef[] = [
   {
     id: 'dark',
     name: 'Тёмный договор',
-    text: 'Бонус в темноте ×1.2 за уровень',
+    text: 'Бонус в темноте ×1.1 за уровень',
     flavor: 'Куча отдаёт больше, если не смотреть. Условия договора мелким шрифтом',
     baseCost: D(1e12),
-    growth: 8,
+    growth: 12,
     unlockAt: D(1e11),
   },
 ];
@@ -63,7 +63,7 @@ export const COMPACT_MULT = 1.25;
 /** Units every bought producer counts toward its milestones per Bulk level. */
 export const BULK_HEAD_START = 5;
 /** Each Dark Pact level makes what the dark adds this many times bigger. */
-export const DARK_GROWTH = 1.2;
+export const DARK_GROWTH = 1.1;
 /** Every this many Compaction levels ever bought, the terminal marks the thing rising. */
 export const COMPACT_MILESTONE = 10;
 /** Compaction levels ever bought count as this many extra powers of ten for the depth. */

@@ -63,7 +63,7 @@ describe('endless upgrades', () => {
     s.threat.level = 0.5;
     const dark = producerRate(s, 'collector').toNumber();
     buyTrack(s, 'dark');
-    expect(producerRate(s, 'collector').toNumber()).toBeCloseTo((dark / 1.5) * 1.6);
+    expect(producerRate(s, 'collector').toNumber()).toBeCloseTo((dark / 1.5) * 1.55);
   });
 
   it('start over with the run, but compaction keeps the thing closer', () => {
@@ -102,7 +102,7 @@ describe('endless recycling nodes', () => {
     s.runTrash = RECYCLE_AT.mul(16);
     const before = currentGain(s).toNumber();
     expect(buyRepeat(s, 'recipe')).toBe(true);
-    expect(currentGain(s).toNumber()).toBe(Math.floor(before * 1.1));
+    expect(currentGain(s).toNumber()).toBe(Math.floor(before * 1.05));
     expect(s.recycle.points.toNumber()).toBe(1e6 - repeatCost(REPEATS[0], 0).toNumber() - repeatCost(REPEATS[1], 0).toNumber());
   });
 
