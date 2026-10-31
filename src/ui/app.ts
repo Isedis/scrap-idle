@@ -1113,6 +1113,24 @@ export class App {
     this.updateCredit.hidden = !this.updateCredit.textContent;
     panel.append(this.updateStatus, this.updateCredit, this.updateButton);
 
+    // The debug button without typing ?debug: a copy started from the home screen has no address bar.
+    panel.append(el('h2', 'panel-title', 'Отладка'));
+    const debugNote = el('p', 'note', 'Кнопка DBG: ускорить, открыть слой, посмотреть готовое сохранение. Просмотр сохранения не трогает вашу игру.');
+    const debugButton = el('button', 'btn update-btn');
+    debugButton.type = 'button';
+    let debugging = false;
+    try { debugging = localStorage.getItem('scrap-idle-debug') === '1'; } catch { /* Storage may be unavailable. */ }
+    debugButton.textContent = debugging ? 'Выключить кнопку DBG' : 'Включить кнопку DBG';
+    debugButton.addEventListener('click', () => {
+      try {
+        if (debugging) localStorage.removeItem('scrap-idle-debug');
+        else localStorage.setItem('scrap-idle-debug', '1');
+      } catch { /* Without storage the switch cannot stick. */ }
+      writeSave(this.getState());
+      location.reload();
+    });
+    panel.append(debugNote, debugButton);
+
     panel.append(el('h2', 'panel-title', 'Вид интерфейса'));
     const interfaceStatus = el('p', 'note');
     const rollback = el('button', 'btn update-btn');

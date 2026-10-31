@@ -1,5 +1,5 @@
 import { DEBUG_ACTIONS } from '../game/debug';
-import { deserialize, writeSave } from '../game/save';
+import { deserialize, startPreview, writeSave } from '../game/save';
 import type { GameState } from '../game/state';
 import type { App } from './app';
 import { el } from './dom';
@@ -22,6 +22,17 @@ const FIXTURE_NAMES: Record<string, string> = {
   'city-late': 'Город почти весь',
   bottom: 'Дно ямы',
 };
+
+/** The strip across the top while a preview runs, with the way back. */
+function showPreviewBar(): void {
+  if (document.querySelector('.dbg-preview')) return;
+  const bar = el('div', 'dbg-preview');
+  const back = el('button', 'btn dbg-btn', 'Вернуться к своей игре');
+  back.type = 'button';
+  back.addEventListener('click', () => location.reload());
+  bar.append(el('span', '', 'ПРЕДПРОСМОТР · прогресс не сохраняется'), back);
+  document.body.append(bar);
+}
 
 /** ?debug turns the panel on and keeps it on (the home-screen copy drops the query); ?debug=0 turns it off. */
 export function debugOn(): boolean {
@@ -65,8 +76,17 @@ export function mountDebug(app: App, getState: () => GameState): void {
     b.type = 'button';
     b.addEventListener('click', async () => {
       const state = deserialize(await load());
-      if (state) app.loadState(state, `Загружено: ${FIXTURE_NAMES[id] ?? id}`);
+      if (!state) return;
+      // A look, not a swap: the player's save stays as it was, nothing is written until reload.
+      startPreview();
+      app.loadState(state, `Предпросмотр: ${FIXTURE_NAMES[id] ?? id}`);
+      showPreviewBar();
       panel.hidden = true;
+      // The bottom of the pit is what one comes to look at: open it straight away.
+      if (id === 'bottom') {
+        document.getElementById('tab-recycle')?.click();
+        document.getElementById('layer-bottom')?.click();
+      }
     });
     saves.append(b);
   }
@@ -83,6 +103,6 @@ export function mountDebug(app: App, getState: () => GameState): void {
     panel.remove();
   });
 
-  panel.append(el('div', 'dbg-head', 'Отладка'), grid, el('div', 'dbg-head', 'Сохранения (заменят игру)'), saves, off);
+  panel.append(el('div', 'dbg-head', 'Отладка (меняет игру)'), grid, el('div', 'dbg-head', 'Посмотреть сохранение (твоя игра не тронется)'), saves, off);
   document.body.append(toggle, panel);
 }

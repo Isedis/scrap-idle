@@ -1744,3 +1744,20 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .bottom .btn:disabled { opacity: 0.38; }
 .b-row.done .b-row-sub { display: none; }
 .b-row.done { padding-block: 2px; }
+.dbg-preview {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: calc(env(safe-area-inset-top) + 4px) 8px 4px;
+  background: rgb(40 8 4 / 0.95);
+  border-bottom: 1px dashed var(--danger);
+  color: var(--danger);
+  font: 700 11px var(--font);
+}
+.dbg-preview .dbg-btn { min-height: 44px; border-color: var(--danger); color: var(--danger); }

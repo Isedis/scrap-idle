@@ -563,7 +563,13 @@ function storage(): Storage | null {
   }
 }
 
+/** While a preview runs, nothing is written: the player's own save waits untouched. */
+let previewing = false;
+export const startPreview = () => void (previewing = true);
+export const isPreview = () => previewing;
+
 export function writeSave(state: GameState): void {
+  if (previewing) return;
   const store = storage();
   if (!store) return;
   try {
