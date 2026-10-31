@@ -45,11 +45,11 @@ import {
   stationOpen,
   type StationId,
 } from './sorting';
-import { PRODUCERS, milestonesReached, producerById } from './producers';
+import { COST_GROWTH, PRODUCERS, milestonesReached, nextMilestone, producerById } from './producers';
 import { upgradeById } from './upgrades';
 import { NODES, REPEATS, canBuyNode, repeatCost } from './layers';
 import { trackCost } from './infinite';
-import type { Decimal } from './num';
+import { D, type Decimal } from './num';
 
 export interface PaceEvent {
   /** Seconds of play. */
@@ -76,10 +76,23 @@ interface Option {
   /** Seconds to earn the extra income back. */
   payback: number;
   apply: (s: GameState) => void;
+  /** Set for units of a producer bought one at a time: the bot buys them in handfuls. */
+  producer?: string;
 }
 
 /** Recycle once the gain at least matches what was earned before, or the run drags on past this. */
 const RECYCLE_PATIENCE = 45 * 60;
+/** The bot simulates in five-second slices: the threat moves slowly enough, and it is five times less work. */
+const BOT_SLICE = 5;
+/** Purchases between full counts of the upgrades and endless upgrades. */
+const FULL_EVERY = 8;
+/**
+ * A producer stays the best buy for a handful of units: as long as its payback, up 1.15 per
+ * unit, stays within this factor of the runner-up's. The bot waits for the handful and buys
+ * it at once, as a player would, instead of a unit every fraction of a second.
+ */
+const HANDFUL_SLACK = 1.5;
+const HANDFUL_MAX = 10;
 /** The bot reforms once this long has passed since the last resort with no new one in reach. */
 const REFORM_PATIENCE = 20 * 60;
 /** Districts by what they are worth to a player racing to the pit: income first. */
@@ -99,7 +112,7 @@ const BOT_LINE: StationId[] = ['optic', 'blower', 'magnet', 'sieve', 'briquetter
 
 export function simulate(
   seconds: number,
-  opts: { recycle?: boolean; sort?: boolean; city?: boolean; snap?: (s: GameState, what: string) => void } = {},
+  opts: { recycle?: boolean; sort?: boolean; city?: boolean; snap?: (s: GameState, what: string, t: number) => void } = {},
 ): Simulation {
   const s = newGame(0);
   s.buyMode = 'one';
@@ -107,7 +120,7 @@ export function simulate(
   // Every logged moment can also hand the live state out, for save fixtures.
   const log = (e: PaceEvent) => {
     events.push(e);
-    opts.snap?.(s, e.what);
+    opts.snap?.(s, e.what, e.t);
   };
   const runs: RunReport[] = [];
   let run: RunReport = { recycleReadyAt: null, seconds: 0, gain: 0 };
@@ -132,7 +145,9 @@ export function simulate(
     }
   };
 
-  const options = (): Option[] => {
+  /** Upgrades and endless upgrades from the last full count; refreshed every few purchases. */
+  let others: Option[] = [];
+  const options = (full = true): Option[] => {
     // Every option is judged by how much income it adds. Most touch one or two producers,
     // so only those are worked out again; the rest of the income stays as it is.
     const shared = sharedMult(s);
@@ -168,8 +183,10 @@ export function simulate(
       const extra = gainIn((c) => (c.owned[id] = (c.owned[id] ?? 0) + 1), [...new Set(fedBy(id))]);
       // Players try a new producer early out of curiosity, so the first unit gets a head start.
       const curiosity = (s.owned[id] ?? 0) === 0 ? 4 : 1;
-      if (extra > 0) list.push({ cost, payback: cost.toNumber() / extra / curiosity, apply: (st) => void buy(st, id, rich ? 'max' : 'one') });
+      if (extra > 0) list.push({ cost, payback: cost.toNumber() / extra / curiosity, apply: (st) => void buy(st, id, rich ? 'max' : 'one'), producer: rich ? undefined : id });
     }
+    if (!full) return [...list, ...others];
+    const producers = list.length;
     for (const t of visibleTracks(s)) {
       const cost = trackCost(t, trackLevel(s, t.id));
       const up = (c: GameState) => void (c.tracks[t.id] = trackLevel(c, t.id) + 1);
@@ -189,6 +206,7 @@ export function simulate(
             : gainIn(push, [e.target], true);
       if (extra > 0) list.push({ cost: u.cost, payback: u.cost.toNumber() / extra, apply: (st) => void buyUpgrade(st, u.id) });
     }
+    others = list.slice(producers);
     return list;
   };
 
@@ -238,6 +256,12 @@ export function simulate(
     }
   };
   let lastResortAt = 0;
+
+  let best: Option | null = null;
+  let bestAt = -1;
+  let bought = 0;
+  let handful = 1;
+  let target: Decimal = D(0);
 
   let lastSpend = -Infinity;
   let sortOpenLogged = false;
@@ -304,16 +328,42 @@ export function simulate(
     }
     // An attentive player rides the dark bonus to its peak and then switches the floodlight on.
     if (s.threat.level >= LIGHT_AT) lightUp(s);
-    const best = options().sort((a, b) => a.payback - b.payback)[0];
+    // The ranking holds until something is bought or something new shows up: waiting only
+    // adds trash, and the threat scales every option alike. A full count when something new
+    // showed up or every few purchases; in between only the producers are worked out again.
+    if (!best || events.length !== bestAt) {
+      const full = events.length !== bestAt || bought >= FULL_EVERY;
+      if (full) bought = 0;
+      const ranked = options(full).sort((a, b) => a.payback - b.payback);
+      best = ranked[0];
+      bestAt = events.length;
+      handful = 1;
+      // Not in the first run, which the pacing checks minute by minute, and not for a first
+      // unit: its payback carries the curiosity head start.
+      if (best.producer && best.payback > 0 && s.recycle.resets > 0 && (s.owned[best.producer] ?? 0) > 0) {
+        const runnerUp = ranked[1]?.payback ?? Infinity;
+        const id = best.producer;
+        const units = milestoneUnits(s, id);
+        // A milestone changes what a unit makes: stop short of it and look again.
+        const room = nextMilestone(units) - units;
+        const more = Math.floor(Math.log((runnerUp * HANDFUL_SLACK) / best.payback) / Math.log(COST_GROWTH));
+        handful = Math.max(1, Math.min(more + 1, room, HANDFUL_MAX));
+      }
+      target = handful > 1 ? best.cost.mul(Math.pow(COST_GROWTH, handful) - 1).div(COST_GROWTH - 1) : best.cost;
+    }
     // In Decimals: late in the game trash runs past what a number holds.
-    const wait = s.trash.gte(best.cost) ? 0 : best.cost.sub(s.trash).div(ratePerSecond(s)).toNumber();
+    const wait = s.trash.gte(target) ? 0 : target.sub(s.trash).div(ratePerSecond(s)).toNumber();
     // Step in slices so unlocks are timed accurately.
     const step = Math.min(wait, 10, seconds - t);
-    advance(s, step);
+    advance(s, step, false, BOT_SLICE);
     t += step;
     note();
-    if (step === wait && s.trash.gte(best.cost)) {
-      best.apply(s);
+    if (step === wait && s.trash.gte(target)) {
+      if (best.producer) for (let k = 0; k < handful; k++) buy(s, best.producer, 'one');
+      else best.apply(s);
+      // An upgrade or an endless level changes what everything is worth: count it all again.
+      bought = others.includes(best) ? FULL_EVERY : bought + 1;
+      best = null;
       note();
     }
   }

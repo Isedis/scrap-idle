@@ -384,7 +384,18 @@ export function threatSpeed(s: SortingState): number {
 export const fractionsIncome = (total: Decimal) => total.sqrt().div(10).add(1);
 
 /** Income multiplier from Sorting: resorts, fractions ever earned, recipes, finds and ranks. */
+/** The last answer per line, with what it was worked out from: income asks every slice. */
+const incomeCache = new WeakMap<SortingState, { sorts: number; total: Decimal; recipes: number; found: number; v: Decimal }>();
+
 export function sortingIncome(s: SortingState): Decimal {
+  const hit = incomeCache.get(s);
+  if (hit && hit.sorts === s.sorts && hit.total === s.total && hit.recipes === s.recipes.length && hit.found === s.found.length) return hit.v;
+  const v = sortingIncomeOf(s);
+  incomeCache.set(s, { sorts: s.sorts, total: s.total, recipes: s.recipes.length, found: s.found.length, v });
+  return v;
+}
+
+function sortingIncomeOf(s: SortingState): Decimal {
   return Decimal.pow(SORT_INCOME, s.sorts)
     .mul(fractionsIncome(s.total))
     .mul((hasRecipe(s, 'e1') ? 3 : 1) * uniqueMult(s, 'income') * rankIncome(s.sorts));

@@ -1,3 +1,4 @@
+import { appendFileSync, writeFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { longestGap, simulate, type Simulation } from '../src/game/bot';
 
@@ -105,7 +106,15 @@ describe.runIf(process.env.PACE_REFORM)('pacing: the reform and the pit', () => 
   let events: Simulation['events'] = [];
   const hours = Number(process.env.PACE_HOURS ?? 14);
   beforeAll(() => {
-    ({ events } = simulate(hours * hour, { recycle: true, sort: true, city: true }));
+    // Each event goes to a file as it happens: a long run can be watched, and survives a crash.
+    const live = process.env.PACE_LOG;
+    if (live) writeFileSync(live, '');
+    ({ events } = simulate(hours * hour, {
+      recycle: true,
+      sort: true,
+      city: true,
+      snap: live ? (_s, what, t) => appendFileSync(live, `${hm(t)} ${what}\n`) : undefined,
+    }));
     for (const e of events.filter((e) => /РЕФОРМА|ЯМА|город|квартал (1|10|20|30|40|47)\//.test(e.what))) console.log(hm(e.t).padStart(6), e.what);
     const districts = events.filter((e) => e.what.startsWith('квартал'));
     console.log(`кварталов: ${districts.length}, реформ: ${events.filter((e) => e.what.startsWith('РЕФОРМА')).length}`);

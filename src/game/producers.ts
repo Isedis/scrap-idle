@@ -34,16 +34,20 @@ export function producerById(id: string): ProducerDef | undefined {
   return PRODUCER_BY_ID.get(id);
 }
 
+/** COST_GROWTH to the power of n, kept: prices are asked for all the time, and pow is slow. */
+const growthPows: Decimal[] = [];
+const growthPow = (n: number) => (n < 5000 ? (growthPows[n] ??= Decimal.pow(COST_GROWTH, n)) : Decimal.pow(COST_GROWTH, n));
+
 /** Price of the next unit when `owned` units are already bought; `mult` is a discount from bonuses. */
 export function costOf(def: ProducerDef, owned: number, mult = 1): Decimal {
-  return def.baseCost.mul(Decimal.pow(COST_GROWTH, owned)).mul(mult);
+  return def.baseCost.mul(growthPow(owned)).mul(mult);
 }
 
 /** Price of `count` units bought one after another, starting at `owned`. */
 export function costOfMany(def: ProducerDef, owned: number, count: number, mult = 1): Decimal {
   if (count <= 0) return D(0);
   // Geometric series: first · (g^n − 1) / (g − 1).
-  return costOf(def, owned, mult).mul(Decimal.pow(COST_GROWTH, count).sub(1)).div(COST_GROWTH - 1);
+  return costOf(def, owned, mult).mul(growthPow(count).sub(1)).div(COST_GROWTH - 1);
 }
 
 /** How many units `budget` buys right now, starting at `owned`. */

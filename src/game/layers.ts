@@ -156,7 +156,18 @@ export function isNodeOpen(layer: LayerState, node: NodeDef): boolean {
 // ---- Effects, read by the rest of the game ----------------------------------
 
 /** Multiplier on all production from Recycling: the passive bonus and the production branch. */
+const prodCache = new WeakMap<LayerState, { total: Decimal; nodes: number; memory: number; v: Decimal }>();
+
 export function recycleProductionMult(layer: LayerState): Decimal {
+  const memory = layer.repeats.memory ?? 0;
+  const hit = prodCache.get(layer);
+  if (hit && hit.total === layer.total && hit.nodes === layer.nodes.length && hit.memory === memory) return hit.v;
+  const v = productionMultOf(layer);
+  prodCache.set(layer, { total: layer.total, nodes: layer.nodes.length, memory, v });
+  return v;
+}
+
+function productionMultOf(layer: LayerState): Decimal {
   let mult = passiveBonus(layer.total).mul(Decimal.pow(MEMORY_MULT, layer.repeats.memory ?? 0));
   if (hasNode(layer, 'p1')) mult = mult.mul(2);
   if (hasNode(layer, 'p3')) mult = mult.mul(3);

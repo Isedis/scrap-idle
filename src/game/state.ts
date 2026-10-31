@@ -229,6 +229,15 @@ export function incomeBreakdown(state: GameState): { base: Decimal; parts: Incom
   return { base, parts: parts.filter((p) => !p.mult.eq(1)) };
 }
 
+/** Milestone multipliers, kept by base and count: income is asked for all the time, and pow is slow. */
+const milestonePows = new Map<number, Decimal>();
+function milestonePow(base: number, n: number): Decimal {
+  const key = base * 100000 + n;
+  let v = milestonePows.get(key);
+  if (!v) milestonePows.set(key, (v = Decimal.pow(base, n)));
+  return v;
+}
+
 /** Output of all units of one producer per second, with every bonus applied. */
 export function producerRate(state: GameState, id: string, shared: Decimal = sharedMult(state)): Decimal {
   const def = producerById(id);
@@ -237,21 +246,19 @@ export function producerRate(state: GameState, id: string, shared: Decimal = sha
   const fx = upgradeEffects(state.upgrades);
   let bonus = 0;
   for (const syn of fx.synergies) if (syn.target === id) bonus += syn.perUnit * owned(state, syn.source);
-  return def.baseRate
-    .mul(n)
-    .mul(Decimal.pow(milestoneBase(state.recycle), milestonesReached(milestoneUnits(state, id))))
-    .mul(shared)
-    .mul(fx.global)
-    .mul(fx.producer.get(id) ?? 1)
-    .mul(1 + bonus);
+  // The small factors (count, upgrades, synergies) multiply as plain numbers first: income is
+  // asked for all the time, and every multiplication of a Decimal costs.
+  const small = n * fx.global * (fx.producer.get(id) ?? 1) * (1 + bonus);
+  return def.baseRate.mul(small).mul(milestonePow(milestoneBase(state.recycle), milestonesReached(milestoneUnits(state, id)))).mul(shared);
 }
 
 /** What the bought upgrades add up to; worked out once per list, since income is asked for all the time. */
 interface UpgradeEffects {
   /** Length of the list when worked out: the list only grows until it is replaced. */
   count: number;
-  global: Decimal;
-  producer: Map<string, Decimal>;
+  /** Products of a handful of ×1.5 to ×2: plain numbers are plenty. */
+  global: number;
+  producer: Map<string, number>;
   synergies: { target: string; source: string; perUnit: number }[];
 }
 
@@ -260,12 +267,12 @@ const effectsCache = new WeakMap<readonly string[], UpgradeEffects>();
 function upgradeEffects(list: readonly string[]): UpgradeEffects {
   const cached = effectsCache.get(list);
   if (cached && cached.count === list.length) return cached;
-  const fx: UpgradeEffects = { count: list.length, global: D(1), producer: new Map(), synergies: [] };
+  const fx: UpgradeEffects = { count: list.length, global: 1, producer: new Map(), synergies: [] };
   for (const uid of list) {
     const e = upgradeById(uid)?.effect;
     if (!e) continue;
-    if (e.kind === 'producer') fx.producer.set(e.target, (fx.producer.get(e.target) ?? D(1)).mul(e.mult));
-    else if (e.kind === 'global') fx.global = fx.global.mul(e.mult);
+    if (e.kind === 'producer') fx.producer.set(e.target, (fx.producer.get(e.target) ?? 1) * e.mult);
+    else if (e.kind === 'global') fx.global *= e.mult;
     else if (e.kind === 'synergy') fx.synergies.push({ target: e.target, source: e.source, perUnit: e.perUnit });
   }
   effectsCache.set(list, fx);
@@ -291,12 +298,12 @@ const OFFLINE_SLICES = 200;
  * passes, so long spans are simulated in slices. Offline, income is halved and the
  * threat climbs slowly and stops short of the edge.
  */
-export function advance(state: GameState, seconds: number, offline = false): void {
+export function advance(state: GameState, seconds: number, offline = false, sliceSeconds = SLICE_SECONDS): void {
   if (seconds <= 0) return;
   // Closed, the plant runs at normal load: louder is only for someone who is there to hear.
   const noise = state.hearing.noise;
   if (offline) state.hearing.noise = Math.min(noise, 1);
-  const slice = offline ? Math.max(seconds / OFFLINE_SLICES, SLICE_SECONDS) : SLICE_SECONDS;
+  const slice = offline ? Math.max(seconds / OFFLINE_SLICES, sliceSeconds) : sliceSeconds;
   for (let left = seconds; left > 0; left -= slice) {
     const dt = Math.min(slice, left);
     const town = cityEffects(state.city);
