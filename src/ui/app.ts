@@ -38,7 +38,7 @@ import { JournalPanel } from './journalPanel';
 import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
 import { CityPanel } from './cityPanel';
-import { LETTERS, districtById } from '../game/city';
+import { LETTERS, REFORM_SORTS, districtById } from '../game/city';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
 import { Sound } from './sound';
@@ -899,13 +899,12 @@ export class App {
   /** The town: its button on the switch once it opens, and the view when it is on screen. */
   private renderCity(state: GameState): void {
     const city = state.city;
-    // The town shows on the switch with the line, closed until it offers itself: a goal in sight.
-    this.layerButtons.get('city')!.hidden = !state.sorting.open && !city.open;
+    this.layerButtons.get('city')!.hidden = !city.open;
     if (city.open && !this.knownCityOpen) {
       this.knownCityOpen = true;
       if (city.reforms === 0 && city.owned.length === 1) {
-        this.toast('Город Глухово предлагает реформу. «Слои» → «Город»');
-        this.typeLine('ГОРСОВЕТ ГЛУХОВО: ОТДАЁМ КВАРТАЛЫ. ЗАБЕРИТЕ ЕГО ОТ НАС');
+        this.toast(`Новая вкладка: «Слои» → «Город». Реформа — после ${REFORM_SORTS} пересортировок`);
+        this.typeLine('ГОРСОВЕТ ГЛУХОВО: СКОРО ОТДАДИМ КВАРТАЛЫ. ЗАБЕРИТЕ ЕГО ОТ НАС');
         this.glitch(1);
       }
     }

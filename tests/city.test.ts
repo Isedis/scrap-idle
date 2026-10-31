@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DISTRICTS, REFORM_SORTS, annex, annexCost, canAnnex, cityEffects, districtById, newCity, peopleLeft, plan, TOWN_PEOPLE } from '../src/game/city';
+import { CITY_OPEN_SORTS, DISTRICTS, REFORM_SORTS, annex, annexCost, canAnnex, cityEffects, districtById, newCity, peopleLeft, plan, TOWN_PEOPLE } from '../src/game/city';
 import { advance, autoLine, autoTree, canReform, newGame, reform, resort, runScripts, scriptOwned, type GameState } from '../src/game/state';
 import { deserialize, serialize } from '../src/game/save';
 import { D } from '../src/game/num';
@@ -77,14 +77,17 @@ function readyToReform(): GameState {
 }
 
 describe('reform', () => {
-  it('needs enough resorts in one cycle; resorting that far opens the town', () => {
+  it('the town opens for a look at five resorts; the reform waits for nine', () => {
     const s = newGame(0);
     expect(canReform(s)).toBe(false);
     s.sorting.open = true;
-    s.sorting.sorts = REFORM_SORTS - 1;
-    s.recycle.total = D(1e20);
+    s.sorting.sorts = CITY_OPEN_SORTS - 1;
+    s.recycle.total = D(1e30);
     resort(s);
     expect(s.city.open).toBe(true);
+    expect(canReform(s)).toBe(false);
+    s.sorting.sorts = REFORM_SORTS;
+    expect(canReform(s)).toBe(true);
   });
 
   it('burns nearly everything for hectares; achievements, finds, story and the town stay', () => {

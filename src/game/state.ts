@@ -78,7 +78,7 @@ import {
 } from './sorting';
 import { REPEATS } from './layers';
 import { afterLoss, hearingTick, newHearing, noiseMult, type HearingState } from './hearing';
-import { REFORM_SORTS, cityEffects, schoolScripts, newCity, reformGain, type CityState } from './city';
+import { CITY_OPEN_SORTS, REFORM_SORTS, cityEffects, schoolScripts, newCity, reformGain, type CityState } from './city';
 import {
   FIRST_EVENT_SECONDS,
   FRESH_CASE_FACTOR,
@@ -310,7 +310,7 @@ export function advance(state: GameState, seconds: number, offline = false): voi
     if (pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
     if (!state.sorting.open && state.recycle.total.gte(SORT_AT)) state.sorting.open = true;
     // A player already past the resorts the town asks for finds it open too.
-    if (!state.city.open && state.sorting.sorts >= REFORM_SORTS) state.city.open = true;
+    if (!state.city.open && state.sorting.sorts >= CITY_OPEN_SORTS) state.city.open = true;
     if (hearingTick(state.hearing, dt, state.sorting.open, offline, Math.random, cityEffects(state.city).hearingFill) === 'check') silence(state);
     // At the edge production stops; the game plays the loss and calls loseShift or loseToHearing.
     if (state.threat.level >= 1 || state.hearing.phase === 'caught') break;
@@ -487,7 +487,7 @@ export function resort(state: GameState): Decimal {
   for (const f of FRACS) addFractions(s, f, gain.mul(shares[f]).floor());
   s.sorts += 1;
   // Enough resorts in one cycle, and the town offers itself.
-  if (s.sorts >= REFORM_SORTS) state.city.open = true;
+  if (s.sorts >= CITY_OPEN_SORTS) state.city.open = true;
   s.cycleSeconds = 0;
   const n = s.sorts;
 

@@ -2,6 +2,7 @@ import {
   ARCHIVE_PAGES,
   DISTRICTS,
   LETTERS,
+  CITY_OPEN_SORTS,
   REFORM_SORTS,
   TYPE_NAMES,
   TYPE_TEXT,
@@ -148,8 +149,8 @@ export class CityPanel {
     this.plan.root.classList.toggle('closed', !city.open);
     if (!city.open) {
       const n = state.sorting.sorts;
-      this.lockedText.textContent = `Горсовет отдаст город после ${REFORM_SORTS} пересортировок. Сейчас: ${n} из ${REFORM_SORTS}. Реформа сожжёт почти всё, но город останется навсегда.`;
-      this.lockedBar.textContent = textBar(n / REFORM_SORTS, 18);
+      this.lockedText.textContent = `Горсовет покажет город после ${CITY_OPEN_SORTS} пересортировок. Сейчас: ${n} из ${CITY_OPEN_SORTS}.`;
+      this.lockedBar.textContent = textBar(n / CITY_OPEN_SORTS, 18);
     }
     this.meta.textContent = `кварталов ${city.owned.length - 1}/${DISTRICTS.length - 1} · ${format(city.points)} га`;
     this.people.textContent = `жителей: ${peopleLeft(city).toLocaleString('ru-RU')}`;

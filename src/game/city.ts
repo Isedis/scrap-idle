@@ -191,8 +191,10 @@ export interface CityState {
 
 export const newCity = (): CityState => ({ open: false, points: D(0), total: D(0), reforms: 0, owned: ['dump'] });
 
-/** Resorts that open the town, counted since the last reform: the reform needs as many. */
-export const REFORM_SORTS = 5;
+/** Resorts, counted since the last reform, that open the Town view: a look at what is coming. */
+export const CITY_OPEN_SORTS = 5;
+/** Resorts the reform itself needs. */
+export const REFORM_SORTS = 9;
 
 /** What the next district costs: each one dearer than the last, the pit far dearer. */
 export function annexCost(city: CityState, id: string): Decimal {
