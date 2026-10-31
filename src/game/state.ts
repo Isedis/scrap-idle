@@ -399,6 +399,8 @@ export function autoBuy(state: GameState, mode: BuyMode = 'one', skip: readonly 
   let bestRatio: Decimal | null = null;
   for (const id of state.revealed) {
     if (skip.includes(id)) continue;
+    // Only what can be bought now: waiting on a dearer best buy left everything else piling up.
+    if (purchasePlan(state, id, 'one').count === 0) continue;
     const n = owned(state, id);
     const perUnit = n > 0 ? producerRate(state, id).div(n) : firstUnitRate(state, id);
     if (perUnit.lte(0)) continue;
@@ -770,9 +772,9 @@ export function runScripts(state: GameState, dt: number, rng: () => number = Mat
   // The town's caretaker and fitter come with the schools, so they work at once as well:
   // tied to the tick, they waited two seconds per purchase after every reform.
   if (instantBuyers(state)) {
+    sweep(state, notes);
     for (let i = 0; i < INSTANT_BUYS; i++) {
       const before = notes.length;
-      buyOnce(state, notes);
       townScripts(state, notes);
       if (notes.length === before) break;
     }
@@ -831,6 +833,49 @@ function buyOnce(state: GameState, notes: ScriptNote[]): void {
       .map((t) => ({ t, cost: trackCost(t, trackLevel(state, t.id)) }))
       .sort((a, b) => a.cost.cmp(b.cost))[0];
     if (cheapest && buyTrack(state, cheapest.t.id)) notes.push({ script: 'endless', text: cheapest.t.name });
+  }
+}
+
+/**
+ * The instant buyers, with a school in town or the dispatcher: every producer bought to the
+ * most the trash allows, the dearest first so the cheap ones get what is left; then every
+ * upgrade and endless level in reach. Nothing waits for a tick, nothing is left on the
+ * dump's buttons.
+ */
+function sweep(state: GameState, notes: ScriptNote[]): void {
+  const sc = state.scripts;
+  if (state.autobuy && scriptOwned(state, 'producers')) {
+    const ids = PRODUCERS.filter((p) => state.revealed.includes(p.id) && !sc.producerOff.includes(p.id))
+      .map((p) => p.id)
+      .reverse();
+    for (const id of ids) {
+      const n = buy(state, id, 'max');
+      if (n > 0) notes.push({ script: 'producers', text: `${producerById(id)!.name} ×${n}` });
+    }
+  }
+  for (let i = 0; i < INSTANT_BUYS; i++) {
+    const before = notes.length;
+    if (sc.upgradesOn && scriptOwned(state, 'upgrades')) {
+      const limit = state.trash.mul(sc.upgradesShare);
+      const u = availableUpgrades(state).find((x) => x.cost.lte(limit));
+      if (u && buyUpgrade(state, u.id)) notes.push({ script: 'upgrades', text: u.name });
+    }
+    if (sc.endlessOn && scriptOwned(state, 'endless')) {
+      const cheapest = visibleTracks(state)
+        .filter((t) => !sc.endlessOff.includes(t.id))
+        .map((t) => ({ t, cost: trackCost(t, trackLevel(state, t.id)) }))
+        .sort((a, b) => a.cost.cmp(b.cost))[0];
+      if (cheapest && buyTrack(state, cheapest.t.id)) notes.push({ script: 'endless', text: cheapest.t.name });
+    }
+    if (notes.length === before) break;
+  }
+  // An upgrade or a level makes producers cheaper or stronger: spend what is left.
+  if (state.autobuy && scriptOwned(state, 'producers')) {
+    for (const p of [...PRODUCERS].reverse()) {
+      if (!state.revealed.includes(p.id) || sc.producerOff.includes(p.id)) continue;
+      const n = buy(state, p.id, 'max');
+      if (n > 0) notes.push({ script: 'producers', text: `${p.name} ×${n}` });
+    }
   }
 }
 

@@ -286,9 +286,11 @@ describe('reform', () => {
     slow.recycle.nodes = ['a1'];
     slow.scripts.bought = ['upgrades'];
     const a = runScripts(slow, 0.016).length;
-    const b = runScripts(fast, 0.016).length;
+    runScripts(fast, 0.016);
     expect(a).toBeLessThanOrEqual(1);
-    expect(b).toBeGreaterThan(20);
+    // In one frame, every producer bought to the most the trash allows.
+    expect(fast.owned.collector).toBeGreaterThan(100);
+    expect(fast.trash.lt(D(1e12).div(10))).toBe(true);
   });
 });
 
