@@ -189,7 +189,12 @@ export class TownCam extends Camera<TownView> {
       ctx.moveTo(pa.x, pa.y);
       ctx.lineTo(pb.x, pb.y);
       ctx.stroke();
-      if (i % 3 === 0 && !dark) this.lamp((pa.x + pb.x) / 2, (pa.y + pb.y) / 2, (pa.s + pb.s) / 2, i);
+      if (i % 3 !== 0 || dark) return;
+      // No lamps left burning under the heap.
+      const mx = (a[0] + b[0]) / 2;
+      const my = (a[1] + b[1]) / 2;
+      const near = DISTRICTS.reduce((best, d) => (Math.hypot(d.x - mx, d.y - my) < Math.hypot(best.x - mx, best.y - my) ? d : best));
+      if (!v.owned.includes(near.id)) this.lamp((pa.x + pb.x) / 2, (pa.y + pb.y) / 2, (pa.s + pb.s) / 2, i);
     });
     ctx.lineCap = 'butt';
 
@@ -482,43 +487,137 @@ export class TownCam extends Camera<TownView> {
     }
   }
 
-  /** A gabled house; returns where its windows can go. */
-  private house(x: number, y: number, bw: number, bh: number, fill: string): void {
-    this.poly(
-      [
-        [x - bw / 2, y],
-        [x - bw / 2, y - bh],
-        [x, y - bh - bw * 0.45],
-        [x + bw / 2, y - bh],
-        [x + bw / 2, y],
-      ],
-      fill,
-      1,
-    );
+  /** Which way a building's side wall shows: toward the middle of the picture, as seen from the hill. */
+  private sideOf(x: number, bw: number): number {
+    const off = (this.w / 2 - x) / (this.w / 2);
+    return Math.sign(off) * Math.min(1, Math.abs(off)) * bw * 0.32;
   }
 
-  private windows(x: number, y: number, bw: number, bh: number, n: number, sp: Spot, dark: boolean, people: number, inhaling: number, pit: Spot): void {
-    if (dark) return;
+  /** A wall face filled dark, a shade lighter at the top, as moonlight falls on it. */
+  private face(points: [number, number][], top: number, bottom: number, light: number): void {
     const { ctx } = this;
-    const r = stream(sp.seed + Math.round(x));
-    // The pit takes the light from the windows nearest to it first.
-    const drawn = inhaling > 0 && Math.hypot(sp.x - pit.x, sp.y - pit.y) < this.w * 0.35 * inhaling;
-    for (let k = 0; k < n; k++) {
-      const px = x - bw / 2 + bw * (0.2 + 0.6 * r());
-      const py = y - bh * (0.25 + 0.55 * r());
-      if (r() > 0.25 + 0.55 * people || drawn) continue;
-      ctx.fillStyle = C.light;
-      ctx.globalAlpha = 0.5 + 0.15 * Math.sin(this.t * 0.8 + px);
-      const s = Math.max(1, sp.u * 0.13);
-      ctx.fillRect(px, py, s, s);
+    const g = ctx.createLinearGradient(0, top, 0, bottom);
+    g.addColorStop(0, `rgb(${18 + light * 12} ${44 + light * 22} ${30 + light * 14})`);
+    g.addColorStop(1, `rgb(${7 + light * 4} ${20 + light * 6} ${13 + light * 4})`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    points.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /** A thin moonlit line along an edge: the only bright line on a building. */
+  private edge(points: [number, number][], alpha = 0.35): void {
+    const { ctx } = this;
+    ctx.strokeStyle = `rgb(150 220 170 / ${alpha})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    points.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+    ctx.stroke();
+  }
+
+  /**
+   * A wooden house with its gable to the street: front wall, the side wall turned toward
+   * the camera, the roof slope over it, a chimney. The base of everything else too.
+   */
+  private izba(x: number, y: number, bw: number, bh: number, light: number, chimney = true): void {
+    const d = this.sideOf(x, bw);
+    const back = -bw * 0.18;
+    const ridge = bh + bw * 0.55;
+    const l = x - bw / 2;
+    const rr = x + bw / 2;
+    // Side wall and the roof slope over it, on the side that shows.
+    const sx = d > 0 ? rr : l;
+    this.face([[sx, y], [sx + d, y + back], [sx + d, y - bh + back], [sx, y - bh]], y - bh, y, light * 0.4);
+    this.face([[x, y - ridge], [x + d, y - ridge + back], [sx + d, y - bh + back], [sx, y - bh]], y - ridge, y - bh, light + 0.6);
+    // Front with the gable.
+    this.face([[l, y], [l, y - bh], [x, y - ridge], [rr, y - bh], [rr, y]], y - ridge, y, light);
+    // Barge boards: the moon on the gable's edges.
+    this.edge([[l - 1, y - bh + 1], [x, y - ridge - 1], [rr + 1, y - bh + 1]]);
+    this.edge([[x, y - ridge], [x + d, y - ridge + back]], 0.25);
+    if (chimney) {
+      const cx = x + d * 0.5 + (d > 0 ? bw * 0.1 : -bw * 0.1);
+      const cy = y - (bh + ridge) / 2 + back * 0.5;
+      this.face([[cx - bw * 0.07, cy], [cx - bw * 0.07, cy - bw * 0.35], [cx + bw * 0.07, cy - bw * 0.35], [cx + bw * 0.07, cy]], cy - bw * 0.35, cy, light);
     }
-    ctx.globalAlpha = 1;
+  }
+
+  /** A brick block with a flat roof: works, schools, the hospital; its windows in rows. */
+  private block(x: number, y: number, bw: number, bh: number, light: number): void {
+    const d = this.sideOf(x, bw) * 0.8;
+    const back = -bw * 0.12;
+    const l = x - bw / 2;
+    const rr = x + bw / 2;
+    const sx = d > 0 ? rr : l;
+    this.face([[sx, y], [sx + d, y + back], [sx + d, y - bh + back], [sx, y - bh]], y - bh, y, light * 0.4);
+    this.face([[l, y - bh], [l + d, y - bh + back], [rr + d, y - bh + back], [rr, y - bh]], y - bh + back, y - bh, light + 0.5);
+    this.face([[l, y], [l, y - bh], [rr, y - bh], [rr, y]], y - bh, y, light);
+    this.edge([[l, y - bh], [rr, y - bh], [rr + Math.max(0, d), y - bh + back]], 0.3);
+  }
+
+  /**
+   * Windows in a grid on a front wall: lit ones glow, framed with a cross; how many are
+   * lit follows how many people are left. Near the pit, when it breathes in, they go out
+   * and their light drifts to it.
+   */
+  private windows(x: number, y: number, bw: number, bh: number, n: number, sp: Spot, dark: boolean, people: number, inhaling: number, pit: Spot): void {
+    const { ctx } = this;
+    const r = stream(sp.seed + Math.round(x * 7));
+    const drawn = inhaling > 0 && Math.hypot(sp.x - pit.x, sp.y - pit.y) < this.w * 0.35 * inhaling;
+    const cols = Math.max(1, Math.min(n, Math.round(bw / (sp.u * 0.45))));
+    const rows = Math.max(1, Math.round(n / cols));
+    const ww = Math.max(1.5, sp.u * 0.2);
+    const wh = ww * 1.3;
+    for (let row = 0; row < rows; row++)
+      for (let col = 0; col < cols; col++) {
+        const px = x - bw / 2 + ((col + 0.5) / cols) * bw - ww / 2;
+        const py = y - bh + ((row + 0.4) / rows) * bh - wh / 2;
+        const lit = !dark && !drawn && r() < 0.2 + 0.55 * people;
+        if (!lit) {
+          ctx.fillStyle = '#030a06';
+          ctx.fillRect(px, py, ww, wh);
+          continue;
+        }
+        const flick = 0.85 + 0.15 * Math.sin(this.t * (0.7 + r()) + px);
+        const g = ctx.createRadialGradient(px + ww / 2, py + wh / 2, 0, px + ww / 2, py + wh / 2, ww * 2.2);
+        g.addColorStop(0, `rgb(210 255 170 / ${0.22 * flick})`);
+        g.addColorStop(1, 'rgb(210 255 170 / 0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(px - ww * 2, py - ww * 2, ww * 5, wh + ww * 4);
+        ctx.fillStyle = `rgb(215 255 180 / ${0.85 * flick})`;
+        ctx.fillRect(px, py, ww, wh);
+        if (ww >= 3) {
+          ctx.fillStyle = '#0a1a10';
+          ctx.fillRect(px + ww / 2 - 0.5, py, 1, wh);
+          ctx.fillRect(px, py + wh * 0.45, ww, 1);
+        }
+      }
     if (drawn && Math.random() < 0.15) {
-      // A mote of light drifting off toward the pit.
       const k = Math.random();
       ctx.fillStyle = 'rgb(200 255 210 / 0.7)';
       ctx.fillRect(x + (pit.x - x) * k, y - bh / 2 + (pit.y - y + bh / 2) * k, 1.5, 1.5);
     }
+  }
+
+  /** A bare birch: a pale trunk and thin branches. */
+  private birch(x: number, y: number, hgt: number, r: () => number): void {
+    const { ctx } = this;
+    ctx.strokeStyle = 'rgb(150 200 165 / 0.45)';
+    ctx.lineWidth = Math.max(1, hgt * 0.05);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (r() - 0.5) * hgt * 0.1, y - hgt);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgb(20 50 32 / 0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let k = 0; k < 5; k++) {
+      const by = y - hgt * (0.45 + k * 0.11);
+      const dir = k % 2 ? 1 : -1;
+      ctx.moveTo(x, by);
+      ctx.lineTo(x + dir * hgt * (0.2 + r() * 0.15), by - hgt * 0.18);
+    }
+    ctx.stroke();
   }
 
   /** A district still standing, drawn as what it is. */
@@ -526,7 +625,7 @@ export class TownCam extends Camera<TownView> {
     const { ctx } = this;
     const { x, y } = sp;
     const r = stream(sp.seed);
-    const fill = sp.near > 0.6 ? '#16402a' : sp.near > 0.3 ? '#123321' : '#0e2a1b';
+    const light = Math.max(0, sp.near);
     const win = (wx: number, wy: number, bw: number, bh: number, n: number) => this.windows(wx, wy, bw, bh, n, sp, dark, people, inhaling, pit);
     // The town leans toward the pit: the nearer, the more.
     const dist = Math.hypot(pit.x - x, pit.y - y);
@@ -535,179 +634,219 @@ export class TownCam extends Camera<TownView> {
     ctx.translate(x, y);
     ctx.rotate(lean);
     ctx.translate(-x, -y);
-    this.building(sp, r, fill, win);
+    this.building(sp, r, light, win);
     ctx.restore();
   }
 
-  private building(sp: Spot, r: () => number, fill: string, win: (wx: number, wy: number, bw: number, bh: number, n: number) => void): void {
+  private building(sp: Spot, r: () => number, light: number, win: (wx: number, wy: number, bw: number, bh: number, n: number) => void): void {
     const { ctx } = this;
     const { x, y, u } = sp;
+    const line = (pts: [number, number][], alpha = 0.4, width = 1) => {
+      ctx.strokeStyle = `rgb(120 190 145 / ${alpha})`;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+      ctx.stroke();
+    };
     switch (sp.type) {
       case 'live': {
-        for (let k = 0; k < 4; k++) {
-          const hx = x + (k - 1.5) * u * 1.05 + (r() - 0.5) * u * 0.4;
-          const bw = u * (0.8 + r() * 0.4);
-          const bh = u * (0.6 + r() * 0.5);
-          const hy = y - (k % 2) * u * 0.25;
-          this.house(hx, hy, bw, bh, fill);
-          win(hx, hy, bw, bh, 2);
+        // Houses along a street, a birch, a picket fence in front.
+        const n = 3 + Math.floor(r() * 2);
+        const order = Array.from({ length: n }, (_, k) => k).sort((a, b) => Math.abs(b - (n - 1) / 2) - Math.abs(a - (n - 1) / 2));
+        for (const k of order) {
+          const hx = x + (k - (n - 1) / 2) * u * 1.15 + (r() - 0.5) * u * 0.3;
+          const bw = u * (0.8 + r() * 0.35);
+          const bh = u * (0.55 + r() * 0.35);
+          const hy = y - (k % 2) * u * 0.18;
+          this.izba(hx, hy, bw, bh, light, r() < 0.7);
+          win(hx, hy, bw * 0.7, bh * 0.85, 2);
         }
+        if (r() < 0.6) this.birch(x + (r() - 0.5) * u * 3.5, y - u * 0.25, u * 1.8, r);
+        const fy = y + u * 0.15;
+        const pts: [number, number][] = [];
+        ctx.strokeStyle = 'rgb(110 170 130 / 0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let k = -6; k <= 6; k++) {
+          if (r() < 0.15) continue;
+          const px = x + k * u * 0.3;
+          ctx.moveTo(px, fy);
+          ctx.lineTo(px, fy - u * 0.3);
+        }
+        ctx.stroke();
+        pts.push([x - u * 1.8, fy - u * 0.2], [x + u * 1.8, fy - u * 0.2]);
+        line(pts, 0.2);
         break;
       }
       case 'prom':
       case 'boiler': {
-        const bw = u * (sp.type === 'prom' ? 3.2 : 2);
-        const bh = u * 0.9;
-        this.box(x - bw / 2, y - bh, bw, bh, fill, 1);
-        if (sp.type === 'prom') {
-          // Sawtooth roof.
-          const pts: [number, number][] = [[x - bw / 2, y - bh]];
-          for (let k = 0; k < 4; k++) {
-            pts.push([x - bw / 2 + (k + 0.8) * (bw / 4), y - bh - u * 0.4], [x - bw / 2 + (k + 1) * (bw / 4), y - bh]);
-          }
-          this.poly(pts, fill, 1);
-        }
+        const bw = u * (sp.type === 'prom' ? 3 : 1.9);
+        const bh = u * (sp.type === 'prom' ? 1 : 1.2);
         const c = this.chimney(sp);
-        this.box(c.x - u * 0.13, c.y, u * 0.26, y - bh - c.y, fill, 1);
-        win(x, y, bw, bh, 4);
+        // The chimney first, behind: brick, bands near the top.
+        this.face([[c.x - u * 0.15, y - bh * 0.5], [c.x - u * 0.11, c.y], [c.x + u * 0.11, c.y], [c.x + u * 0.15, y - bh * 0.5]], c.y, y, light + 0.2);
+        line([[c.x - u * 0.12, c.y + u * 0.2], [c.x + u * 0.12, c.y + u * 0.2]], 0.3);
+        line([[c.x - u * 0.11, c.y], [c.x + u * 0.11, c.y]], 0.45);
+        this.block(x, y, bw, bh, light);
+        if (sp.type === 'prom') {
+          // A sawtooth roof of glass, faintly lit from inside.
+          for (let k = 0; k < 4; k++) {
+            const sx0 = x - bw / 2 + (k * bw) / 4;
+            this.face([[sx0, y - bh], [sx0 + bw / 4, y - bh], [sx0 + bw / 4, y - bh - u * 0.35]], y - bh - u * 0.35, y - bh, light + 0.4);
+            line([[sx0 + bw / 4, y - bh - u * 0.35], [sx0 + bw / 4, y - bh]], 0.25);
+          }
+        }
+        win(x, y, bw, bh, sp.type === 'prom' ? 6 : 4);
         break;
       }
       case 'church': {
-        this.house(x, y, u * 1.4, u * 1.1, fill);
-        this.box(x - u * 0.35, y - u * 2.4, u * 0.7, u * 1.4, fill, 1);
-        // Onion dome and the cross.
+        this.izba(x, y, u * 1.4, u * 1.1, light, false);
+        // Bell tower with an onion dome.
+        const tw = u * 0.7;
+        this.block(x, y - u * 0.4, tw, u * 2, light + 0.1);
+        ctx.fillStyle = `rgb(${24 + light * 14} ${56 + light * 22} ${38 + light * 14})`;
         ctx.beginPath();
-        ctx.moveTo(x - u * 0.35, y - u * 2.4);
-        ctx.quadraticCurveTo(x - u * 0.5, y - u * 2.9, x, y - u * 3.2);
-        ctx.quadraticCurveTo(x + u * 0.5, y - u * 2.9, x + u * 0.35, y - u * 2.4);
-        this.paint(fill, 1);
-        ctx.strokeStyle = C.lime;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x, y - u * 3.2);
-        ctx.lineTo(x, y - u * 3.7);
-        ctx.moveTo(x - u * 0.15, y - u * 3.5);
-        ctx.lineTo(x + u * 0.15, y - u * 3.5);
-        ctx.stroke();
-        win(x, y, u * 1.2, u * 1, 2);
+        ctx.moveTo(x - tw / 2, y - u * 2.4);
+        ctx.bezierCurveTo(x - tw * 0.9, y - u * 2.8, x - tw * 0.2, y - u * 3, x, y - u * 3.35);
+        ctx.bezierCurveTo(x + tw * 0.2, y - u * 3, x + tw * 0.9, y - u * 2.8, x + tw / 2, y - u * 2.4);
+        ctx.closePath();
+        ctx.fill();
+        this.edge([[x - tw * 0.6, y - u * 2.65], [x, y - u * 3.35]], 0.5);
+        line([[x, y - u * 3.35], [x, y - u * 3.9]], 0.7);
+        line([[x - u * 0.16, y - u * 3.7], [x + u * 0.16, y - u * 3.7]], 0.7);
+        line([[x - u * 0.12, y - u * 3.55], [x + u * 0.12, y - u * 3.6]], 0.7);
+        win(x, y - u * 1.3, tw * 0.5, u * 0.5, 1);
+        win(x, y, u * 1, u * 0.8, 2);
         break;
       }
       case 'cemetery': {
-        ctx.strokeStyle = C.deep;
-        ctx.lineWidth = 1;
-        for (let k = 0; k < 9; k++) {
-          const gx = x + (r() - 0.5) * u * 3.4;
-          const gy = y - r() * u * 0.6;
-          const s = u * 0.35;
-          ctx.beginPath();
-          ctx.moveTo(gx, gy);
-          ctx.lineTo(gx, gy - s);
-          ctx.moveTo(gx - s * 0.35, gy - s * 0.7);
-          ctx.lineTo(gx + s * 0.35, gy - s * 0.7);
-          ctx.stroke();
+        // Crosses and stones in uneven rows, a fence, a dead tree.
+        for (let k = 0; k < 11; k++) {
+          const gx = x + (r() - 0.5) * u * 3.6;
+          const gy = y - r() * u * 0.7;
+          const s = u * (0.3 + r() * 0.2);
+          const tilt = (r() - 0.5) * 0.4;
+          ctx.save();
+          ctx.translate(gx, gy);
+          ctx.rotate(tilt);
+          if (k % 3 === 0) {
+            this.face([[-s * 0.25, 0], [-s * 0.25, -s * 0.6], [0, -s * 0.75], [s * 0.25, -s * 0.6], [s * 0.25, 0]], -s * 0.75, 0, light + 0.3);
+          } else {
+            line([[0, 0], [0, -s]], 0.5);
+            line([[-s * 0.3, -s * 0.7], [s * 0.3, -s * 0.7]], 0.5);
+            line([[-s * 0.2, -s * 0.4], [s * 0.2, -s * 0.5]], 0.5);
+          }
+          ctx.restore();
         }
-        // A bare tree.
+        ctx.strokeStyle = 'rgb(20 50 32 / 0.95)';
+        ctx.lineWidth = Math.max(1, u * 0.12);
         ctx.beginPath();
-        ctx.moveTo(x + u, y);
-        ctx.lineTo(x + u, y - u * 1.5);
-        ctx.lineTo(x + u * 1.4, y - u * 2);
-        ctx.moveTo(x + u, y - u * 1.1);
-        ctx.lineTo(x + u * 0.6, y - u * 1.6);
+        ctx.moveTo(x + u * 1.2, y);
+        ctx.lineTo(x + u * 1.25, y - u * 1.6);
+        ctx.lineTo(x + u * 1.7, y - u * 2.1);
+        ctx.moveTo(x + u * 1.24, y - u * 1.1);
+        ctx.lineTo(x + u * 0.8, y - u * 1.6);
+        ctx.moveTo(x + u * 1.25, y - u * 1.6);
+        ctx.lineTo(x + u * 1.1, y - u * 2.2);
         ctx.stroke();
         break;
       }
       case 'school': {
-        const bw = u * 2.6;
+        const bw = u * 2.8;
         const bh = u * 1.3;
-        this.box(x - bw / 2, y - bh, bw, bh, fill, 1);
-        this.poly([[x - bw / 2 - 2, y - bh], [x, y - bh - u * 0.5], [x + bw / 2 + 2, y - bh]], fill, 1);
-        ctx.strokeStyle = C.deep;
-        ctx.beginPath();
-        ctx.moveTo(x + bw / 2 + u * 0.4, y);
-        ctx.lineTo(x + bw / 2 + u * 0.4, y - u * 2.4);
-        ctx.stroke();
+        this.block(x, y, bw, bh, light);
+        this.izba(x, y - bh, u * 1, u * 0.01, light, false);
+        line([[x + bw / 2 + u * 0.4, y], [x + bw / 2 + u * 0.4, y - u * 2.5]], 0.5);
         const wave = Math.sin(this.t * 2.5) * u * 0.1;
-        this.poly([[x + bw / 2 + u * 0.4, y - u * 2.4], [x + bw / 2 + u * 1.1, y - u * 2.2 + wave], [x + bw / 2 + u * 0.4, y - u * 2]], C.green, 0);
-        win(x, y, bw, bh, 5);
+        ctx.fillStyle = 'rgb(130 200 150 / 0.6)';
+        ctx.beginPath();
+        ctx.moveTo(x + bw / 2 + u * 0.4, y - u * 2.5);
+        ctx.quadraticCurveTo(x + bw / 2 + u * 0.75, y - u * 2.5 + wave, x + bw / 2 + u * 1.1, y - u * 2.35 + wave);
+        ctx.lineTo(x + bw / 2 + u * 0.4, y - u * 2.1);
+        ctx.fill();
+        win(x, y, bw, bh, 10);
         break;
       }
       case 'market': {
+        // Stalls under torn awnings, crates in front.
         for (let k = 0; k < 3; k++) {
-          const mx = x + (k - 1) * u * 1.1;
-          this.box(mx - u * 0.45, y - u * 0.6, u * 0.9, u * 0.6, fill, 1);
-          this.poly([[mx - u * 0.55, y - u * 0.6], [mx, y - u * 1], [mx + u * 0.55, y - u * 0.6]], k % 2 ? C.deep : fill, 1);
+          const mx = x + (k - 1) * u * 1.15;
+          this.block(mx, y, u * 0.9, u * 0.55, light);
+          const sag = Math.sin(this.t * 1.5 + k) * u * 0.03;
+          for (let s2 = 0; s2 < 4; s2++) {
+            const ax = mx - u * 0.55 + s2 * u * 0.275;
+            this.face([[ax, y - u * 0.55], [ax + u * 0.275, y - u * 0.55], [ax + u * 0.25, y - u * 0.85 + sag], [ax + u * 0.02, y - u * 0.85 + sag]], y - u * 0.85, y - u * 0.55, s2 % 2 ? light + 0.8 : light);
+          }
+          win(mx, y, u * 0.6, u * 0.35, 1);
         }
         break;
       }
       case 'archive': {
-        const bw = u * 2.2;
-        this.box(x - bw / 2, y - u * 1.2, bw, u * 1.2, fill, 1);
-        this.poly([[x - bw / 2 - 2, y - u * 1.2], [x, y - u * 1.7], [x + bw / 2 + 2, y - u * 1.2]], fill, 1);
-        ctx.strokeStyle = C.deep;
+        const bw = u * 2.4;
+        this.block(x, y, bw, u * 1.3, light);
+        this.face([[x - bw / 2 - 2, y - u * 1.3], [x, y - u * 1.85], [x + bw / 2 + 2, y - u * 1.3]], y - u * 1.85, y - u * 1.3, light + 0.4);
+        this.edge([[x - bw / 2 - 2, y - u * 1.3], [x, y - u * 1.85], [x + bw / 2 + 2, y - u * 1.3]], 0.45);
         for (let k = 0; k < 5; k++) {
           const cx = x - bw / 2 + (k + 0.5) * (bw / 5);
-          ctx.beginPath();
-          ctx.moveTo(cx, y);
-          ctx.lineTo(cx, y - u * 1.1);
-          ctx.stroke();
+          this.face([[cx - u * 0.07, y], [cx - u * 0.07, y - u * 1.2], [cx + u * 0.07, y - u * 1.2], [cx + u * 0.07, y]], y - u * 1.2, y, light + 0.7);
         }
         break;
       }
       case 'hospital': {
-        const bw = u * 2.8;
-        const bh = u * 1.6;
-        this.box(x - bw / 2, y - bh, bw, bh, fill, 1);
-        ctx.fillStyle = C.light;
-        ctx.globalAlpha = 0.75;
-        ctx.fillRect(x - u * 0.08, y - bh - u * 0.6, u * 0.16, u * 0.5);
-        ctx.fillRect(x - u * 0.25, y - bh - u * 0.43, u * 0.5, u * 0.16);
-        ctx.globalAlpha = 1;
-        win(x, y, bw, bh, 7);
+        const bw = u * 3;
+        const bh = u * 1.7;
+        this.block(x, y, bw, bh, light);
+        ctx.fillStyle = 'rgb(220 255 225 / 0.7)';
+        ctx.fillRect(x - u * 0.08, y - bh - u * 0.65, u * 0.16, u * 0.5);
+        ctx.fillRect(x - u * 0.25, y - bh - u * 0.48, u * 0.5, u * 0.16);
+        win(x, y, bw, bh, 12);
         break;
       }
       case 'depot': {
-        this.box(x - u * 1.5, y - u * 0.9, u * 2.2, u * 0.9, fill, 1);
+        this.block(x - u * 0.4, y, u * 2.4, u * 0.95, light);
         for (let k = 0; k < 2; k++) {
+          ctx.fillStyle = '#030a06';
           ctx.beginPath();
-          ctx.arc(x - u * 0.9 + k * u, y, u * 0.35, Math.PI, 0);
-          this.paint('#06120a', 1);
+          ctx.moveTo(x - u * 1.25 + k * u * 1.1, y);
+          ctx.arc(x - u * 0.95 + k * u * 1.1, y - u * 0.25, u * 0.3, Math.PI, 0);
+          ctx.lineTo(x - u * 0.65 + k * u * 1.1, y);
+          ctx.fill();
         }
-        // A lorry in the yard.
-        this.box(x + u * 0.9, y - u * 0.5, u * 0.8, u * 0.4, fill, 1);
-        this.box(x + u * 1.7, y - u * 0.35, u * 0.3, u * 0.25, fill, 1);
+        // A lorry with its headlights on.
+        this.block(x + u * 1.35, y, u * 0.75, u * 0.45, light + 0.2);
+        this.block(x + u * 1.95, y, u * 0.35, u * 0.32, light + 0.2);
+        const g = ctx.createRadialGradient(x + u * 2.15, y - u * 0.15, 0, x + u * 2.15, y - u * 0.15, u * 0.8);
+        g.addColorStop(0, 'rgb(220 255 200 / 0.35)');
+        g.addColorStop(1, 'rgb(220 255 200 / 0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x + u * 1.4, y - u, u * 1.6, u * 1.6);
         break;
       }
       case 'post': {
-        this.house(x - u * 0.4, y, u * 1.6, u * 0.9, fill);
-        win(x - u * 0.4, y, u * 1.6, u * 0.9, 2);
-        // Telegraph poles and the wire.
-        ctx.strokeStyle = C.deep;
-        ctx.beginPath();
+        this.izba(x - u * 0.4, y, u * 1.6, u * 0.9, light);
+        win(x - u * 0.4, y, u * 1.2, u * 0.8, 3);
         for (let k = 0; k < 2; k++) {
           const px = x + u * (0.9 + k * 1.2);
-          ctx.moveTo(px, y);
-          ctx.lineTo(px, y - u * 1.8);
-          ctx.moveTo(px - u * 0.2, y - u * 1.65);
-          ctx.lineTo(px + u * 0.2, y - u * 1.65);
+          line([[px, y], [px, y - u * 1.8]], 0.5);
+          line([[px - u * 0.22, y - u * 1.65], [px + u * 0.22, y - u * 1.65]], 0.5);
         }
+        ctx.strokeStyle = 'rgb(120 190 145 / 0.3)';
+        ctx.beginPath();
         ctx.moveTo(x + u * 0.9, y - u * 1.65);
         ctx.quadraticCurveTo(x + u * 1.5, y - u * 1.4, x + u * 2.1, y - u * 1.65);
         ctx.stroke();
         break;
       }
       case 'station': {
-        ctx.strokeStyle = C.deep;
-        ctx.beginPath();
-        ctx.moveTo(x - u * 3, y);
-        ctx.lineTo(x + u * 3, y);
-        ctx.moveTo(x - u * 3, y - u * 0.15);
-        ctx.lineTo(x + u * 3, y - u * 0.15);
-        ctx.stroke();
-        this.box(x - u * 1.4, y - u * 1.1, u * 2.8, u * 0.12, fill, 1);
-        for (const k of [-1.2, 0, 1.2]) this.box(x + k * u - 1, y - u * 1, 2, u * 0.85, fill, 0);
+        line([[x - u * 3, y], [x + u * 3, y]], 0.4);
+        line([[x - u * 3, y - u * 0.15], [x + u * 3, y - u * 0.15]], 0.4);
+        this.block(x - u * 0.2, y - u * 0.2, u * 2.2, u * 0.9, light);
+        win(x - u * 0.2, y - u * 0.2, u * 2, u * 0.8, 4);
+        this.face([[x - u * 1.6, y - u * 1.1], [x + u * 1.2, y - u * 1.1], [x + u * 1.4, y - u * 1.3], [x - u * 1.8, y - u * 1.3]], y - u * 1.3, y - u * 1.1, light + 0.6);
         // Water tower.
-        this.box(x + u * 1.8, y - u * 1.9, u * 0.7, u * 0.6, fill, 1);
-        this.box(x + u * 2.1, y - u * 1.3, u * 0.12, u * 1.3, fill, 0);
+        this.block(x + u * 2.1, y - u * 1.3, u * 0.7, u * 0.6, light + 0.2);
+        line([[x + u * 1.85, y], [x + u * 1.9, y - u * 1.3]], 0.4);
+        line([[x + u * 2.35, y], [x + u * 2.3, y - u * 1.3]], 0.4);
         break;
       }
       default:
@@ -715,39 +854,135 @@ export class TownCam extends Camera<TownView> {
     }
   }
 
-  /** The heap over a district; while it is being buried, junk rains down and the mound grows. */
+  /**
+   * The heap over a district: a ragged mound, dark at the foot, lit along its crest, with
+   * what it swallowed sticking out of it: bags, tyres, planks, a fridge door, and the roof
+   * or the cross of what stood there. While a district is being buried, junk rains down
+   * and the mound grows.
+   */
   private heap(sp: Spot, grown: number, t: number): void {
     const { ctx } = this;
     const { x, y, u } = sp;
     const home = sp.type === 'dump';
-    const hw = u * (home ? 3.6 : 2.6);
-    const hh = u * (home ? 2.6 : 1.7) * grown;
     const r = stream(sp.seed + 5);
+    // Wide and low, so neighbouring heaps run into one another as one landscape.
+    const hw = u * (home ? 4 : 3.3 + r() * 0.9);
+    const hh = u * (home ? 2.6 : 1.1 + r() * 0.9) * grown;
+    // A ragged crest: random heights, the highest near the middle.
+    const n = 14;
+    const crest: [number, number][] = [];
+    for (let k = 0; k <= n; k++) {
+      const a = k / n;
+      const env = Math.sin(a * Math.PI) ** 0.8;
+      crest.push([x - hw + a * hw * 2, y - env * hh * (0.75 + r() * 0.4)]);
+    }
+    // What stood there, half under: the roof, the dome, the chimney.
+    if (!home && grown > 0.5) {
+      const kind = sp.type;
+      const rx = x + (r() - 0.5) * hw * 0.6;
+      const ry = y - hh * 0.75;
+      ctx.save();
+      ctx.translate(rx, ry);
+      ctx.rotate((r() - 0.5) * 0.6);
+      if (kind === 'church') {
+        this.face([[-u * 0.2, 0], [-u * 0.25, -u * 0.4], [0, -u * 0.7], [u * 0.25, -u * 0.4], [u * 0.2, 0]], -u * 0.7, 0, 0.6);
+        this.edge([[0, -u * 0.7], [0, -u * 1.2]], 0.6);
+        this.edge([[-u * 0.15, -u], [u * 0.15, -u]], 0.6);
+      } else if (kind === 'prom' || kind === 'boiler') {
+        this.face([[-u * 0.12, 0], [-u * 0.09, -u * 1.4], [u * 0.09, -u * 1.4], [u * 0.12, 0]], -u * 1.4, 0, 0.5);
+      } else {
+        this.face([[-u * 0.5, 0], [0, -u * 0.45], [u * 0.5, 0]], -u * 0.45, 0, 0.7);
+        this.edge([[-u * 0.5, 0], [0, -u * 0.45], [u * 0.5, 0]], 0.4);
+      }
+      ctx.restore();
+    }
+    // The body of the heap.
+    const g = ctx.createLinearGradient(0, y - hh, 0, y);
+    g.addColorStop(0, home ? '#1a3624' : '#13281b');
+    g.addColorStop(1, '#0a1a10');
+    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(x - hw, y + 1);
-    for (let k = 0; k <= 12; k++) {
-      const a = k / 12;
-      const bump = Math.sin(a * Math.PI) * hh * (0.85 + 0.25 * r());
-      ctx.lineTo(x - hw + a * hw * 2, y - bump);
-    }
+    for (const [px, py] of crest) ctx.lineTo(px, py);
+    ctx.lineTo(x + hw, y + 1);
     ctx.closePath();
-    this.paint(C.heapBack, 1.2);
-    // Junk on it: boxes, bags.
-    for (let k = 0; k < 8; k++) {
-      const a = 0.15 + r() * 0.7;
-      const jx = x - hw + a * hw * 2;
-      const jy = y - Math.sin(a * Math.PI) * hh * (0.3 + r() * 0.6);
-      if (k % 3 === 0) this.circle(jx, jy, u * 0.18, C.heapFront, 0.8);
-      else this.box(jx, jy, u * (0.2 + r() * 0.3), u * 0.15, C.heapFront, 0.8);
+    ctx.fill();
+    // Texture: scraps catching the light, more of them near the top.
+    for (let k = 0; k < 26; k++) {
+      const a = r();
+      const i = Math.min(n - 1, Math.floor(a * n));
+      const top = crest[i][1];
+      const py = top + (y - top) * r() ** 1.6;
+      ctx.fillStyle = `rgb(120 190 145 / ${0.08 + (1 - (py - top) / Math.max(1, y - top)) * 0.25})`;
+      ctx.fillRect(x - hw + a * hw * 2, py, 1 + r() * u * 0.2, 1);
     }
+    // Things on the crest, in silhouette with a lit edge.
+    for (let k = 1; k < n; k += 1 + Math.floor(r() * 2)) {
+      const [px, py] = crest[k];
+      const kind = Math.floor(r() * 5);
+      const s = u * (0.25 + r() * 0.2);
+      ctx.save();
+      ctx.translate(px, py + s * 0.3);
+      ctx.rotate((r() - 0.5) * 1.2);
+      ctx.fillStyle = '#0b1a11';
+      ctx.strokeStyle = 'rgb(150 220 170 / 0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (kind === 0) {
+        // A bag, tied at the top.
+        ctx.ellipse(0, 0, s * 0.6, s * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.5, Math.PI * 1.15, Math.PI * 1.7);
+        ctx.stroke();
+      } else if (kind === 1) {
+        // A tyre on its edge.
+        ctx.ellipse(0, -s * 0.2, s * 0.5, s * 0.5, 0, 0, Math.PI * 2);
+        ctx.lineWidth = Math.max(1.2, s * 0.25);
+        ctx.strokeStyle = '#0b1a11';
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgb(150 220 170 / 0.35)';
+        ctx.beginPath();
+        ctx.arc(0, -s * 0.2, s * 0.6, Math.PI * 1.1, Math.PI * 1.6);
+        ctx.stroke();
+      } else if (kind === 2) {
+        // A plank sticking out.
+        ctx.rect(-s * 0.08, -s * 1.3, s * 0.16, s * 1.3);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.08, -s * 1.3);
+        ctx.lineTo(-s * 0.08, 0);
+        ctx.stroke();
+      } else if (kind === 3) {
+        // A fridge, or a cupboard, on its side.
+        ctx.rect(-s * 0.5, -s * 0.7, s, s * 0.7);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.5, -s * 0.7);
+        ctx.lineTo(s * 0.5, -s * 0.7);
+        ctx.stroke();
+      } else {
+        // A chair, legs up.
+        ctx.moveTo(-s * 0.3, 0);
+        ctx.lineTo(-s * 0.3, -s * 0.8);
+        ctx.moveTo(s * 0.3, 0);
+        ctx.lineTo(s * 0.3, -s * 0.8);
+        ctx.moveTo(-s * 0.35, -s * 0.15);
+        ctx.lineTo(s * 0.35, -s * 0.15);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    // Moonlight along the crest.
+    this.edge(crest, home ? 0.4 : 0.12 + 0.12 * sp.near);
     // Under the heap, now and then, a window still lights up. Red.
     if (!home && grown >= 1 && Math.sin(this.t * 0.6 + sp.seed) > 0.985) {
       ctx.fillStyle = '#ff6b57';
       ctx.fillRect(x + (r() - 0.5) * hw, y - hh * 0.3, 2, 2);
     }
     if (t < BURY) {
-      // Junk coming down on it.
-      for (let k = 0; k < 14; k++) {
+      for (let k = 0; k < 18; k++) {
         const fall = ((t * 1.6 + k * 0.13) % 1) * (u * 4);
         ctx.fillStyle = C.items[k % C.items.length];
         ctx.globalAlpha = 1 - t / BURY;
