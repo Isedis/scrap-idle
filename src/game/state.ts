@@ -783,10 +783,19 @@ export function runScripts(state: GameState, dt: number, rng: () => number = Mat
   sc.clock = Math.min(sc.clock + dt, interval * MAX_TICKS_PER_FRAME);
   while (sc.clock >= interval) {
     sc.clock -= interval;
-    buyOnce(state, notes);
+    // A tick buys as long as there is money, not one unit: late in a run the income
+    // affords dozens a second, and one per tick fell further behind every minute.
+    for (let i = 0; i < TICK_BUYS; i++) {
+      const before = notes.length;
+      buyOnce(state, notes);
+      if (notes.length === before) break;
+    }
   }
   return notes;
 }
+
+/** Most purchases in one tick of the buying scripts. */
+const TICK_BUYS = 25;
 
 /** One purchase each by the caretaker and the fitter, once the schools have set them up. */
 function townScripts(state: GameState, notes: ScriptNote[]): void {

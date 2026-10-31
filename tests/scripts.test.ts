@@ -87,8 +87,11 @@ describe('buying scripts', () => {
     s.scripts.producerOff = ['cart'];
     s.scripts.producerMode = 'ten';
     const notes = runScripts(s, FAST_TICK, never);
-    expect(notes).toEqual([{ script: 'producers', text: 'Сборщик' }]);
-    expect(s.owned.collector).toBe(11);
+    // One tick buys as long as the money lasts, ten at a time, and never the switched-off cart.
+    expect(notes.length).toBeGreaterThan(1);
+    expect(notes.every((n) => n.script === 'producers' && n.text === 'Сборщик')).toBe(true);
+    expect((s.owned.collector - 1) % 10).toBe(0);
+    expect(s.owned.collector).toBe(1 + 10 * notes.length);
     expect(s.owned.cart).toBe(0);
   });
 
@@ -123,7 +126,9 @@ describe('buying scripts', () => {
     s.scripts.endlessOff = ['compact'];
     runScripts(s, FAST_TICK, never);
     expect(trackLevel(s, 'compact')).toBe(0);
-    expect(trackLevel(s, 'bulk')).toBe(1);
+    // Cheapest first: bulk (×5 a level) runs ahead of the dark pact (×12 a level).
+    expect(trackLevel(s, 'bulk')).toBeGreaterThan(1);
+    expect(trackLevel(s, 'bulk')).toBeGreaterThanOrEqual(trackLevel(s, 'dark'));
   });
 });
 
