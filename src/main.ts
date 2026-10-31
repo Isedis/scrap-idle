@@ -6,7 +6,7 @@ import { applyOffline, readSave, writeSave } from './game/save';
 import { AWAY_SCREEN_SECONDS, awayReport, awaySnapshot, type AwayReport } from './game/away';
 import { App } from './ui/app';
 import { holdCheck } from './game/hearing';
-import { CHECK_EVERY_MS, latestBuild, reloadInto } from './update';
+import { CHECK_EVERY_MS, latestRelease, registerUpdates, selectRelease, reloadInto } from './update';
 import { debugOn, mountDebug } from './ui/debugPanel';
 
 const AUTOSAVE_MS = 10_000;
@@ -101,21 +101,23 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => writeSave(state));
 
 // A copy opened from the home screen can run for days; look for newer builds.
-const fetchBuild = () => latestBuild((url) => fetch(url, { cache: 'no-store' }));
+const fetchRelease = () => latestRelease((url) => fetch(url, { cache: 'no-store' }));
+if (import.meta.env.PROD) void registerUpdates();
 
 async function checkForUpdate(): Promise<void> {
   if (!import.meta.env.PROD) return;
-  const build = await fetchBuild();
-  if (build && build !== __BUILD_ID__) app.setUpdateAvailable();
+  const release = await fetchRelease();
+  if (release && release.build !== __BUILD_ID__) app.setUpdateAvailable(release);
 }
 
 // The Settings button: save, then load the newest build if there is one.
 app.onUpdate = async () => {
   writeSave(state);
-  const build = import.meta.env.PROD ? await fetchBuild() : __BUILD_ID__;
-  if (build === null) return 'offline';
-  if (build === __BUILD_ID__) return 'latest';
-  reloadInto(build);
+  const release = import.meta.env.PROD ? await fetchRelease() : { build: __BUILD_ID__ };
+  if (release === null) return 'offline';
+  if (release.build === __BUILD_ID__) return 'latest';
+  if (!await selectRelease(release.build)) return 'offline';
+  reloadInto(release.build);
   return 'reloading';
 };
 checkForUpdate();

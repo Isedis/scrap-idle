@@ -1,3 +1,4 @@
+import type { Release } from '../update';
 import { nextGoal } from './guidance';
 import { format } from '../game/num';
 import { PRODUCERS, milestonesReached, nextMilestone, prevMilestone, producerById, type ProducerDef } from '../game/producers';
@@ -213,6 +214,7 @@ export class App {
   private toastQueue: string[] = [];
   private toastTimer = 0;
   private settingsBadge!: HTMLElement;
+  private updateCredit!: HTMLElement;
   private updateStatus!: HTMLElement;
   private updateButton!: HTMLButtonElement;
   /** Set by main: checks for a newer build and reloads into it. */
@@ -1059,7 +1061,7 @@ export class App {
 
     panel.append(el('h2', 'panel-title', 'Обновление'));
     panel.append(el('p', 'note', `Версия ${__APP_VERSION__}, сборка ${__BUILD_ID__}`));
-    this.updateStatus = el('p', 'update-status', 'Игра сама проверяет обновления каждые 5 минут.');
+    this.updateStatus = el('p', 'update-status', 'Новая версия включится только по кнопке «Обновить». Проверка — каждые 5 минут.');
     this.updateButton = el('button', 'btn update-btn', 'Обновить');
     this.updateButton.type = 'button';
     this.updateButton.id = 'update';
@@ -1073,10 +1075,12 @@ export class App {
       }
       this.updateButton.disabled = false;
       this.updateButton.textContent = 'Обновить';
-      this.updateStatus.textContent = result === 'latest' ? 'У вас последняя версия.' : 'Нет связи с сайтом. Попробуйте позже.';
+      this.updateStatus.textContent = result === 'latest' ? 'У вас последняя версия.' : 'Не удалось подготовить обновление. Текущая версия сохранена. Попробуйте позже.';
       this.updateStatus.classList.remove('ready');
     });
-    panel.append(this.updateStatus, this.updateButton);
+    this.updateCredit = el('p', 'note release-credit', __RELEASE_AUTHOR__ === 'Codex' ? `От Codex · ${__RELEASE_SUMMARY__}` : '');
+    this.updateCredit.hidden = !this.updateCredit.textContent;
+    panel.append(this.updateStatus, this.updateCredit, this.updateButton);
 
     panel.append(el('h2', 'panel-title', 'Вид интерфейса'));
     const interfaceStatus = el('p', 'note');
@@ -1262,8 +1266,9 @@ export class App {
   }
 
   /** Marks a newer build as published: a badge on Settings and a note above the button. */
-  setUpdateAvailable(): void {
-    if (!this.settingsBadge.hidden) return;
+  setUpdateAvailable(release: Release): void {
+    this.updateCredit.textContent = [release.author === 'Codex' ? 'От Codex' : '', release.summary].filter(Boolean).join(' · ');
+    this.updateCredit.hidden = !this.updateCredit.textContent;
     this.settingsBadge.hidden = false;
     this.updateStatus.textContent = 'Вышла новая версия. Нажмите «Обновить», прогресс сохранится.';
     this.updateStatus.classList.add('ready');
