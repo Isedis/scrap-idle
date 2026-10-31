@@ -160,7 +160,7 @@ export class CityPanel {
       `фракции ×${format(fx.fractions)}`,
       fx.schools ? `скрипты сразу: ${Math.min(fx.schools * 2, 5)}` : '',
       fx.silencerFail < 1 ? `глушитель: отказ ${Math.round(fx.silencerFail * 100)}%` : '',
-      fx.church ? 'автопрожектор сразу' : '',
+      fx.hearingFill < 1 ? `слух копится ×${fx.hearingFill.toFixed(2)}` : '',
       fx.darkPeak ? `тьма +${fx.darkPeak.toFixed(1)}` : '',
       fx.keepFractions ? `фракций переживает реформу: ${Math.round(fx.keepFractions * 100)}%` : '',
       fx.startPoints.gt(0) ? `старт: ${format(fx.startPoints)} ВС` : '',

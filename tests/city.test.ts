@@ -47,7 +47,7 @@ describe('annexing', () => {
     expect(fx.recycled.toNumber()).toBe(2);
     expect(fx.silencerFail).toBeCloseTo(0.35);
     expect(fx.schools).toBe(1);
-    expect(fx.church).toBe(true);
+    expect(fx.hearingFill).toBeCloseTo(0.7);
     c.owned.push('pit');
     expect(cityEffects(c).income.div(fx.income).toNumber()).toBeCloseTo(100);
   });
@@ -170,7 +170,7 @@ describe('reform', () => {
     const s = readyToReform();
     s.city.owned.push('school1', 'school2', 'school3');
     reform(s);
-    for (const id of ['producers', 'upgrades', 'endless', 'recycle', 'tree', 'sort', 'line'] as const) expect(scriptOwned(s, id), id).toBe(true);
+    for (const id of ['producers', 'upgrades', 'endless', 'light', 'recycle', 'tree', 'sort', 'line'] as const) expect(scriptOwned(s, id), id).toBe(true);
     expect(s.autoRecycle.on).toBe(true);
     expect(s.scripts.sortOn).toBe(true);
   });
@@ -213,6 +213,23 @@ describe('reform', () => {
     expect(back.scripts.lineOn).toBe(true);
     s.scripts.treeOn = false;
     expect(deserialize(serialize(s))!.scripts.treeOn).toBe(false);
+  });
+
+  it('a church bell covers the plant: at full load it hears later', () => {
+    const plain = newGame(0);
+    plain.sorting.open = true;
+    plain.hearing.noise = 2;
+    const belled = newGame(0);
+    belled.sorting.open = true;
+    belled.hearing.noise = 2;
+    belled.city.owned.push('nikola');
+    for (let i = 0; i < 300; i++) {
+      advance(plain, 1);
+      advance(belled, 1);
+    }
+    expect(plain.hearing.phase).toBe('walk');
+    expect(belled.hearing.phase).toBe('idle');
+    expect(belled.hearing.meter).toBeCloseTo(0.7, 1);
   });
 });
 

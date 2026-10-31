@@ -72,11 +72,19 @@ export function nearness(h: HearingState): number {
  * is not there, and leaving the game does not make it forget what it heard.
  * Returns what changed, for the screen.
  */
-export function hearingTick(h: HearingState, dt: number, open: boolean, offline = false, rand = Math.random): 'heard' | 'check' | 'survived' | 'caught' | null {
+export function hearingTick(
+  h: HearingState,
+  dt: number,
+  open: boolean,
+  offline = false,
+  rand = Math.random,
+  /** How fast the meter fills: the town's church bells cover the plant. */
+  fill = 1,
+): 'heard' | 'check' | 'survived' | 'caught' | null {
   if (!open || offline || dt <= 0 || h.phase === 'caught') return null;
   const noise = effectiveNoise(h, open, offline);
   if (h.phase === 'idle') {
-    if (noise > 1) h.meter += ((noise - 1) / (MAX_NOISE - 1) / FILL_SECONDS) * dt;
+    if (noise > 1) h.meter += ((noise - 1) / (MAX_NOISE - 1) / FILL_SECONDS) * dt * fill;
     else h.meter -= dt / DRAIN_SECONDS;
     // A hair under full counts as full: a sum of small steps never lands on 1 exactly.
     h.meter = h.meter > 1 - 1e-9 ? 1 : Math.max(h.meter, 0);

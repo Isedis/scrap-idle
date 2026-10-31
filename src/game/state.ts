@@ -309,7 +309,7 @@ export function advance(state: GameState, seconds: number, offline = false): voi
     // What falls back into the heap pushes it up, but never over the edge by itself.
     if (pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
     if (!state.sorting.open && state.recycle.total.gte(SORT_AT)) state.sorting.open = true;
-    if (hearingTick(state.hearing, dt, state.sorting.open, offline) === 'check') silence(state);
+    if (hearingTick(state.hearing, dt, state.sorting.open, offline, Math.random, cityEffects(state.city).hearingFill) === 'check') silence(state);
     // At the edge production stops; the game plays the loss and calls loseShift or loseToHearing.
     if (state.threat.level >= 1 || state.hearing.phase === 'caught') break;
   }
@@ -622,11 +622,10 @@ const recycleRate = (state: GameState) => recycleGainRaw(state.runTrash, recycle
 /** Whether a script is installed: through its tree node or bought for Recycled material. */
 export function scriptOwned(state: GameState, id: ScriptId): boolean {
   const def = scriptById(id)!;
-  // The town's schools and churches set scripts up on their own after a reform.
+  // The town's schools set scripts up on their own after a reform.
   const town = cityEffects(state.city);
   if (schoolScripts(town.schools).includes(id)) return true;
   if (def.town) return false;
-  if (id === 'light' && town.church) return true;
   if (def.recipe) return state.sorting.recipes.includes(def.recipe);
   // The dispatcher and the second floodlight install scripts on their own.
   if ((id === 'upgrades' || id === 'endless') && hasNode(state.recycle, 'a5')) return true;
@@ -658,7 +657,7 @@ export function installScript(state: GameState, id: ScriptId): boolean {
 
 /** Whether the Automation tab has anything on it yet. */
 export const automationOpen = (state: GameState) =>
-  hasNode(state.recycle, 'a1') || state.scripts.bought.length > 0 || cityEffects(state.city).schools > 0 || cityEffects(state.city).church;
+  hasNode(state.recycle, 'a1') || state.scripts.bought.length > 0 || cityEffects(state.city).schools > 0;
 
 export function buySpeed(state: GameState): boolean {
   const cost = speedCost(state.scripts.speed);
@@ -683,7 +682,7 @@ export function scriptTick(state: GameState): number {
 }
 
 export const lightFailChance = (state: GameState) =>
-  failChance(depthOf(state), state.scripts.reliability) * (hasNode(state.recycle, 't4') ? 0.5 : 1) * cityEffects(state.city).lightFail;
+  failChance(depthOf(state), state.scripts.reliability) * (hasNode(state.recycle, 't4') ? 0.5 : 1);
 
 /** Peak of the dark bonus: the base, the dark pact's levels and the tree. */
 export const darkPeakOf = (state: GameState) => darkPeak(state.tracks, DARK_BONUS) + treeDarkPeak(state.recycle) + cityEffects(state.city).darkPeak;

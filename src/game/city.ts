@@ -83,9 +83,9 @@ export const TYPE_TEXT: Record<DistrictType, string> = {
   live: 'Весь доход ×1.5',
   prom: 'Вторсырьё ×2',
   market: 'Фракции ×1.5',
-  school: 'Автоматика после реформы. 1-я школа: закупщик, снабженец, уплотнитель. 2-я: автопереработчик и завхоз (дерево). 3-я: автосортировщик и наладчик (линия)',
+  school: 'Автоматика после реформы. 1-я школа: закупщик, снабженец, уплотнитель, автопрожектор. 2-я: автопереработчик и завхоз (дерево). 3-я: автосортировщик и наладчик (линия)',
   boiler: 'Автоглушитель «Слуха»: у двери сам опускает шум цеха. Иногда отказывает',
-  church: 'Автопрожектор стоит сразу и отказывает реже',
+  church: 'Колокол заглушает цех: шкала «Слуха» копится медленнее, ×0.7',
   cemetery: 'Пик бонуса тьмы +0.2',
   archive: '10% фракций переживают реформу',
   river: 'Каждый цикл начинается с запасом вторсырья',
@@ -238,9 +238,8 @@ export interface CityEffects {
   schools: number;
   /** Boilers: chance the silencer fails; 1 without one. */
   silencerFail: number;
-  /** Churches: the floodlight script stands ready, and fails this much less often. */
-  church: boolean;
-  lightFail: number;
+  /** Churches: the bell covers the plant, the hearing fills this much slower. */
+  hearingFill: number;
   darkPeak: number;
   /** Share of fractions that survive a reform. */
   keepFractions: number;
@@ -271,8 +270,7 @@ function computeEffects(city: CityState): CityEffects {
     fractions: mul('market', 0.5),
     schools: city.owned.filter((id) => districtById(id)!.type === 'school').length,
     silencerFail: boilers > 0 ? 0.35 * 0.6 ** (boilers - 1) : 1,
-    church: churches > 0,
-    lightFail: 0.7 ** churches,
+    hearingFill: 0.7 ** churches,
     darkPeak: 0.2 * power(city, 'cemetery'),
     keepFractions: Math.min(0.1 * power(city, 'archive'), 0.5),
     startPoints: rivers > 0 ? D(1000).mul(Decimal.pow(10, rivers - 1)) : D(0),
@@ -287,7 +285,7 @@ export function reformGain(sorts: number, fractionsTotal: Decimal): Decimal {
 
 /** Scripts the schools set up after a reform: the first school the first group, and so on. */
 export const SCHOOL_TIERS: readonly (readonly string[])[] = [
-  ['producers', 'upgrades', 'endless'],
+  ['producers', 'upgrades', 'endless', 'light'],
   ['recycle', 'tree'],
   ['sort', 'line'],
 ];
