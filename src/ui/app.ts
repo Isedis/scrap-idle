@@ -46,6 +46,7 @@ import { LETTERS, REFORM_SORTS } from '../game/city';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
 import { Sound } from './sound';
+import { pieceFor } from './music';
 import { AwayScreen } from './awayScreen';
 import type { AwayReport } from '../game/away';
 import { WorkshopCam } from './workshopCam';
@@ -1536,6 +1537,7 @@ export class App {
     if (!this.automationPanel.root.hidden) this.automationPanel.render(state);
     if (!this.recyclePanel.root.hidden) this.recyclePanel.render(state);
     if (!this.journalPanel.root.hidden) this.journalPanel.render(state);
+    this.sound.setPiece(pieceFor(state));
     const pending = unwatched(state.story);
     this.journalBadge.hidden = pending === 0;
     this.journalBadge.textContent = String(pending);

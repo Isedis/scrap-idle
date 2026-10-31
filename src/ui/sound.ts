@@ -38,6 +38,7 @@ export class Sound {
   private huntScore: HuntScore | null = null;
   /** The music gives way: to the silence, to a stop, to its score. */
   private ducked = false;
+  private piece = 0;
   private hunting = false;
   /** Context time of the next clank of the shredder. */
   private clankAt = 0;
@@ -117,6 +118,7 @@ export class Sound {
     this.huntScore = new HuntScore(ctx, this.master);
     this.music = new Music(ctx, this.master);
     this.music.setOn(this.musicOn);
+    this.music.setPiece(this.piece);
     this.music.start();
     this.setThreat(this.threat);
     this.unlock(ctx);
@@ -128,6 +130,12 @@ export class Sound {
     src.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
     src.connect(ctx.destination);
     src.start(0);
+  }
+
+  /** The piece for the furthest layer opened; changing it fades one into the other. */
+  setPiece(index: number): void {
+    this.piece = index;
+    this.music?.setPiece(index);
   }
 
   /** The music follows the threat; under pressure, something creaks now and then. Called every render. */

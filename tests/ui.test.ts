@@ -52,3 +52,36 @@ describe('music', () => {
     expect(loud.some((s) => s.tune !== undefined && !inKey(s.tune))).toBe(true);
   });
 });
+
+describe('music by layer', () => {
+  it('each layer opened brings its piece, and a reform or the descent keeps it', async () => {
+    const { PIECES, pieceFor } = await import('../src/ui/music');
+    const { newGame } = await import('../src/game/state');
+    const s = newGame(0);
+    expect(pieceFor(s)).toBe(0);
+    s.recycle.resets = 1;
+    expect(pieceFor(s)).toBe(1);
+    s.sorting.open = true;
+    expect(pieceFor(s)).toBe(2);
+    s.city.reforms = 1;
+    s.sorting.open = false;
+    expect(pieceFor(s)).toBe(3);
+    s.bottom.open = true;
+    expect(pieceFor(s)).toBe(4);
+    expect(PIECES.map((p) => p.name)).toEqual(['Свалка', 'Цех', 'Лента', 'Город', 'Дно']);
+  });
+
+  it('the line runs an arpeggio on every step, the town tolls, the plant ticks', async () => {
+    const { PIECES } = await import('../src/ui/music');
+    const rand = () => 0.3;
+    const line = Array.from({ length: 16 }, (_, i) => composeStep(i, 0, rand, 0, PIECES[2]));
+    expect(line.every((s) => s.tune !== undefined)).toBe(true);
+    const town = Array.from({ length: 16 }, (_, i) => composeStep(i, 0, rand, 0, PIECES[3]));
+    expect(town.filter((s) => s.toll !== undefined).length).toBe(2);
+    const plant = Array.from({ length: 16 }, (_, i) => composeStep(i, 0, rand, 0, PIECES[1]));
+    expect(plant.filter((s) => s.tick).length).toBe(8);
+    // Slower in the shop than on the dump, quicker on the belt.
+    expect(plant[0].seconds).toBeGreaterThan(composeStep(0, 0, rand).seconds);
+    expect(line[0].seconds).toBeLessThan(composeStep(0, 0, rand).seconds);
+  });
+});
