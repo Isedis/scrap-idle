@@ -309,6 +309,8 @@ export function advance(state: GameState, seconds: number, offline = false): voi
     // What falls back into the heap pushes it up, but never over the edge by itself.
     if (pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
     if (!state.sorting.open && state.recycle.total.gte(SORT_AT)) state.sorting.open = true;
+    // A player already past the resorts the town asks for finds it open too.
+    if (!state.city.open && state.sorting.sorts >= REFORM_SORTS) state.city.open = true;
     if (hearingTick(state.hearing, dt, state.sorting.open, offline, Math.random, cityEffects(state.city).hearingFill) === 'check') silence(state);
     // At the edge production stops; the game plays the loss and calls loseShift or loseToHearing.
     if (state.threat.level >= 1 || state.hearing.phase === 'caught') break;

@@ -84,17 +84,17 @@ describe.runIf(process.env.PACE_SORT)('pacing: sorting', () => {
   });
 });
 
-// Twelve hours with Sorting take about five minutes: run with PACE_CITY=1.
+// Four hours with Sorting take about two minutes: run with PACE_CITY=1.
 describe.runIf(process.env.PACE_CITY)('pacing: the town', () => {
   let events: Simulation['events'] = [];
   beforeAll(() => {
-    ({ events } = simulate(12 * hour, { recycle: true, sort: true }));
+    ({ events } = simulate(4 * hour, { recycle: true, sort: true }));
     for (const e of events.filter((e) => /ПЕРЕСОРТ|город/.test(e.what))) console.log(hm(e.t).padStart(6), e.what);
   }, SIM_TIMEOUT);
 
-  it('the town opens between 8 and 12 hours in', () => {
+  it('the town opens between 2 and 4 hours in', () => {
     const open = events.find((e) => e.what === 'город открыт')?.t ?? Infinity;
-    expect(open, hm(open)).toBeGreaterThan(8 * hour);
-    expect(open, hm(open)).toBeLessThan(12 * hour);
+    expect(open, hm(open)).toBeGreaterThan(2 * hour);
+    expect(open, hm(open)).toBeLessThan(4 * hour);
   });
 });

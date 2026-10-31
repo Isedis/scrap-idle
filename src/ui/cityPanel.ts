@@ -148,7 +148,7 @@ export class CityPanel {
     this.plan.root.classList.toggle('closed', !city.open);
     if (!city.open) {
       const n = state.sorting.sorts;
-      this.lockedText.textContent = `Горсовет отдаст город после ${REFORM_SORTS} пересортировок за один цикл сортировки. Сейчас: ${n} из ${REFORM_SORTS}. Реформа сожжёт почти всё, но город останется навсегда.`;
+      this.lockedText.textContent = `Горсовет отдаст город после ${REFORM_SORTS} пересортировок. Сейчас: ${n} из ${REFORM_SORTS}. Реформа сожжёт почти всё, но город останется навсегда.`;
       this.lockedBar.textContent = textBar(n / REFORM_SORTS, 18);
     }
     this.meta.textContent = `кварталов ${city.owned.length - 1}/${DISTRICTS.length - 1} · ${format(city.points)} га`;
@@ -185,7 +185,7 @@ export class CityPanel {
     const ready = canReform(state);
     this.reformText.textContent = ready
       ? `За этот цикл: +${format(gain)} га.`
-      : `Нужно ${REFORM_SORTS} пересортировок за цикл, сейчас ${state.sorting.sorts}.`;
+      : `Нужно ${REFORM_SORTS} пересортировок, сейчас ${state.sorting.sorts}.`;
     this.reformButton.disabled = !ready;
 
     // Letters and the archive change only when a district is taken.
