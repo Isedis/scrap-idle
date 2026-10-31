@@ -297,6 +297,8 @@ export interface SortingState {
   inspected: number;
   /** Unique waste found, in order. */
   found: string[];
+  /** Repeats of each find turned up after all of them were found: each makes it stronger. */
+  echoes: Record<string, number>;
   /** Seconds of the current cycle. */
   cycleSeconds: number;
   /** What happened on the table since the screen last looked; not saved. */
@@ -305,7 +307,7 @@ export interface SortingState {
   boost: Decimal;
 }
 
-export type Inspection = { kind: 'unique'; id: string } | { kind: 'anomaly'; line: string } | { kind: 'fractions'; amount: Decimal; frac: Frac };
+export type Inspection = { kind: 'unique'; id: string } | { kind: 'echo'; id: string; level: number } | { kind: 'anomaly'; line: string } | { kind: 'fractions'; amount: Decimal; frac: Frac };
 
 export function newSorting(): SortingState {
   return {
@@ -323,6 +325,7 @@ export function newSorting(): SortingState {
     arrival: 0,
     inspected: 0,
     found: [],
+    echoes: {},
     cycleSeconds: 0,
     news: [],
     boost: D(1),
@@ -346,7 +349,8 @@ export function uniqueMult(s: SortingState, kind: UniqueKind): number {
   for (const id of s.found) {
     const u = UNIQUE_BY_ID.get(id);
     if (u?.kind !== kind) continue;
-    m = kind === 'queue' ? m + u.value : m * u.value;
+    // A repeat of a find makes it a tenth stronger: its effect to the power 1.1, 1.2…
+    m = kind === 'queue' ? m + u.value : m * u.value ** (1 + ECHO_STEP * (s.echoes[id] ?? 0));
   }
   return m;
 }
@@ -508,6 +512,13 @@ export function inspectOne(s: SortingState, rates: Record<Frac, Decimal>, offlin
     s.found.push(next.id);
     return { kind: 'unique', id: next.id };
   }
+  // Every find in: the table keeps turning up repeats of them, each one making its find stronger.
+  if (!next && s.inspected % ECHO_EVERY === 0) {
+    const pool = UNIQUES.filter((u) => u.kind !== 'queue');
+    const u = pool.reduce((a, b) => ((s.echoes[b.id] ?? 0) < (s.echoes[a.id] ?? 0) ? b : a));
+    s.echoes[u.id] = (s.echoes[u.id] ?? 0) + 1;
+    return { kind: 'echo', id: u.id, level: s.echoes[u.id] };
+  }
   if (!offline && s.inspected % 8 === 0) {
     return { kind: 'anomaly', line: ANOMALY_LINES[(s.inspected / 8) % ANOMALY_LINES.length] };
   }
@@ -546,6 +557,11 @@ export function sortingTick(s: SortingState, rate: Decimal, dt: number, offline:
   }
   return threat;
 }
+
+/** Once every find is in, every this many inspections turn up a repeat of one. */
+export const ECHO_EVERY = 6;
+/** Each repeat raises a find's effect to a power this much higher. */
+export const ECHO_STEP = 0.1;
 
 /** What a unique find does, for the screen. */
 export function describeUnique(u: UniqueDef): string {

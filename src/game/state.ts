@@ -916,6 +916,7 @@ export function reform(state: GameState): Decimal {
   // The finds stay, with what was looked at, so the next ones come where they would have.
   sorting.found = old.found;
   sorting.inspected = old.inspected;
+  sorting.echoes = old.echoes;
   // The archive keeps a share of the fractions.
   for (const f of FRACS) sorting.fractions[f] = old.fractions[f].mul(fx.keepFractions).floor();
   state.sorting = sorting;
@@ -957,6 +958,7 @@ export function descend(state: GameState): boolean {
   const sorting = newSorting();
   sorting.found = old.found;
   sorting.inspected = old.inspected;
+  sorting.echoes = old.echoes;
   state.sorting = sorting;
   state.recycle = newLayer();
   state.city = newCity();

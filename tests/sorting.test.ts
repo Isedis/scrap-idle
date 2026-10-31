@@ -377,3 +377,41 @@ describe('station levels', () => {
   });
 });
 
+
+describe('the table after every find', () => {
+  it('turns up repeats of finds, each making its find stronger, and keeps them across resets', async () => {
+    const { newSorting, inspectOne, uniqueMult, UNIQUES, ECHO_EVERY } = await import('../src/game/sorting');
+    const { D } = await import('../src/game/num');
+    const s = newSorting();
+    s.found = UNIQUES.map((u) => u.id);
+    const before = uniqueMult(s, 'income');
+    const rates = { plastic: D(1), metal: D(1), glass: D(1), paper: D(1) };
+    const results = Array.from({ length: ECHO_EVERY * 4 }, () => inspectOne(s, rates, true));
+    const echoes = results.filter((r) => r.kind === 'echo');
+    expect(echoes.length).toBe(4);
+    // Spread out: the least repeated first, never the queue finds.
+    expect(new Set(echoes.map((e) => (e as { id: string }).id)).size).toBe(4);
+    for (const id of Object.keys(s.echoes)) expect(UNIQUES.find((u) => u.id === id)!.kind).not.toBe('queue');
+    // An income find repeated: income up.
+    const income = UNIQUES.find((u) => u.kind === 'income')!;
+    s.echoes[income.id] = 5;
+    expect(uniqueMult(s, 'income')).toBeGreaterThan(before);
+  });
+
+  it('a v13 save loads with no repeats; repeats round-trip and survive a reform', async () => {
+    const { newGame, reform } = await import('../src/game/state');
+    const { deserialize, serialize } = await import('../src/game/save');
+    const s = newGame(0);
+    s.sorting.echoes = { boot: 3 };
+    const back = deserialize(serialize(s))!;
+    expect(back.sorting.echoes).toEqual({ boot: 3 });
+    const old = JSON.parse(serialize(s));
+    old.v = 13;
+    delete old.layers.sorting.echoes;
+    expect(deserialize(JSON.stringify(old))!.sorting.echoes).toEqual({});
+    s.city.open = true;
+    s.sorting.sorts = 20;
+    reform(s);
+    expect(s.sorting.echoes).toEqual({ boot: 3 });
+  });
+});

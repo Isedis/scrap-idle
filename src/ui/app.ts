@@ -999,6 +999,10 @@ export class App {
         this.sound.whisper();
         this.pop(this.threatEl, 'alarm');
         this.sortingPanel.showFind('Стол осмотра: предмет не опознан. Угроза +15%', true);
+      } else if (n.kind === 'echo') {
+        // A repeat of a find: the table's own line, no notice over the screen.
+        const u = uniqueById(n.id)!;
+        this.sortingPanel.showFind(`Повтор: ${u.name}. Сила находки ${n.level + 1}-я ступень`, false);
       } else {
         this.sortingPanel.showFind(`Тюк: +${format(n.amount)} ${FRAC_NAMES[n.frac].toLowerCase()}`, false);
       }

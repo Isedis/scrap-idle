@@ -45,8 +45,7 @@ import {
   type Frac,
   type LevelKind,
   type RecipeDef,
-  type StationId,
-} from '../game/sorting';
+  type StationId, ECHO_EVERY } from '../game/sorting';
 import { sortingAdvice } from '../game/advice';
 import { BeltCam } from './beltCam';
 import { canResort, ratePerSecond, scriptOwned, resortGain, resortShares, type GameState } from '../game/state';
@@ -601,7 +600,11 @@ export class SortingPanel {
     this.queue.textContent = `стол: ${Array.from({ length: size }, (_, i) => (i < so.queue ? '[?]' : '[ ]')).join(' ')}`;
     this.inspectBar.textContent = so.queue > 0 ? `осмотр ${textBar(so.progress)} ${Math.floor(so.progress * 100)}%` : 'стол пуст — ждём «?» с ленты';
     this.inspectNote.textContent = `Один осмотр — ${Math.round(inspectSeconds(so))} с. Мест на столе: ${size}. Если стол полон, «?» падает обратно в кучу.`;
-    this.foundNote.textContent = `Уникальных находок: ${so.found.length} из ${UNIQUES.length}. Все они — в Журнале.`;
+    const repeats = Object.values(so.echoes).reduce((a, b) => a + b, 0);
+    this.foundNote.textContent =
+      so.found.length < UNIQUES.length
+        ? `Уникальных находок: ${so.found.length} из ${UNIQUES.length}. Все они — в Журнале.`
+        : `Все ${UNIQUES.length} находок собраны. Каждый ${ECHO_EVERY}-й осмотр — повтор одной из них: +10% к её силе. Повторов: ${repeats}.`;
   }
 
   private renderRecipes(state: GameState): void {
