@@ -277,6 +277,9 @@ export function ratePerSecond(state: GameState): Decimal {
   return rate;
 }
 
+/** Share of income kept while the game is closed: the tree and the town's depots, never over all of it. */
+export const offlineRate = (state: GameState) => Math.min(1, offlineEfficiency(state.recycle) * cityEffects(state.city).offline);
+
 /** Longest slice of time simulated at one threat level; offline time is cut into at most this many slices. */
 const SLICE_SECONDS = 1;
 const OFFLINE_SLICES = 200;
@@ -294,24 +297,26 @@ export function advance(state: GameState, seconds: number, offline = false): voi
   const slice = offline ? Math.max(seconds / OFFLINE_SLICES, SLICE_SECONDS) : SLICE_SECONDS;
   for (let left = seconds; left > 0; left -= slice) {
     const dt = Math.min(slice, left);
+    const town = cityEffects(state.city);
     const rate = ratePerSecond(state);
     let gained = rate.mul(dt);
-    if (offline) gained = gained.mul(offlineEfficiency(state.recycle));
+    if (offline) gained = gained.mul(offlineRate(state));
     state.trash = state.trash.add(gained);
     state.totalTrash = state.totalTrash.add(gained);
     state.runTrash = state.runTrash.add(gained);
     state.runSeconds += dt;
     if (!offline) state.story.boost = Math.max(0, state.story.boost - dt);
     // Tails off the sorting line feed the thing: it climbs faster.
-    state.threat.level = climb(state.threat.level, state.runTrash, dt * threatSpeed(state.sorting) * treeThreatSpeed(state.recycle), offline);
-    state.sorting.boost = cityEffects(state.city).fractions;
+    state.threat.level = climb(state.threat.level, state.runTrash, dt * threatSpeed(state.sorting) * treeThreatSpeed(state.recycle) * town.threatSpeed, offline);
+    state.sorting.boost = town.fractions;
+    state.sorting.inspectBoost = 1 / town.inspect;
     const pushed = sortingTick(state.sorting, rate, dt, offline);
     // What falls back into the heap pushes it up, but never over the edge by itself.
     if (pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
     if (!state.sorting.open && state.recycle.total.gte(SORT_AT)) state.sorting.open = true;
     // A player already past the resorts the town asks for finds it open too.
     if (!state.city.open && state.sorting.sorts >= CITY_OPEN_SORTS) state.city.open = true;
-    if (hearingTick(state.hearing, dt, state.sorting.open, offline, Math.random, cityEffects(state.city).hearingFill) === 'check') silence(state);
+    if (hearingTick(state.hearing, dt, state.sorting.open, offline, Math.random, town.hearingFill) === 'check') silence(state);
     // At the edge production stops; the game plays the loss and calls loseShift or loseToHearing.
     if (state.threat.level >= 1 || state.hearing.phase === 'caught') break;
   }

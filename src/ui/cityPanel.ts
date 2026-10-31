@@ -4,15 +4,18 @@ import {
   LETTERS,
   CITY_OPEN_SORTS,
   REFORM_SORTS,
+  STREETS,
   TYPE_NAMES,
   TYPE_TEXT,
   annex,
   annexCost,
-  bordersLandfill,
   canAnnex,
   cityEffects,
   districtById,
   peopleLeft,
+  pitReady,
+  streetsOwned,
+  visible,
   strength,
 } from '../game/city';
 import { format } from '../game/num';
@@ -115,7 +118,7 @@ export class CityPanel {
     this.root.append(
       this.camera.root,
       head,
-      el('p', 's-why', 'Город отдаёт кварталы под полигон. Присоединять можно только те, что граничат со свалкой; каждый следующий дороже. Квартал сильнее рядом со своими.'),
+      el('p', 's-why', 'Город отдаёт кварталы под полигон. Присоединять можно только те, что граничат со свалкой; дальше — туман. Каждый следующий дороже, квартал сильнее рядом со своими. Яма в центре — последняя: её берут, когда весь город под свалкой.'),
       this.locked,
       this.people,
       this.plan.root,
@@ -152,21 +155,31 @@ export class CityPanel {
       this.lockedText.textContent = `Горсовет покажет город после ${CITY_OPEN_SORTS} пересортировок. Сейчас: ${n} из ${CITY_OPEN_SORTS}.`;
       this.lockedBar.textContent = textBar(n / CITY_OPEN_SORTS, 18);
     }
-    this.meta.textContent = `кварталов ${city.owned.length - 1}/${DISTRICTS.length - 1} · ${format(city.points)} га`;
+    this.meta.textContent = `кварталов ${streetsOwned(city)}/${STREETS} · ${format(city.points)} га`;
     this.people.textContent = `жителей: ${peopleLeft(city).toLocaleString('ru-RU')}`;
 
     // The picked district.
     const d = districtById(this.plan.selected)!;
     const owned = city.owned.includes(d.id);
     const cluster = owned && d.type !== 'dump' && d.type !== 'pit' ? strength(city, d.id) : 1;
-    this.cardTitle.textContent = `${d.name} · ${TYPE_NAMES[d.type]}`;
-    this.cardText.textContent = `${TYPE_TEXT[d.type]}${cluster > 1 ? ` · соседи своего типа: сила ×${cluster.toFixed(2)}` : ''}${d.people ? ` · жителей ${d.people}` : ''}`;
-    this.card.dataset.state = owned ? 'owned' : bordersLandfill(city, d.id) ? 'next' : 'far';
+    const seen = visible(city, d.id) || d.type === 'pit';
     const cost = annexCost(city, d.id);
     this.cardButton.hidden = owned;
     this.cardButton.disabled = !canAnnex(city, d.id);
-    this.cardButton.textContent = bordersLandfill(city, d.id) ? `Присоединить · ${format(cost)} га` : 'Не граничит со свалкой';
-    if (owned) this.cardText.textContent += d.type === 'dump' ? '' : ' · уже под свалкой';
+    if (!seen) {
+      // Fog: nobody from the landfill has been there; what it is stays unknown.
+      this.cardTitle.textContent = '? · в тумане';
+      this.cardText.textContent = 'Отсюда не видно, что там. Присоедините соседний квартал — туман отступит.';
+      this.card.dataset.state = 'far';
+      this.cardButton.textContent = 'В тумане';
+    } else {
+      this.cardTitle.textContent = `${d.name} · ${TYPE_NAMES[d.type]}`;
+      this.cardText.textContent = `${TYPE_TEXT[d.type]}${cluster > 1 ? ` · соседи своего типа: сила ×${cluster.toFixed(2)}` : ''}${d.people ? ` · жителей ${d.people}` : ''}`;
+      this.card.dataset.state = owned ? 'owned' : visible(city, d.id) ? 'next' : 'far';
+      if (d.type === 'pit' && !pitReady(city)) this.cardButton.textContent = `Нужен весь город · ${streetsOwned(city)}/${STREETS}`;
+      else this.cardButton.textContent = visible(city, d.id) ? `Присоединить · ${format(cost)} га` : 'Не граничит со свалкой';
+      if (owned) this.cardText.textContent += d.type === 'dump' ? '' : d.type === 'pit' ? ' · Под ямой — следующий слой; дорога туда ещё строится.' : ' · уже под свалкой';
+    }
 
     const fx = cityEffects(city);
     const parts = [
@@ -176,6 +189,10 @@ export class CityPanel {
       fx.schools ? `скрипты сразу: ${Math.min(fx.schools * 2, 5)}` : '',
       fx.silencerFail < 1 ? `глушитель: отказ ${Math.round(fx.silencerFail * 100)}%` : '',
       fx.hearingFill < 1 ? `слух копится ×${fx.hearingFill.toFixed(2)}` : '',
+      fx.threatSpeed < 1 ? `угроза растёт ×${fx.threatSpeed.toFixed(2)}` : '',
+      fx.offline > 1 ? `офлайн ×${fx.offline.toFixed(2)}` : '',
+      fx.inspect < 1 ? `осмотр ×${fx.inspect.toFixed(2)}` : '',
+      fx.annexDiscount < 1 ? `кварталы ×${fx.annexDiscount.toFixed(2)}` : '',
       fx.darkPeak ? `тьма +${fx.darkPeak.toFixed(1)}` : '',
       fx.keepFractions ? `фракций переживает реформу: ${Math.round(fx.keepFractions * 100)}%` : '',
       fx.startPoints.gt(0) ? `старт: ${format(fx.startPoints)} ВС` : '',

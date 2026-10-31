@@ -12,7 +12,22 @@ import { D, Decimal } from './num';
  * are neighbours when their cells share a street.
  */
 
-export type DistrictType = 'dump' | 'live' | 'prom' | 'market' | 'school' | 'boiler' | 'church' | 'cemetery' | 'archive' | 'river' | 'pit';
+export type DistrictType =
+  | 'dump'
+  | 'live'
+  | 'prom'
+  | 'market'
+  | 'school'
+  | 'boiler'
+  | 'church'
+  | 'cemetery'
+  | 'archive'
+  | 'river'
+  | 'hospital'
+  | 'depot'
+  | 'post'
+  | 'station'
+  | 'pit';
 
 export interface DistrictDef {
   id: string;
@@ -26,36 +41,59 @@ export interface DistrictDef {
 }
 
 /** Height of the plan in units of its width. */
-export const PLAN_H = 0.85;
+export const PLAN_H = 1.25;
 
+/** Glukhovo on a seven by seven survey sheet; the pit in the middle, the landfill in a corner. */
 export const DISTRICTS: readonly DistrictDef[] = [
-  { id: 'dump', type: 'dump', name: 'Полигон №7', x: 0.08, y: 0.07, people: 0 },
-  { id: 'prom1', type: 'prom', name: 'Промзона', x: 0.25, y: 0.06, people: 40 },
-  { id: 'brick', type: 'prom', name: 'Кирпичный завод', x: 0.1, y: 0.24, people: 60 },
-  { id: 'boiler1', type: 'boiler', name: 'Котельная №1', x: 0.27, y: 0.22, people: 30 },
-  { id: 'zavod', type: 'live', name: 'ул. Заводская', x: 0.42, y: 0.08, people: 410 },
-  { id: 'rabo', type: 'live', name: 'ул. Рабочая', x: 0.58, y: 0.07, people: 380 },
-  { id: 'nikola', type: 'church', name: 'Церковь Николы', x: 0.78, y: 0.06, people: 20 },
-  { id: 'school3', type: 'school', name: 'Школа-интернат', x: 0.93, y: 0.15, people: 150 },
-  { id: 'school1', type: 'school', name: 'Школа №1', x: 0.68, y: 0.21, people: 90 },
-  { id: 'sad', type: 'live', name: 'ул. Садовая', x: 0.45, y: 0.25, people: 360 },
-  { id: 'rynok', type: 'market', name: 'Рынок', x: 0.1, y: 0.42, people: 120 },
-  { id: 'les', type: 'live', name: 'ул. Лесная', x: 0.27, y: 0.4, people: 330 },
-  { id: 'pit', type: 'pit', name: 'Чёрная яма', x: 0.5, y: 0.44, people: 0 },
-  { id: 'sov', type: 'live', name: 'ул. Советская', x: 0.73, y: 0.37, people: 420 },
-  { id: 'ryady', type: 'market', name: 'Торговые ряды', x: 0.92, y: 0.33, people: 110 },
-  { id: 'zaton', type: 'river', name: 'Затон', x: 0.05, y: 0.62, people: 70 },
-  { id: 'pristan', type: 'river', name: 'Пристань', x: 0.22, y: 0.59, people: 90 },
-  { id: 'bereg', type: 'live', name: 'ул. Береговая', x: 0.37, y: 0.62, people: 310 },
-  { id: 'archive', type: 'archive', name: 'Архив горсовета', x: 0.56, y: 0.63, people: 15 },
-  { id: 'mira', type: 'live', name: 'ул. Мира', x: 0.71, y: 0.54, people: 390 },
-  { id: 'oldcem', type: 'cemetery', name: 'Старое кладбище', x: 0.9, y: 0.51, people: 3 },
-  { id: 'school2', type: 'school', name: 'Школа №2', x: 0.3, y: 0.79, people: 80 },
-  { id: 'mill', type: 'river', name: 'Мельница', x: 0.11, y: 0.8, people: 50 },
-  { id: 'pocht', type: 'live', name: 'ул. Почтовая', x: 0.48, y: 0.8, people: 300 },
-  { id: 'chapel', type: 'church', name: 'Часовня', x: 0.64, y: 0.79, people: 12 },
-  { id: 'boiler2', type: 'boiler', name: 'Котельная №2', x: 0.8, y: 0.7, people: 25 },
-  { id: 'newcem', type: 'cemetery', name: 'Новое кладбище', x: 0.95, y: 0.76, people: 0 },
+  { id: 'dump', type: 'dump', name: 'Полигон №7', x: 0.07, y: 0.07, people: 0 },
+  { id: 'prom1', type: 'prom', name: 'Промзона', x: 0.231, y: 0.054, people: 40 },
+  { id: 'zavod', type: 'live', name: 'ул. Заводская', x: 0.338, y: 0.046, people: 410 },
+  { id: 'rabo', type: 'live', name: 'ул. Рабочая', x: 0.503, y: 0.058, people: 380 },
+  { id: 'nikola', type: 'church', name: 'Церковь Николы', x: 0.634, y: 0.056, people: 20 },
+  { id: 'school3', type: 'school', name: 'Школа-интернат', x: 0.788, y: 0.048, people: 150 },
+  { id: 'newcem', type: 'cemetery', name: 'Новое кладбище', x: 0.936, y: 0.094, people: 0 },
+  { id: 'brick', type: 'prom', name: 'Кирпичный завод', x: 0.053, y: 0.231, people: 60 },
+  { id: 'boiler1', type: 'boiler', name: 'Котельная №1', x: 0.201, y: 0.242, people: 30 },
+  { id: 'sad', type: 'live', name: 'ул. Садовая', x: 0.362, y: 0.271, people: 360 },
+  { id: 'autobase', type: 'depot', name: 'Автобаза', x: 0.524, y: 0.261, people: 45 },
+  { id: 'lug', type: 'live', name: 'ул. Луговая', x: 0.656, y: 0.264, people: 290 },
+  { id: 'vysel', type: 'live', name: 'Выселки', x: 0.774, y: 0.249, people: 150 },
+  { id: 'hospital', type: 'hospital', name: 'Больница', x: 0.955, y: 0.239, people: 70 },
+  { id: 'rynok', type: 'market', name: 'Рынок', x: 0.086, y: 0.43, people: 120 },
+  { id: 'les', type: 'live', name: 'ул. Лесная', x: 0.207, y: 0.436, people: 330 },
+  { id: 'ogor', type: 'live', name: 'ул. Огородная', x: 0.381, y: 0.454, people: 270 },
+  { id: 'school1', type: 'school', name: 'Школа №1', x: 0.497, y: 0.439, people: 90 },
+  { id: 'sov', type: 'live', name: 'ул. Советская', x: 0.647, y: 0.444, people: 420 },
+  { id: 'ryady', type: 'market', name: 'Торговые ряды', x: 0.781, y: 0.449, people: 110 },
+  { id: 'dach', type: 'live', name: 'ул. Дачная', x: 0.943, y: 0.417, people: 180 },
+  { id: 'zaton', type: 'river', name: 'Затон', x: 0.073, y: 0.631, people: 70 },
+  { id: 'post', type: 'post', name: 'Почта', x: 0.218, y: 0.61, people: 35 },
+  { id: 'bereg', type: 'live', name: 'ул. Береговая', x: 0.356, y: 0.618, people: 310 },
+  { id: 'pit', type: 'pit', name: 'Чёрная яма', x: 0.5, y: 0.62, people: 0 },
+  { id: 'mira', type: 'live', name: 'ул. Мира', x: 0.632, y: 0.61, people: 390 },
+  { id: 'oldcem', type: 'cemetery', name: 'Старое кладбище', x: 0.79, y: 0.613, people: 3 },
+  { id: 'sawmill', type: 'prom', name: 'Лесопилка', x: 0.905, y: 0.642, people: 55 },
+  { id: 'pristan', type: 'river', name: 'Пристань', x: 0.053, y: 0.808, people: 90 },
+  { id: 'rech', type: 'live', name: 'ул. Речная', x: 0.206, y: 0.824, people: 260 },
+  { id: 'archive', type: 'archive', name: 'Архив горсовета', x: 0.384, y: 0.79, people: 15 },
+  { id: 'pocht', type: 'live', name: 'ул. Почтовая', x: 0.511, y: 0.793, people: 300 },
+  { id: 'chapel', type: 'church', name: 'Часовня', x: 0.629, y: 0.814, people: 12 },
+  { id: 'kuzn', type: 'live', name: 'ул. Кузнечная', x: 0.786, y: 0.804, people: 240 },
+  { id: 'fire', type: 'depot', name: 'Пожарная часть', x: 0.915, y: 0.806, people: 40 },
+  { id: 'mill', type: 'river', name: 'Мельница', x: 0.074, y: 0.987, people: 50 },
+  { id: 'school2', type: 'school', name: 'Школа №2', x: 0.234, y: 0.968, people: 80 },
+  { id: 'station', type: 'station', name: 'Вокзал', x: 0.381, y: 0.995, people: 60 },
+  { id: 'vokz', type: 'live', name: 'ул. Вокзальная', x: 0.499, y: 0.967, people: 230 },
+  { id: 'boiler2', type: 'boiler', name: 'Котельная №2', x: 0.653, y: 0.995, people: 25 },
+  { id: 'feldsher', type: 'hospital', name: 'Фельдшерский пункт', x: 0.795, y: 0.986, people: 30 },
+  { id: 'yarmarka', type: 'market', name: 'Ярмарка', x: 0.952, y: 0.965, people: 100 },
+  { id: 'dam', type: 'river', name: 'Плотина', x: 0.068, y: 1.171, people: 20 },
+  { id: 'slob', type: 'live', name: 'ул. Слободская', x: 0.196, y: 1.166, people: 250 },
+  { id: 'depo', type: 'prom', name: 'Депо', x: 0.37, y: 1.179, people: 70 },
+  { id: 'telegraph', type: 'post', name: 'Телеграф', x: 0.515, y: 1.161, people: 20 },
+  { id: 'nov', type: 'live', name: 'ул. Новая', x: 0.629, y: 1.178, people: 210 },
+  { id: 'torf', type: 'live', name: 'Посёлок торфяников', x: 0.791, y: 1.168, people: 160 },
+  { id: 'mogil', type: 'cemetery', name: 'Скотомогильник', x: 0.912, y: 1.178, people: 0 },
 ];
 
 export const districtById = (id: string) => DISTRICTS.find((d) => d.id === id);
@@ -74,6 +112,10 @@ export const TYPE_NAMES: Record<DistrictType, string> = {
   cemetery: 'Кладбище',
   archive: 'Архив',
   river: 'Река',
+  hospital: 'Больница',
+  depot: 'Автобаза',
+  post: 'Почта',
+  station: 'Вокзал',
   pit: 'Чёрная яма',
 };
 
@@ -89,7 +131,11 @@ export const TYPE_TEXT: Record<DistrictType, string> = {
   cemetery: 'Пик бонуса тьмы +0.2',
   archive: '10% фракций переживают реформу',
   river: 'Каждый цикл начинается с запасом вторсырья',
-  pit: 'Весь доход ×100. Под ней что-то есть',
+  hospital: 'Угроза растёт медленнее, ×0.85',
+  depot: 'Доход вне игры ×1.2',
+  post: 'Осмотр на столе сортировки быстрее, ×0.8 по времени',
+  station: 'Следующие кварталы дешевле, ×0.9',
+  pit: 'Последняя покупка: когда весь город под свалкой. Под ней — следующий слой',
 };
 
 /** Each owned neighbour of the same type makes a district this much stronger. */
@@ -196,17 +242,31 @@ export const CITY_OPEN_SORTS = 5;
 /** Resorts the reform itself needs. */
 export const REFORM_SORTS = 9;
 
-/** What the next district costs: each one dearer than the last, the pit far dearer. */
+/**
+ * What the next district costs: gently dearer each time, 3 ha for the first, about 430
+ * for the last street; the station makes all of them cheaper, the pit costs double.
+ */
 export function annexCost(city: CityState, id: string): Decimal {
-  const base = D(3).mul(Decimal.pow(1.45, city.owned.length - 1));
-  return (districtById(id)?.type === 'pit' ? base.mul(4) : base).ceil();
+  const n = city.owned.length - 1;
+  const base = (3 + 2 * n + 0.15 * n * n) * cityEffects(city).annexDiscount;
+  return D(districtById(id)?.type === 'pit' ? base * 2 : base).ceil();
 }
 
-/** A district can be annexed when it borders the landfill and the hectares are there. */
+/** Districts besides the pit: the pit is the last, once every one of them is taken. */
+export const STREETS = DISTRICTS.filter((d) => d.type !== 'pit' && d.type !== 'dump').length;
+export const streetsOwned = (city: CityState) => city.owned.filter((id) => id !== 'dump' && id !== 'pit').length;
+export const pitReady = (city: CityState) => streetsOwned(city) >= STREETS;
+
+/** A district can be annexed when it borders the landfill and the hectares are there; the pit, last of all. */
 export function canAnnex(city: CityState, id: string): boolean {
-  if (city.owned.includes(id) || !districtById(id)) return false;
+  const d = districtById(id);
+  if (city.owned.includes(id) || !d) return false;
+  if (d.type === 'pit' && !pitReady(city)) return false;
   return bordersLandfill(city, id) && city.points.gte(annexCost(city, id));
 }
+
+/** What the landfill can see of the town: its own districts and the ones next to them; the rest is fog. */
+export const visible = (city: CityState, id: string) => city.owned.includes(id) || bordersLandfill(city, id);
 
 export const bordersLandfill = (city: CityState, id: string) => plan().neighbours.get(id)!.some((n) => city.owned.includes(n));
 
@@ -242,6 +302,14 @@ export interface CityEffects {
   silencerFail: number;
   /** Churches: the bell covers the plant, the hearing fills this much slower. */
   hearingFill: number;
+  /** Hospitals: the threat climbs this much slower. */
+  threatSpeed: number;
+  /** Depots: income while away this much higher. */
+  offline: number;
+  /** Post offices: an inspection takes this share of its time. */
+  inspect: number;
+  /** The station: districts cost this share. */
+  annexDiscount: number;
   darkPeak: number;
   /** Share of fractions that survive a reform. */
   keepFractions: number;
@@ -273,16 +341,23 @@ function computeEffects(city: CityState): CityEffects {
     schools: city.owned.filter((id) => districtById(id)!.type === 'school').length,
     silencerFail: boilers > 0 ? 0.35 * 0.6 ** (boilers - 1) : 1,
     hearingFill: 0.7 ** churches,
+    threatSpeed: 0.85 ** power(city, 'hospital'),
+    offline: 1.2 ** power(city, 'depot'),
+    inspect: 0.8 ** power(city, 'post'),
+    annexDiscount: 0.9 ** power(city, 'station'),
     darkPeak: 0.2 * power(city, 'cemetery'),
     keepFractions: Math.min(0.1 * power(city, 'archive'), 0.5),
     startPoints: rivers > 0 ? D(1000).mul(Decimal.pow(10, rivers - 1)) : D(0),
   };
 }
 
-/** Hectares a reform gives now: more for each resort past the first few, a little for the fractions. */
+/**
+ * Hectares a reform gives now: about 24 at the ninth resort, and twice as many for each
+ * resort past it, so holding on for one more pays.
+ */
 export function reformGain(sorts: number, fractionsTotal: Decimal): Decimal {
   if (sorts < REFORM_SORTS) return D(0);
-  return D(Math.floor(sorts ** 1.3 + fractionsTotal.add(1).log10().toNumber()));
+  return D(sorts ** 1.3 + fractionsTotal.add(1).log10().toNumber()).mul(Decimal.pow(2, sorts - REFORM_SORTS)).floor();
 }
 
 /** Scripts the schools set up after a reform: the first school the first group, and so on. */
@@ -311,6 +386,16 @@ export const LETTERS: readonly string[] = [
   'На кладбище стало больше могил. Имена — наши. Даты — завтрашние. — сторож',
   'Почта приходит на адреса, которых больше нет. Ответы тоже приходят. — почтальон',
   'Здесь пусто. Не пишите сюда. — ул. Мира',
+  'В больнице все койки заняты. Пациентов нет. Простыни тёплые. — дежурная сестра',
+  'Автобаза: машины ночью уезжают сами. Утром стоят на местах. Пробег — до свалки и обратно. — механик',
+  'На вокзале продают билеты до Глухово. Мы и так в Глухово. — кассир',
+  'Телеграмма без отправителя: «ВЫЕЗЖАЙТЕ ТЧК ПОЗДНО ТЧК». — телеграфист',
+  'Плотина держит. Вода стоит выше, чем должна. Под водой видно окна. — смотритель плотины',
+  'Посёлок торфяников ушёл в торф. Весь. Вместе с собаками. Огни видно под землёй. — сосед',
+  'Скотомогильник шевелится по ночам. Мы думали, это ветер. Ветра нет третий месяц. — пастух',
+  'Пожарные выехали на вызов в яму. Не вернулись. Вызов повторяется. Их голосом. — диспетчер',
+  'В ярмарочный день торговали все. Покупателей не было. Товар раскупили. — торговка',
+  'Мы привыкли. Это хуже всего. — без подписи',
 ];
 
 /** What the archive holds, opened as its district is taken: the founding of the town. */

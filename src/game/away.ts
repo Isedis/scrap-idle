@@ -1,7 +1,6 @@
 import { D, Decimal } from './num';
 import { FRACS, type Inspection } from './sorting';
-import { offlineEfficiency } from './layers';
-import type { GameState } from './state';
+import { offlineRate, type GameState } from './state';
 
 /**
  * What changed while the game was closed, for the screen the player comes back to:
@@ -41,7 +40,7 @@ export function awayReport(before: AwaySnapshot, s: GameState, seconds: number):
   const news: Inspection[] = s.sorting.news.slice(before.news);
   return {
     seconds,
-    efficiency: offlineEfficiency(s.recycle),
+    efficiency: offlineRate(s),
     trash: s.trash.sub(before.trash).max(0),
     threat: s.threat.level,
     threatRose: s.threat.level > before.threat + 0.001,

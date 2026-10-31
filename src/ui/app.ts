@@ -921,6 +921,7 @@ export class App {
     if (letter) this.typeLine('ГОРСОВЕТ: НОВОЕ ПИСЬМО');
     if (id === 'pit') {
       this.typeLine('ЯМА ОТКРЫТА. ПОД НЕЙ ЕЩЁ ОДНА СВАЛКА');
+      this.toast('Слой «Под ямой» ещё строится: доход ×100 уже ваш');
       this.glitch(2);
     }
     writeSave(state);

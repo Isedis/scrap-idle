@@ -1,4 +1,4 @@
-import { DISTRICTS, PLAN_H, annexCost, bordersLandfill, plan, type CityState, type DistrictType, type Point } from '../game/city';
+import { DISTRICTS, PLAN_H, annexCost, pitReady, plan, visible, type CityState, type DistrictType, type Point } from '../game/city';
 import { format } from '../game/num';
 import { el } from './dom';
 
@@ -93,7 +93,13 @@ export class TownPlan {
     DISTRICTS.forEach((d, i) => {
       const cell = inset(cells[i], 0.008).map(S);
       const owned = city.owned.includes(d.id);
-      const next = !owned && bordersLandfill(city, d.id);
+      const seen = visible(city, d.id);
+      const next = !owned && seen && (d.type !== 'pit' || pitReady(city));
+      // The pit shows through the fog: everyone in town knows where it is.
+      if (!seen && d.type !== 'pit') {
+        this.fog(cell, i, d.id === this.selected);
+        return;
+      }
       this.path(cell);
       ctx.fillStyle = d.type === 'pit' ? '#000' : d.type === 'river' ? '#081d1c' : '#0c2216';
       ctx.fill();
@@ -104,7 +110,7 @@ export class TownPlan {
       const size = w * 0.05;
       if (d.type === 'river') this.water(cell);
       if (owned) this.heap(cell, i, d.type === 'dump');
-      else this.glyph(d.type, cx, cy, size, 1);
+      else this.glyph(d.type, cx, cy, size, seen || d.type !== 'pit' ? 1 : 0.6);
       ctx.restore();
       // Outlines: the landfill's own in green, the next ones pulsing amber, the pit in red.
       this.path(cell);
@@ -121,6 +127,8 @@ export class TownPlan {
         ctx.stroke();
         ctx.globalAlpha = 1;
         this.text(`${format(annexCost(city, d.id))} га`, cx, cy + size * 1.1, AMBER, 9);
+      } else if (d.type === 'pit' && !owned) {
+        this.text('ПОСЛЕДНЯЯ', cx, cy + size * 1.5, RED, 8);
       }
       if (d.id === this.selected) {
         this.path(cell);
@@ -132,9 +140,10 @@ export class TownPlan {
 
     // The selected district's name in a label at the top of the sheet.
     const sel = DISTRICTS.find((d) => d.id === this.selected)!;
+    const selName = visible(city, sel.id) || sel.type === 'pit' ? sel.name.toUpperCase() : '? ? ?';
     ctx.fillStyle = 'rgb(0 0 0 / 0.65)';
     ctx.fillRect(0, 0, w, 16);
-    this.text(sel.name.toUpperCase(), 6, 11, MID, 9, 'left');
+    this.text(selName, 6, 11, MID, 9, 'left');
     this.text('ГЛУХОВО · ПЛАН 1903 г.', w - 6, 11, DIM, 9, 'right');
   }
 
@@ -158,6 +167,39 @@ export class TownPlan {
     ctx.textAlign = align;
     ctx.fillStyle = color;
     ctx.fillText(s, x, y);
+  }
+
+  /** A district nobody from the landfill has seen yet: grey murk, drifting. */
+  private fog(cell: Point[], seedBase: number, picked: boolean): void {
+    const { ctx } = this;
+    this.path(cell);
+    ctx.fillStyle = '#0a0f0c';
+    ctx.fill();
+    ctx.save();
+    this.path(cell);
+    ctx.clip();
+    const xs = cell.map((p) => p[0]);
+    const ys = cell.map((p) => p[1]);
+    const x0 = Math.min(...xs);
+    const y0 = Math.min(...ys);
+    const bw = Math.max(...xs) - x0;
+    const bh = Math.max(...ys) - y0;
+    let seed = 7 + seedBase * 131;
+    const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let k = 0; k < 5; k++) {
+      const px = x0 + ((r() * bw + this.t * (2 + k)) % bw);
+      const py = y0 + r() * bh;
+      const g = ctx.createRadialGradient(px, py, 0, px, py, bw * 0.45);
+      g.addColorStop(0, 'rgb(120 140 128 / 0.14)');
+      g.addColorStop(1, 'rgb(120 140 128 / 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x0, y0, bw, bh);
+    }
+    ctx.restore();
+    this.path(cell);
+    ctx.lineWidth = picked ? 2 : 1;
+    ctx.strokeStyle = picked ? 'rgb(150 170 158 / 0.7)' : 'rgb(80 100 88 / 0.35)';
+    ctx.stroke();
   }
 
   /** Water: lines drifting across the cell. */
@@ -312,6 +354,54 @@ export class TownPlan {
           ctx.lineTo(x + s * 0.35, y - s * 0.4 + k * s * 0.18);
           ctx.stroke();
         }
+        break;
+      case 'hospital':
+        ctx.strokeRect(x - s * 0.6, y - s * 0.45, s * 1.2, s * 0.85);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = RED;
+        ctx.beginPath();
+        ctx.moveTo(x, y - s * 0.3);
+        ctx.lineTo(x, y + s * 0.25);
+        ctx.moveTo(x - s * 0.27, y - s * 0.02);
+        ctx.lineTo(x + s * 0.27, y - s * 0.02);
+        ctx.stroke();
+        break;
+      case 'depot':
+        // A lorry: box, cab, two wheels.
+        ctx.strokeRect(x - s * 0.7, y - s * 0.45, s * 0.9, s * 0.6);
+        ctx.strokeRect(x + s * 0.2, y - s * 0.2, s * 0.45, s * 0.35);
+        ctx.beginPath();
+        ctx.arc(x - s * 0.4, y + s * 0.28, s * 0.13, 0, Math.PI * 2);
+        ctx.moveTo(x + s * 0.55, y + s * 0.28);
+        ctx.arc(x + s * 0.42, y + s * 0.28, s * 0.13, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      case 'post':
+        ctx.strokeRect(x - s * 0.55, y - s * 0.35, s * 1.1, s * 0.7);
+        ctx.beginPath();
+        ctx.moveTo(x - s * 0.55, y - s * 0.35);
+        ctx.lineTo(x, y + s * 0.05);
+        ctx.lineTo(x + s * 0.55, y - s * 0.35);
+        ctx.stroke();
+        break;
+      case 'station':
+        // Rails running through, a platform roof over them.
+        ctx.beginPath();
+        ctx.moveTo(x - s, y + s * 0.2);
+        ctx.lineTo(x + s, y + s * 0.2);
+        ctx.moveTo(x - s, y + s * 0.45);
+        ctx.lineTo(x + s, y + s * 0.45);
+        for (let k = -4; k <= 4; k++) {
+          ctx.moveTo(x + k * s * 0.22, y + s * 0.12);
+          ctx.lineTo(x + k * s * 0.22, y + s * 0.53);
+        }
+        ctx.moveTo(x - s * 0.6, y - s * 0.4);
+        ctx.lineTo(x + s * 0.6, y - s * 0.4);
+        ctx.moveTo(x - s * 0.45, y - s * 0.4);
+        ctx.lineTo(x - s * 0.45, y + s * 0.05);
+        ctx.moveTo(x + s * 0.45, y - s * 0.4);
+        ctx.lineTo(x + s * 0.45, y + s * 0.05);
+        ctx.stroke();
         break;
       case 'river':
         break;

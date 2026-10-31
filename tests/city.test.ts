@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CITY_OPEN_SORTS, DISTRICTS, REFORM_SORTS, annex, annexCost, canAnnex, cityEffects, districtById, newCity, peopleLeft, plan, TOWN_PEOPLE } from '../src/game/city';
+import { CITY_OPEN_SORTS, DISTRICTS, REFORM_SORTS, annex, annexCost, canAnnex, cityEffects, districtById, newCity, peopleLeft, pitReady, plan, STREETS, TOWN_PEOPLE, visible } from '../src/game/city';
 import { advance, autoLine, autoTree, canReform, newGame, reform, resort, runScripts, scriptOwned, type GameState } from '../src/game/state';
 import { deserialize, serialize } from '../src/game/save';
 import { D } from '../src/game/num';
@@ -29,9 +29,9 @@ describe('annexing', () => {
     expect(annex(c, 'prom1')).toBe(true);
     expect(annexCost(c, 'zavod').gt(first)).toBe(true);
     expect(annex(c, 'zavod')).toBe(true);
-    expect(c.points.eq(D(1000).sub(3).sub(5))).toBe(true);
-    expect(annexCost(c, 'sad').toNumber()).toBe(7);
-    expect(annexCost(c, 'pit').toNumber()).toBe(26);
+    expect(c.points.eq(D(1000).sub(3).sub(6))).toBe(true);
+    expect(annexCost(c, 'sad').toNumber()).toBe(8);
+    expect(annexCost(c, 'pit').toNumber()).toBe(16);
     expect(peopleLeft(c)).toBe(TOWN_PEOPLE - districtById('prom1')!.people - districtById('zavod')!.people);
   });
 
@@ -50,6 +50,39 @@ describe('annexing', () => {
     expect(fx.hearingFill).toBeCloseTo(0.7);
     c.owned.push('pit');
     expect(cityEffects(c).income.div(fx.income).toNumber()).toBeCloseTo(100);
+  });
+
+  it('the new kinds: hospitals slow the threat, depots pay offline, posts speed the table, the station cuts prices', () => {
+    const c = newCity();
+    const before = annexCost(c, 'prom1').toNumber();
+    c.owned.push('hospital', 'autobase', 'post', 'station');
+    const fx = cityEffects(c);
+    expect(fx.threatSpeed).toBeCloseTo(0.85);
+    expect(fx.offline).toBeCloseTo(1.2);
+    expect(fx.inspect).toBeCloseTo(0.8);
+    expect(fx.annexDiscount).toBeCloseTo(0.9);
+    expect(before).toBe(3);
+  });
+
+  it('fog: only the landfill and what borders it is seen', () => {
+    const c = newCity();
+    expect(visible(c, 'prom1')).toBe(true);
+    expect(visible(c, 'zavod')).toBe(false);
+    annex(Object.assign(c, { points: D(100) }), 'prom1');
+    expect(visible(c, 'zavod')).toBe(true);
+    expect(visible(c, 'mogil')).toBe(false);
+  });
+
+  it('the pit is the last purchase: only once every street is taken', () => {
+    const c = newCity();
+    c.points = D(1e9);
+    c.owned.push(...DISTRICTS.filter((d) => d.type !== 'pit' && d.type !== 'dump' && d.id !== 'mira').map((d) => d.id));
+    expect(STREETS).toBe(DISTRICTS.length - 2);
+    expect(pitReady(c)).toBe(false);
+    expect(canAnnex(c, 'pit')).toBe(false);
+    expect(annex(c, 'mira')).toBe(true);
+    expect(pitReady(c)).toBe(true);
+    expect(annex(c, 'pit')).toBe(true);
   });
 });
 
