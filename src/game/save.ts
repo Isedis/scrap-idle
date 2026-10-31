@@ -1,5 +1,5 @@
 import { parseNum } from './num';
-import { AUTO_FACTORS, advance, newGame, type BuyMode, type GameState } from './state';
+import { AUTO_FACTORS, AUTO_FACTOR_DEFAULT, advance, newGame, type BuyMode, type GameState } from './state';
 import { PRODUCERS } from './producers';
 import { upgradeById } from './upgrades';
 import { nodeById, newLayer, offlineCapSeconds, type LayerState } from './layers';
@@ -26,7 +26,7 @@ import {
 
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
-const VERSION = 11;
+const VERSION = 12;
 
 /** Run length for a run whose start is not known; stays negative however long it is played. */
 const UNKNOWN_RUN_SECONDS = -1e12;
@@ -145,6 +145,11 @@ interface SaveV10 extends Omit<SaveV9, 'v' | 'layers'> {
 /** v11 adds the switches of the town's caretaker and fitter to the scripts. */
 interface SaveV11 extends Omit<SaveV10, 'v'> {
   v: 11;
+}
+
+/** v12: the auto-recycler's threshold is a share of the material earned (was a multiple); older settings reset. */
+interface SaveV12 extends Omit<SaveV11, 'v'> {
+  v: 12;
 }
 
 function loadCity(data: Partial<CitySave> | undefined): CityState | null {
@@ -330,7 +335,7 @@ function loadLayer(data: Partial<LayerSave> | undefined): LayerState | null {
 
 export function serialize(state: GameState): string {
   const { clock: _c, cooldown: _d, peak: _p, ...scripts } = state.scripts;
-  const data: SaveV11 = {
+  const data: SaveV12 = {
     v: VERSION,
     trash: state.trash.toString(),
     totalTrash: state.totalTrash.toString(),
@@ -362,13 +367,13 @@ export function serialize(state: GameState): string {
 
 /** Parses a save; returns null for anything that is not a readable save. */
 export function deserialize(text: string): GameState | null {
-  let data: Partial<SaveV11> | Partial<SaveV10> | Partial<SaveV9> | Partial<SaveV8> | Partial<SaveV7> | Partial<SaveV6> | Partial<SaveV5> | Partial<SaveV4> | Partial<SaveV3> | Partial<SaveV2> | Partial<SaveV1>;
+  let data: Partial<SaveV12> | Partial<SaveV11> | Partial<SaveV10> | Partial<SaveV9> | Partial<SaveV8> | Partial<SaveV7> | Partial<SaveV6> | Partial<SaveV5> | Partial<SaveV4> | Partial<SaveV3> | Partial<SaveV2> | Partial<SaveV1>;
   try {
     data = JSON.parse(text);
   } catch {
     return null;
   }
-  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].includes(data.v as number)) return null;
+  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].includes(data.v as number)) return null;
 
   const state = newGame(typeof data.lastTick === 'number' ? data.lastTick : Date.now());
   const trash = parseNum(data.trash ?? '0');
@@ -385,7 +390,7 @@ export function deserialize(text: string): GameState | null {
   if (!state.revealed.includes('collector')) state.revealed.unshift('collector');
 
   // A v1 save simply has none of these yet.
-  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11) {
+  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12) {
     const ids = (list: unknown) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string' && upgradeById(id)) : []);
     state.upgrades = [...new Set(ids(data.upgrades))];
     state.seenUpgrades = [...new Set([...ids(data.seenUpgrades), ...state.upgrades])];
@@ -395,7 +400,7 @@ export function deserialize(text: string): GameState | null {
   // Before v3 there was a single run: everything collected so far belongs to it, length unknown.
   state.runTrash = state.totalTrash;
   state.runSeconds = UNKNOWN_RUN_SECONDS;
-  if (data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11) {
+  if (data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12) {
     const run = parseNum(data.runTrash ?? '0');
     const recycle = loadLayer(data.layers?.recycle);
     if (!run || !recycle) return null;
@@ -406,14 +411,14 @@ export function deserialize(text: string): GameState | null {
   }
 
   // Older saves start with nothing stirring.
-  if (data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11) {
+  if (data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12) {
     const t = data.threat;
     const level = typeof t?.level === 'number' && Number.isFinite(t.level) ? t.level : 0;
     state.threat.level = Math.min(Math.max(level, 0), 1);
     state.threat.losses = typeof t?.losses === 'number' && t.losses >= 0 ? Math.floor(t.losses) : 0;
   }
-  if (data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11) state.story = loadStory(data.story);
-  if (data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11) {
+  if (data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12) state.story = loadStory(data.story);
+  if (data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12) {
     const t = data.threat;
     state.threat.lights = typeof t?.lights === 'number' && t.lights >= 0 ? Math.floor(t.lights) : 0;
     state.threat.bravest = typeof t?.bravest === 'number' && Number.isFinite(t.bravest) ? Math.min(Math.max(t.bravest, 0), 1) : 0;
@@ -424,21 +429,22 @@ export function deserialize(text: string): GameState | null {
     const ar = data.autoRecycle;
     state.autoRecycle = {
       on: ar?.on === true,
-      factor: AUTO_FACTORS.includes(ar?.factor as (typeof AUTO_FACTORS)[number]) ? ar!.factor : 1,
+      // Before v12 the factor was a multiple of everything earned and could never be reached.
+      factor: data.v === 12 && AUTO_FACTORS.includes(ar?.factor as (typeof AUTO_FACTORS)[number]) ? ar!.factor : AUTO_FACTOR_DEFAULT,
     };
   }
   // Before v7 there was no Automation tab: every script starts uninstalled, with default settings.
-  if (data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11) state.scripts = loadScripts(data.scripts);
+  if (data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12) state.scripts = loadScripts(data.scripts);
   // Before v8 there was no Sorting: the line opens on its own once Recycling has earned enough.
-  if (data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11) {
+  if (data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12) {
     const sorting = loadSorting(data.layers?.sorting);
     if (!sorting) return null;
     state.sorting = sorting;
   }
   // Before v9 nothing listened: the plant starts at normal load.
-  if (data.v === 9 || data.v === 10 || data.v === 11) state.hearing = loadHearing(data.hearing);
+  if (data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12) state.hearing = loadHearing(data.hearing);
   // Before v10 there was no town: it opens on its own after enough resorts in one cycle.
-  if (data.v === 10 || data.v === 11) {
+  if (data.v === 10 || data.v === 11 || data.v === 12) {
     const city = loadCity((data.layers as SaveV10['layers'] | undefined)?.city);
     if (!city) return null;
     state.city = city;

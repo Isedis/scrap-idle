@@ -240,7 +240,7 @@ export class AutomationPanel {
       case 'recycle': {
         const modes: [RecycleMode, string][] = [['gain', 'Награда'], ['time', 'Время'], ['peak', 'Пик']];
         box.append(this.choice('Когда перерабатывать', modes, (s) => s.scripts.recycleMode, (s, v) => (s.scripts.recycleMode = v)));
-        const factors = this.choice('Награда от всего вторсырья', AUTO_FACTORS.map((f) => [f, `×${f}`] as [number, string]), (s) => s.autoRecycle.factor, (s, v) => (s.autoRecycle.factor = v));
+        const factors = this.choice('Награда от накопленного вторсырья', AUTO_FACTORS.map((f) => [f, `${Math.round(f * 100)}%`] as [number, string]), (s) => s.autoRecycle.factor, (s, v) => (s.autoRecycle.factor = v));
         const minutes = this.choice('Длина захода', RECYCLE_MINUTES.map((m) => [m, m >= 60 ? `${m / 60} ч` : `${m} мин`] as [number, string]), (s) => s.scripts.recycleMinutes, (s, v) => (s.scripts.recycleMinutes = v));
         const note = el('div', 'a-note');
         this.updaters.push((s) => {
@@ -249,7 +249,7 @@ export class AutomationPanel {
           minutes.hidden = mode !== 'time';
           note.textContent =
             mode === 'gain'
-              ? `сработает при награде от ${format(autoRecycleAt(s))}`
+              ? `сработает при награде от ${format(autoRecycleAt(s))} или когда ждать дальше невыгодно`
               : mode === 'time'
                 ? `сработает через ${s.scripts.recycleMinutes} мин захода`
                 : 'сработает, когда вторсырьё в секунду перестанет расти';

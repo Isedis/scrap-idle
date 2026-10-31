@@ -163,7 +163,7 @@ export function newGame(now = Date.now()): GameState {
     tracks: {},
     compacted: 0,
     achievements: [],
-    autoRecycle: { on: false, factor: 1 },
+    autoRecycle: { on: false, factor: AUTO_FACTOR_DEFAULT },
     scripts: newScripts(),
     sorting: newSorting(),
     hearing: newHearing(),
@@ -596,11 +596,16 @@ export function buyRepeat(state: GameState, id: string): boolean {
   return true;
 }
 
-/** Choices for the auto-recycler threshold, as multiples of all Recycled material earned. */
-export const AUTO_FACTORS = [0.5, 1, 2, 5] as const;
+/**
+ * Choices for the auto-recycler threshold, as shares of the Recycled material earned since
+ * the last resort. The gain grows only as the fourth root of the run's trash, so asking a
+ * run for as much as everything before it soon cannot be met; a share keeps it in reach.
+ */
+export const AUTO_FACTORS = [0.01, 0.05, 0.1, 0.25] as const;
+export const AUTO_FACTOR_DEFAULT = 0.1;
 
-/** Gain at which the auto-recycler recycles: a multiple of everything earned, at least the first threshold. */
-export const autoRecycleAt = (state: GameState) => state.recycle.total.mul(state.autoRecycle.factor).max(10);
+/** Gain at which the auto-recycler recycles: a share of everything earned, at least the first threshold. */
+export const autoRecycleAt = (state: GameState) => state.recycle.total.mul(state.autoRecycle.factor).max(10).ceil();
 
 /** Whether the auto-recycler should recycle now. */
 export function autoRecycleDue(state: GameState): boolean {
@@ -610,7 +615,8 @@ export function autoRecycleDue(state: GameState): boolean {
   const sc = state.scripts;
   switch (sc.recycleMode) {
     case 'gain':
-      return gain.gte(autoRecycleAt(state));
+      // Waiting on a threshold that is no longer worth the time: recycle anyway.
+      return gain.gte(autoRecycleAt(state)) || (sc.peak > 0 && recycleRate(state) < sc.peak * STALL_DROP);
     case 'time':
       return state.runSeconds >= sc.recycleMinutes * 60;
     case 'peak':
@@ -619,6 +625,8 @@ export function autoRecycleDue(state: GameState): boolean {
   }
 }
 
+/** The gain mode gives up on its threshold once the rate has fallen to half its best. */
+const STALL_DROP = 0.5;
 /** The peak mode recycles once the rate falls this far below its best. */
 const PEAK_DROP = 0.95;
 const recycleRate = (state: GameState) => recycleGainRaw(state.runTrash, recycleMult(state)) / Math.max(state.runSeconds, 1);
@@ -822,7 +830,7 @@ export function reform(state: GameState): Decimal {
   layer.points = fx.startPoints;
   state.recycle = layer;
   state.scripts = newScripts();
-  state.autoRecycle = { on: false, factor: 1 };
+  state.autoRecycle = { on: false, factor: AUTO_FACTOR_DEFAULT };
   state.tracks = {};
   state.compacted = 0;
   state.upgrades = [];

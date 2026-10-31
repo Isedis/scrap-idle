@@ -120,14 +120,28 @@ describe('auto-recycler', () => {
     const s = newGame(0);
     s.runTrash = RECYCLE_AT.mul(16);
     s.runSeconds = 60;
-    s.recycle.total = D(15);
+    s.recycle.total = D(150);
     expect(autoRecycleDue(s)).toBe(false);
     s.recycle.nodes = ['a3'];
     s.autoRecycle.on = true;
-    expect(autoRecycleAt(s).toNumber()).toBe(15);
+    expect(autoRecycleAt(s).toNumber()).toBe(15); // 10% of 150
     expect(autoRecycleDue(s)).toBe(true); // gain 20 >= 15
-    s.autoRecycle.factor = 2;
-    expect(autoRecycleDue(s)).toBe(false); // needs 30
+    s.autoRecycle.factor = 0.25;
+    expect(autoRecycleDue(s)).toBe(false); // needs 38
+  });
+
+  it('does not wait forever: once the rate falls to half its best, it recycles anyway', () => {
+    const s = newGame(0);
+    s.recycle.nodes = ['a3'];
+    s.autoRecycle = { on: true, factor: 0.25 };
+    s.runTrash = RECYCLE_AT.mul(16);
+    s.runSeconds = 600;
+    s.recycle.total = D(1e6);
+    s.scripts.peak = 0;
+    expect(autoRecycleDue(s)).toBe(false);
+    // The best rate this run was far higher than now.
+    s.scripts.peak = (20 / 600) * 3;
+    expect(autoRecycleDue(s)).toBe(true);
   });
 });
 
@@ -163,14 +177,14 @@ describe('save v6', () => {
     buyTrack(s, 'compact');
     s.recycle.repeats = { memory: 3 };
     s.achievements = ['kg1e3', 'rec1'];
-    s.autoRecycle = { on: true, factor: 5 };
+    s.autoRecycle = { on: true, factor: 0.05 };
     s.threat.lights = 4;
     const back = deserialize(serialize(s))!;
     expect(back.tracks).toEqual({ compact: 1 });
     expect(back.compacted).toBe(1);
     expect(back.recycle.repeats).toEqual({ memory: 3 });
     expect(back.achievements).toEqual(['kg1e3', 'rec1']);
-    expect(back.autoRecycle).toEqual({ on: true, factor: 5 });
+    expect(back.autoRecycle).toEqual({ on: true, factor: 0.05 });
     expect(back.threat.lights).toBe(4);
   });
 
@@ -181,7 +195,14 @@ describe('save v6', () => {
     const back = deserialize(JSON.stringify(v5))!;
     expect(back.tracks).toEqual({});
     expect(back.achievements).toEqual([]);
-    expect(back.autoRecycle).toEqual({ on: false, factor: 1 });
+    expect(back.autoRecycle).toEqual({ on: false, factor: 0.1 });
+  });
+
+  it('a v11 save resets the old multiple to the default share', () => {
+    const v11 = JSON.parse(serialize(newGame(0)));
+    v11.v = 11;
+    v11.autoRecycle = { on: true, factor: 2 };
+    expect(deserialize(JSON.stringify(v11))!.autoRecycle).toEqual({ on: true, factor: 0.1 });
   });
 
   it('drops junk', () => {
@@ -192,6 +213,6 @@ describe('save v6', () => {
     const back = deserialize(JSON.stringify(s))!;
     expect(back.tracks).toEqual({ bulk: 2 });
     expect(back.achievements).toEqual(['kg1e3']);
-    expect(back.autoRecycle).toEqual({ on: false, factor: 1 });
+    expect(back.autoRecycle).toEqual({ on: false, factor: 0.1 });
   });
 });
