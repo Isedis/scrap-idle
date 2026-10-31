@@ -840,7 +840,7 @@ export class App {
       if (bought.length === 0) return;
       this.sound.click();
       for (const u of bought) this.toast(`Куплено: ${u.name}`);
-      this.workshop.bought();
+      this.workshop.bought(bought.map(u => u.id));
       this.pop(this.rateEl, 'pulse');
       this.render();
     });
@@ -859,7 +859,7 @@ export class App {
   private onTrack(def: TrackDef): void {
     const state = this.getState();
     this.sound.click();
-    this.workshop.bought();
+    this.workshop.bought([def.id]);
     this.pop(this.rateEl, 'pulse');
     if (def.id === 'compact' && state.compacted % COMPACT_MILESTONE === 0) {
       this.typeLine(`УПЛОТНЕНИЕ ×${state.compacted}. ТО, ЧТО ВНИЗУ, ПОДНЯЛОСЬ БЛИЖЕ`);
@@ -1044,7 +1044,7 @@ export class App {
       if (buyUpgrade(this.getState(), def.id)) {
         this.sound.click();
         this.toast(`Куплено: ${def.name}`);
-        this.workshop.bought();
+        this.workshop.bought([def.id]);
         this.caption(describeUpgrade(def));
         this.pop(this.rateEl, 'pulse');
         this.render();
@@ -1291,8 +1291,7 @@ export class App {
     if (!this.automationPanel.root.hidden) this.automationPanel.frame(dt, state);
     if (!this.panels.get('upgrades')!.hidden) {
       this.workshop.update(dt, {
-        bought: state.upgrades.length,
-        total: UPGRADES.length,
+        upgrades: state.upgrades,
         compact: state.tracks.compact ?? 0,
         bulk: state.tracks.bulk ?? 0,
         dark: state.tracks.dark ?? 0,

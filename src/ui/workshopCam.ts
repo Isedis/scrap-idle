@@ -1,152 +1,214 @@
 import { Camera } from './camera';
 import { C } from './scene';
+import { UPGRADES, upgradeById } from '../game/upgrades';
+import { PRODUCERS } from '../game/producers';
+import { trackById } from '../game/infinite';
 
-/** What camera 05 needs to know about upgrades. */
 export interface WorkshopView {
-  /** Upgrades bought this run, and how many there are in all. */
-  bought: number;
-  total: number;
+  upgrades: readonly string[];
   compact: number;
   bulk: number;
   dark: number;
   threat: number;
 }
 
-/** Tool shapes on the pegboard, picked by slot so each keeps its look. */
-const TOOLS = 5;
+const LABELS = ['СБОР', 'ТЕЛЕЖКИ', 'ВЫВОЗ', 'ЛИНИЯ', 'ПРЕСС', 'ЗАВОД', 'ПОЛИГОН', 'ТЭЦ', 'ОРБИТА', 'СИНГУЛ.'];
+/** Real upgrade ids, rather than a row filled by the aggregate purchase count. */
+export function workshopInventory(ids: readonly string[]) {
+  const owned = new Set(ids);
+  const count = (kind: 'global' | 'synergy') => {
+    const defs = UPGRADES.filter(u => u.effect.kind === kind);
+    return { bought: defs.filter(u => owned.has(u.id)).length, total: defs.length };
+  };
+  return {
+    kits: PRODUCERS.map((producer, i) => {
+      const defs = UPGRADES.filter(u => u.effect.kind === 'producer' && u.effect.target === producer.id);
+      return { id: producer.id, label: LABELS[i], slots: defs.map(u => ({ id: u.id, bought: owned.has(u.id) })) };
+    }),
+    global: count('global'), synergy: count('synergy'),
+    bought: UPGRADES.filter(u => owned.has(u.id)).length,
+  };
+}
 
-/** Camera 05: the workshop. Every upgrade hangs on the wall as a tool; the endless ones are machines. */
+/** Camera 05: an equipment wall and three physical endless-upgrade stations. */
 export class WorkshopCam extends Camera<WorkshopView> {
-  /** The newest tool glows for a moment. */
   private fresh = 0;
-  private pump = 0;
-  /** Under the compactor's plate something moves now and then. */
+  private changed: string[] = [];
+  private lastPurchase = '';
   private twitch = 0;
   private twitchIn = 15;
+  private inventory = workshopInventory([]);
+  private inventoryKey = '';
 
   constructor() {
-    super('КАМ-05 · МАСТЕРСКАЯ', 'Камера в мастерской с улучшениями');
+    super('КАМ-05 · МАСТЕРСКАЯ', 'Мастерская: оборудование купленных улучшений');
+    this.root.classList.add('workshop');
   }
 
-  /** Something was bought: the newest tool lights up. */
-  bought(): void {
-    this.fresh = 1.2;
-    this.pump = 1;
-  }
-
-  private get floor() {
-    return this.h - 14;
+  bought(ids: string[]): void {
+    this.changed = ids;
+    this.fresh = 2;
+    const last = ids[ids.length - 1];
+    this.lastPurchase = upgradeById(last)?.name ?? trackById(last)?.name ?? '';
+    if (ids.length > 1) this.lastPurchase = `Установлено улучшений: ${ids.length}`;
   }
 
   protected simulate(dt: number): void {
-    const v = this.view!;
     this.fresh = Math.max(0, this.fresh - dt);
-    this.pump = Math.max(0, this.pump - dt * 1.5);
     this.twitchIn -= dt;
-    if (v.threat >= 0.6 && this.twitchIn <= 0) {
+    if (this.view!.threat >= 0.6 && this.view!.compact > 0 && this.twitchIn <= 0) {
       this.twitch = 1.5;
-      this.twitchIn = 12 + Math.random() * 20 - v.threat * 8;
+      this.twitchIn = 18 + Math.random() * 18;
     }
     this.twitch = Math.max(0, this.twitch - dt);
+  }
+
+  private highlighted(ids: string[]): boolean {
+    return !this.reducedMotion && this.fresh > 0 && ids.some(id => this.changed.includes(id));
   }
 
   protected draw(): void {
     const { ctx, w, h } = this;
     const v = this.view!;
-    const fl = this.floor;
-
-    const bg = ctx.createLinearGradient(0, 0, 0, h);
-    bg.addColorStop(0, '#030c07');
-    bg.addColorStop(1, '#0c2216');
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, w, h);
-    this.line(0, fl, w, fl, C.deep, 1.5);
-
-    // Pegboard: one hook per upgrade in the catalogue, a tool on each one bought.
-    const bx = 10;
-    const by = 26;
-    const bw = Math.min(w * 0.5, 200);
-    const cols = 13;
-    const cell = bw / cols;
-    const rows = Math.ceil(v.total / cols);
-    this.box(bx - 4, by - 4, bw + 8, rows * cell + 8, C.far, 1);
-    for (let i = 0; i < v.total; i++) {
-      const x = bx + (i % cols) * cell + cell / 2;
-      const y = by + Math.floor(i / cols) * cell + cell / 2;
-      if (i >= v.bought) {
-        ctx.fillStyle = C.far;
-        ctx.fillRect(x - 0.5, y - 0.5, 1, 1);
-        continue;
+    const key = v.upgrades.join('|');
+    if (key !== this.inventoryKey) {
+      this.inventoryKey = key;
+      this.inventory = workshopInventory(v.upgrades);
+    }
+    const inv = this.inventory;
+    const aria = `Мастерская: улучшений ${inv.bought}/${UPGRADES.length}. ${inv.kits.map(k => `${k.label}: ${k.slots.filter(s => s.bought).length}/${k.slots.length}`).join('; ')}. Общие: ${inv.global.bought}/${inv.global.total}; связи: ${inv.synergy.bought}/${inv.synergy.total}. Уплотнение ${v.compact}; опт ${v.bulk}; договор ${v.dark}.`;
+    if (this.canvas.getAttribute('aria-label') !== aria) this.canvas.setAttribute('aria-label', aria);
+    ctx.save();
+    ctx.scale(w / 360, h / 270);
+    const bg = ctx.createLinearGradient(0, 0, 0, 270);
+    bg.addColorStop(0, '#07170e'); bg.addColorStop(1, '#030a06');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, 360, 270);
+    // Perspective wall, raised equipment rails, and a concrete floor.
+    this.poly([[0, 28], [14, 42], [14, 146], [0, 171]], '#21432c');
+    this.poly([[346, 42], [360, 28], [360, 171], [346, 146]], '#21432c');
+    this.box(14, 42, 332, 104, C.far);
+    this.line(0, 171, 360, 171, C.deep);
+    for (let i = 0; i < 7; i++) this.line(180 + (i - 3) * 38, 147, 180 + (i - 3) * 90, 270, '#123724');
+    this.line(0, 240, 360, 240, '#21432c');
+    this.label(`ОСНАЩЕНО ${inv.bought}/${UPGRADES.length}`, 18, 37, C.light, 'left');
+    // Each purchased global upgrade powers a lamp; synergies connect the bus below it.
+    this.status('ОБЩИЕ', inv.global, 154, 37);
+    this.status('СВЯЗИ', inv.synergy, 250, 37);
+    for (let i = 0; i < inv.kits.length; i++) {
+      const kit = inv.kits[i];
+      const x = 22 + (i % 5) * 65;
+      const y = 49 + Math.floor(i / 5) * 47;
+      const amount = kit.slots.filter(s => s.bought).length;
+      const glow = this.highlighted(kit.slots.map(s => s.id));
+      this.box(x, y, 56, 37, glow ? C.light : amount ? C.deep : C.far, glow ? 1.5 : 0.7);
+      if (amount) {
+        this.actor(() => this.equipment(i, x + 28, y + 14, amount));
+      } else {
+        this.line(x + 23, y + 13, x + 33, y + 13, '#285b38');
+        this.label('—', x + 28, y + 24, C.deep);
       }
-      const glow = i === v.bought - 1 && this.fresh > 0;
-      this.drawTool(i % TOOLS, x, y, cell * 0.38, glow ? C.light : C.green);
+      // Fixed slots preserve which exact tiers survived a reset or were bought out of order.
+      kit.slots.forEach((slot, index) => {
+        ctx.fillStyle = slot.bought ? (glow ? C.light : C.glow) : '#163923';
+        ctx.fillRect(x + 7 + index * 11, y + 27, 8, 3);
+      });
+      this.label(`${kit.label} ${amount}/${kit.slots.length}`, x + 28, y + 44, amount ? '#a0cbaa' : '#52795c');
     }
-    this.label(`ИНСТРУМЕНТ ${v.bought}/${v.total}`, bx + bw / 2, by + rows * cell + 14, C.deep);
-
-    // Workbench with the dark deal on it: one signature per level.
-    const tx = bx;
-    const ty = fl - 16;
-    this.box(tx, ty, bw * 0.7, 4, C.deep, 1);
-    this.line(tx + 4, ty + 4, tx + 4, fl, C.deep, 1);
-    this.line(tx + bw * 0.7 - 4, ty + 4, tx + bw * 0.7 - 4, fl, C.deep, 1);
-    if (v.dark > 0) {
-      this.box(tx + 10, ty - 8, 22, 8, '#c8e8c8', 0.8);
-      for (let k = 0; k < Math.min(v.dark, 6); k++) this.line(tx + 13 + k * 3, ty - 3, tx + 15 + k * 3, ty - 5, '#c86a5a', 1);
-      this.label('ДОГОВОР', tx + 21, ty - 11, C.deep);
-    }
-
-    // Crates from the bulk supplier by the door.
-    const cx = bx + bw + 20;
-    for (let k = 0; k < Math.min(v.bulk, 12); k++) {
-      const col = k % 3;
-      const row = Math.floor(k / 3);
-      this.box(cx + col * 13, fl - 12 - row * 11, 12, 10, '#5f8f68', 1);
-    }
-    if (v.bulk > 0) this.label('ОПТ', cx + 19, fl - 14 - Math.ceil(Math.min(v.bulk, 12) / 3) * 11, C.deep);
-
-    // The compactor: its plate sits lower with every level, pressing a block that keeps getting thinner.
-    const kx = w - 46;
-    // The frame starts below the camera's clock in the top right corner.
-    const top = 48;
-    const low = Math.min(1, Math.log2(v.compact + 1) / 6);
-    const blockH = Math.max(6, 36 * (1 - low));
-    const plateY = fl - blockH - 8 + this.pump * 4;
-    this.box(kx - 26, top + 4, 4, fl - top - 4, C.deep, 1);
-    this.box(kx + 22, top + 4, 4, fl - top - 4, C.deep, 1);
-    this.box(kx - 26, top, 52, 6, C.far, 1);
-    this.line(kx, top + 6, kx, plateY, C.deep, 3);
-    const shake = this.twitch > 0 ? Math.sin(this.t * 40) * 1.5 : 0;
-    this.box(kx - 20 + shake, fl - blockH, 40, blockH, '#3f7a52', 1);
-    this.actor(() => this.box(kx - 22, plateY, 44, 8, C.hub, 1.4));
-    if (this.twitch > 0) {
-      // Something under the plate pushes back.
-      for (let k = -1; k <= 1; k++) this.line(kx + k * 8 + shake, fl - blockH, kx + k * 9 + shake, fl - blockH - 5, C.light, 1);
-    }
-    this.label(v.compact > 0 ? `УПЛОТНЕНИЕ ${v.compact}` : 'УПЛОТНИТЕЛЬ', kx, top - 4, v.compact > 0 ? C.green : C.deep);
-
-    this.vignette(v.threat);
+    this.drawCompactor(v);
+    this.drawStock(v);
+    this.drawContract(v);
+    const latestExists = this.changed.some(id => v.upgrades.includes(id) || ((id === 'compact' || id === 'bulk' || id === 'dark') && v[id] > 0));
+    const caption = latestExists && this.lastPurchase ? this.lastPurchase : 'Покупки оснащают мастерскую';
+    ctx.fillStyle = '#061009'; ctx.fillRect(0, 250, 360, 20);
+    this.line(0, 250, 360, 250, '#285337');
+    this.label(caption.length > 45 ? caption.slice(0, 42) + '…' : caption, 12, 263, '#a0cbaa', 'left');
+    ctx.restore();
+    this.vignette(v.threat * 0.5);
   }
 
-  private drawTool(kind: number, x: number, y: number, r: number, color: string): void {
-    switch (kind) {
-      case 0: // wrench
-        this.line(x - r, y + r, x + r * 0.6, y - r * 0.6, color, 1.2);
-        this.circle(x + r * 0.7, y - r * 0.7, r * 0.35, color, 0.8);
-        break;
-      case 1: // hammer
-        this.line(x, y + r, x, y - r * 0.4, color, 1.2);
-        this.box(x - r * 0.7, y - r, r * 1.4, r * 0.6, color, 0.8);
-        break;
-      case 2: // saw
-        this.poly([[x - r, y + r * 0.4], [x + r, y - r * 0.4], [x + r, y], [x - r, y + r * 0.8]], color, 0.8);
-        break;
-      case 3: // pliers
-        this.line(x - r * 0.5, y + r, x + r * 0.3, y - r, color, 1.2);
-        this.line(x + r * 0.5, y + r, x - r * 0.3, y - r, color, 1.2);
-        break;
-      default: // screwdriver
-        this.line(x, y - r, x, y + r * 0.2, color, 1);
-        this.box(x - r * 0.3, y + r * 0.2, r * 0.6, r * 0.8, color, 0.8);
+  private status(label: string, value: { bought: number; total: number }, x: number, y: number): void {
+    const kind = label === 'ОБЩИЕ' ? 'global' : 'synergy';
+    const glow = this.highlighted(UPGRADES.filter(u => u.effect.kind === kind).map(u => u.id));
+    if (glow) this.box(x - 3, y - 9, 82, 16, C.light, 1);
+    this.label(`${label} ${value.bought}/${value.total}`, x, y, value.bought ? C.light : '#52795c', 'left');
+    for (let i = 0; i < value.total; i++) {
+      this.ctx.fillStyle = i < value.bought ? C.glow : '#163923';
+      this.ctx.fillRect(x + i * 9, y + 3, 6, 2);
     }
+  }
+
+  /** Recognisable hardware silhouettes for the ten producer families. */
+  private equipment(kind: number, x: number, y: number, amount: number): void {
+    const color = C.green;
+    if (kind === 0) { // Bag, grabber, spare supplies.
+      this.poly([[x-9,y+7],[x-7,y-5],[x-3,y-8],[x+2,y-5],[x+5,y+7]],color);
+      this.line(x-6,y-5,x+1,y-5,C.light);
+      if (amount >= 2) this.box(x+8,y-2,5,8,color);
+      if (amount >= 3) this.line(x+17,y+7,x+13,y-10,C.light,1.5);
+    } else if (kind === 1 || kind === 2) {
+      this.box(x-14,y-4,23,10,color);
+      this.circle(x-9,y+8,3,color); this.circle(x+7,y+8,3,color);
+      this.line(x+9,y-4,x+15,y-8,C.light);
+      if (amount >= 2) this.box(x-12,y-9,17,5,color);
+      if (amount >= 3) this.box(x+10,y-2,7,7,color);
+    } else if (kind === 8 || kind === 9) {
+      this.circle(x,y,7,color); this.line(x-18,y,x+18,y,C.deep);
+      if (amount >= 2) { this.box(x-19,y-6,8,12,color); this.box(x+11,y-6,8,12,color); }
+      if (amount >= 3) this.circle(x,y,11,color,0.6);
+    } else {
+      this.box(x-13,y-7,26,16,color);
+      this.box(x-8,y-3,9,8,C.deep);
+      for (let i=0;i<amount;i++) this.line(x+5+i*3,y+5,x+5+i*3,y-3-i,C.light);
+      if (amount>=3) this.line(x-9,y-7,x-9,y-11,C.light,2);
+    }
+    if (amount === 4) this.circle(x+21,y-6,2,C.light);
+  }
+
+  private drawCompactor(v: WorkshopView): void {
+    const x=65, floor=224, top=160;
+    const on=v.compact>0, glow=this.highlighted(['compact']);
+    const c=on?C.green:C.far;
+    const block=Math.max(7,28-Math.log2(v.compact+1)*3);
+    const pump=glow?Math.sin((2-this.fresh)*Math.PI*2)*2:0;
+    this.box(x-35,top,70,7,c); this.box(x-32,top+7,5,58,c); this.box(x+27,top+7,5,58,c);
+    this.box(x-37,floor,74,6,c);
+    const plate=floor-block-7+pump;
+    this.line(x,top+7,x,plate,on?C.deep:C.far,5);
+    if(on){
+      const twitch=this.twitch>0?Math.sin(this.t*35):0;
+      this.box(x-23+twitch,floor-block,46,block,C.deep);
+      for(let i=0;i<5;i++)this.line(x-19+i*8,floor-block+3,x-16+i*8,floor-2,C.green,0.7);
+      this.actor(()=>this.box(x-27,plate,54,6,glow?C.light:C.green));
+    }else this.box(x-27,plate,54,6,C.far);
+    this.label(`УПЛОТНЕНИЕ · ${v.compact}`,x,244,on?C.light:'#52795c');
+  }
+
+  private drawStock(v: WorkshopView): void {
+    const x=179, floor=226;
+    const glow=this.highlighted(['bulk']);
+    this.box(x-33,floor,66,4,C.deep);
+    if(v.bulk===0)this.label('НЕТ ПОСТАВОК',x,204,'#52795c');
+    for(let k=0;k<Math.min(v.bulk,9);k++){
+      const cx=x-30+(k%3)*21, cy=floor-18-Math.floor(k/3)*18;
+      this.box(cx,cy,19,16,glow?C.light:C.green);
+      this.line(cx+2,cy+2,cx+17,cy+14,C.deep);
+      this.line(cx+9,cy,cx+9,cy+16,C.light,0.7);
+    }
+    this.label(`ОПТ · ${v.bulk}`,x,244,v.bulk?C.light:'#52795c');
+  }
+
+  private drawContract(v: WorkshopView): void {
+    const x=292, on=v.dark>0;
+    this.box(x-36,220,72,5,C.deep);this.line(x-30,225,x-30,235,C.deep,2);this.line(x+30,225,x+30,235,C.deep,2);
+    // More signed pages, a heavier binding and a seal as the pact grows.
+    if(on){
+      for(let i=Math.min(v.dark,5)-1;i>=0;i--)this.box(x-20+i,186-i*2,40,31,C.deep);
+      this.actor(()=>this.box(x-21,183,42,31,this.highlighted(['dark'])?C.light:'#8cb995'));
+      for(let i=0;i<Math.min(v.dark,6);i++)this.line(x-15,188+i*3,x+9-(i%2)*7,188+i*3,C.deep,0.7);
+      this.circle(x+12,207,4,'#cb9c76');
+      if(v.dark>=5)this.line(x+4,183,x+4,214,C.deep,2);
+    }else this.label('НЕ ПОДПИСАН',x,204,'#52795c');
+    this.line(x+27,190,x+23,212,C.green,2);
+    this.label(`ДОГОВОР · ${v.dark}`,x,244,on?C.light:'#52795c');
   }
 }

@@ -1680,3 +1680,5 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .classic-ui .classic-reset { display: block; }
 .classic-ui .s-deal.classic-reset { display: grid; }
 .classic-ui .operator-goal, .classic-ui .threat-effect, .classic-ui .reset-preview { display: none; }
+
+.feed.cam.workshop { height: 270px; }
