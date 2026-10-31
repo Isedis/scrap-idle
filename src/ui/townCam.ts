@@ -1,4 +1,4 @@
-import { DISTRICTS, districtById, type DistrictType } from '../game/city';
+import { DISTRICTS, districtById, plan, type DistrictType } from '../game/city';
 import { Camera } from './camera';
 import { C } from './scene';
 
@@ -170,46 +170,32 @@ export class TownCam extends Camera<TownView> {
     const dark = this.blackout > 0;
     const pit = this.spots.find((s) => s.type === 'pit')!;
     const inhaling = this.inhale > 0 ? Math.sin((this.inhale / 4) * Math.PI) : 0;
-
-    // Sky with low cloud, lit from below by the pit.
-    const sky = ctx.createLinearGradient(0, 0, 0, h * 0.6);
-    sky.addColorStop(0, '#020805');
-    sky.addColorStop(1, '#0b2214');
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, w, h);
-    for (let k = 0; k < 5; k++) {
-      const cx = ((k * 0.27 + this.t * 0.004 * (1 + k * 0.3)) % 1.3) * w - w * 0.15;
-      const g = ctx.createRadialGradient(cx, h * (0.12 + k * 0.05), 0, cx, h * (0.12 + k * 0.05), w * 0.22);
-      g.addColorStop(0, 'rgb(40 80 55 / 0.18)');
-      g.addColorStop(1, 'rgb(40 80 55 / 0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, w, h * 0.6);
-    }
-    const red = ctx.createRadialGradient(pit.x, pit.y, 0, pit.x, pit.y - h * 0.15, w * 0.35);
-    red.addColorStop(0, `rgb(255 80 60 / ${0.16 + 0.06 * Math.sin(this.t * 0.9) + inhaling * 0.2})`);
-    red.addColorStop(1, 'rgb(255 80 60 / 0)');
-    ctx.fillStyle = red;
-    ctx.fillRect(0, 0, w, h);
-
-    // Hills on the horizon, then the ground.
     const horizon = this.project(0.5, -0.05).y;
-    ctx.fillStyle = '#071a0f';
-    ctx.beginPath();
-    ctx.moveTo(0, horizon);
-    for (let x = 0; x <= w; x += 8) ctx.lineTo(x, horizon - 6 - Math.sin(x * 0.02) * 5 - Math.sin(x * 0.007 + 1) * 7);
-    ctx.lineTo(w, h);
-    ctx.lineTo(0, h);
-    ctx.fill();
-    const ground = ctx.createLinearGradient(0, horizon, 0, h);
-    ground.addColorStop(0, '#0a1f12');
-    ground.addColorStop(1, '#0c2416');
-    ctx.fillStyle = ground;
-    ctx.fillRect(0, horizon, w, h - horizon);
 
-    // The river along the west of the town.
+    this.sky(pit, inhaling, horizon);
+
+    // The world drifts a little: the camera on its pole turns slowly, like a guard looking about.
+    ctx.save();
+    ctx.translate(Math.sin(this.t * 0.045) * w * 0.03, 0);
+
+    // The streets of the plan, laid on the ground, with a lamp here and there.
+    ctx.lineCap = 'round';
+    plan().streets.forEach(([a, b], i) => {
+      const pa = this.project(a[0], a[1]);
+      const pb = this.project(b[0], b[1]);
+      ctx.strokeStyle = 'rgb(95 176 122 / 0.16)';
+      ctx.lineWidth = Math.max(1, 2.2 * (pa.s + pb.s) * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(pa.x, pa.y);
+      ctx.lineTo(pb.x, pb.y);
+      ctx.stroke();
+      if (i % 3 === 0 && !dark) this.lamp((pa.x + pb.x) / 2, (pa.y + pb.y) / 2, (pa.s + pb.s) / 2, i);
+    });
+    ctx.lineCap = 'butt';
+
     for (const sp of this.spots) if (sp.type === 'river') this.water(sp);
 
-    // The districts, far to near.
+    // The districts, far to near; the pit's red light on everything around it.
     for (const sp of this.spots) {
       if (sp.type === 'river') continue;
       if (sp.type === 'pit') {
@@ -220,42 +206,262 @@ export class TownCam extends Camera<TownView> {
       const burial = this.burials.find((b) => b.id === sp.id);
       if (!owned || burial) this.district(sp, dark, v.people, inhaling, pit);
       if (owned) this.heap(sp, burial ? Math.min(1, burial.t / (BURY * 0.75)) : 1, burial?.t ?? BURY);
-      // Street lamps along the row.
-      if (!owned && !dark && sp.type !== 'cemetery') {
-        const lx = sp.x - sp.u * 1.6;
-        ctx.fillStyle = `rgb(200 255 210 / ${0.5 + 0.15 * Math.sin(this.t * 3 + sp.seed)})`;
-        ctx.fillRect(lx, sp.y - sp.u * 1.3, 1.5, 1.5);
-        const halo = ctx.createRadialGradient(lx, sp.y - sp.u * 1.3, 0, lx, sp.y - sp.u * 1.3, sp.u * 0.9);
-        halo.addColorStop(0, 'rgb(200 255 210 / 0.12)');
-        halo.addColorStop(1, 'rgb(200 255 210 / 0)');
-        ctx.fillStyle = halo;
-        ctx.fillRect(lx - sp.u, sp.y - sp.u * 2.3, sp.u * 2, sp.u * 2);
-      }
     }
+    ctx.globalCompositeOperation = 'lighter';
+    const rim = ctx.createRadialGradient(pit.x, pit.y, 0, pit.x, pit.y, w * 0.4);
+    rim.addColorStop(0, `rgb(120 25 15 / ${0.28 + inhaling * 0.35})`);
+    rim.addColorStop(1, 'rgb(120 25 15 / 0)');
+    ctx.fillStyle = rim;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'source-over';
 
-    // Smoke.
+    this.mist(pit, inhaling);
     for (const p of this.puffs) {
       ctx.fillStyle = `rgb(130 180 145 / ${0.16 * (1 - p.life / 5)})`;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
       ctx.fill();
     }
-
+    this.fogBands(horizon);
     this.pipes(pit);
     this.people();
+    this.crows(v);
+    this.spotlight(v.selected);
     this.marker(v.selected);
+    ctx.restore();
 
-    // Haze over the far rows.
-    const haze = ctx.createLinearGradient(0, horizon - 10, 0, h * 0.85);
-    haze.addColorStop(0, 'rgb(20 45 30 / 0.55)');
+    // Haze over the far rows, then the hill the camera stands on, and ash in front of it all.
+    const haze = ctx.createLinearGradient(0, horizon - 10, 0, h * 0.8);
+    haze.addColorStop(0, 'rgb(20 45 30 / 0.5)');
     haze.addColorStop(1, 'rgb(20 45 30 / 0)');
     ctx.fillStyle = haze;
     ctx.fillRect(0, horizon - 10, w, h);
+    this.foreground();
+    this.ash();
     if (dark) {
       ctx.fillStyle = 'rgb(0 0 0 / 0.4)';
       ctx.fillRect(0, 0, w, h);
     }
-    this.vignette(0.35);
+    this.vignette(0.4);
+  }
+
+  /** Night sky: low cloud drifting, lit red from under by the pit; hills on the horizon. */
+  private sky(pit: Spot, inhaling: number, horizon: number): void {
+    const { ctx, w, h } = this;
+    const sky = ctx.createLinearGradient(0, 0, 0, horizon);
+    sky.addColorStop(0, '#010503');
+    sky.addColorStop(1, '#0b2214');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    for (let k = 0; k < 7; k++) {
+      const cx = ((k * 0.23 + this.t * 0.005 * (1 + k * 0.3)) % 1.4) * w - w * 0.2;
+      const cy = h * (0.06 + (k % 4) * 0.07);
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * (0.18 + (k % 3) * 0.06));
+      g.addColorStop(0, 'rgb(45 85 60 / 0.2)');
+      g.addColorStop(1, 'rgb(45 85 60 / 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, horizon);
+    }
+    const red = ctx.createRadialGradient(pit.x, horizon, 0, pit.x, horizon, w * 0.5);
+    red.addColorStop(0, `rgb(255 70 50 / ${0.22 + 0.06 * Math.sin(this.t * 0.9) + inhaling * 0.2})`);
+    red.addColorStop(1, 'rgb(255 70 50 / 0)');
+    ctx.fillStyle = red;
+    ctx.fillRect(0, 0, w, horizon + 20);
+    ctx.fillStyle = '#061509';
+    ctx.beginPath();
+    ctx.moveTo(-w * 0.1, horizon + 2);
+    for (let x = -w * 0.1; x <= w * 1.1; x += 6) ctx.lineTo(x, horizon - 5 - Math.sin(x * 0.02) * 5 - Math.sin(x * 0.007 + 1) * 8);
+    ctx.lineTo(w * 1.1, h);
+    ctx.lineTo(-w * 0.1, h);
+    ctx.fill();
+    const ground = ctx.createLinearGradient(0, horizon, 0, h);
+    ground.addColorStop(0, '#081a0f');
+    ground.addColorStop(1, '#0b2214');
+    ctx.fillStyle = ground;
+    ctx.fillRect(0, horizon, w, h - horizon);
+  }
+
+  /** A street lamp: a post and a soft cone of light on the ground; some of them flicker. */
+  private lamp(x: number, y: number, s: number, i: number): void {
+    const { ctx } = this;
+    const flick = i % 7 === 0 && Math.sin(this.t * 13 + i) > 0.6 ? 0.2 : 1;
+    const top = y - 14 * s;
+    ctx.strokeStyle = 'rgb(95 176 122 / 0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, top);
+    ctx.stroke();
+    const g = ctx.createRadialGradient(x, y, 0, x, y, 12 * s);
+    g.addColorStop(0, `rgb(200 255 210 / ${0.16 * flick})`);
+    g.addColorStop(1, 'rgb(200 255 210 / 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 12 * s, 5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgb(220 255 225 / ${0.85 * flick})`;
+    ctx.fillRect(x - 1, top - 1, 2, 2);
+  }
+
+  /** Red mist going up from the pit like breath on a cold night, with sparks in it. */
+  private mist(pit: Spot, inhaling: number): void {
+    const { ctx, h } = this;
+    for (let k = 0; k < 6; k++) {
+      const p = (this.t * 0.05 + k / 6) % 1;
+      const y = pit.y - p * h * 0.6;
+      const x = pit.x + Math.sin(p * 5 + k + this.t * 0.3) * pit.u * 1.5;
+      const r = pit.u * (1.5 + p * 4);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgb(200 60 45 / ${(0.12 + inhaling * 0.1) * (1 - p)})`);
+      g.addColorStop(1, 'rgb(200 60 45 / 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    for (let k = 0; k < 14; k++) {
+      const p = (this.t * (0.06 + (k % 4) * 0.02) + k * 0.31) % 1;
+      const x = pit.x + (((k * 37) % 9) - 4) * pit.u * 0.6 + Math.sin(this.t * 2 + k) * pit.u * 0.5 * p;
+      const y = pit.y - p * h * 0.5;
+      ctx.fillStyle = `rgb(255 150 110 / ${0.8 * (1 - p)})`;
+      ctx.fillRect(x, y, 1.5, 1.5);
+    }
+  }
+
+  /** Low fog lying between the rows of houses, drifting across. */
+  private fogBands(horizon: number): void {
+    const { ctx, w, h } = this;
+    for (let k = 0; k < 4; k++) {
+      const y = horizon + (h - horizon) * (0.2 + k * 0.2);
+      const drift = ((this.t * (3 + k * 1.5) + k * 90) % (w * 1.6)) - w * 0.3;
+      for (const x of [drift - w * 0.8, drift]) {
+        const g = ctx.createRadialGradient(x + w * 0.4, y, 0, x + w * 0.4, y, w * 0.45);
+        g.addColorStop(0, 'rgb(90 130 105 / 0.13)');
+        g.addColorStop(1, 'rgb(90 130 105 / 0)');
+        ctx.fillStyle = g;
+        ctx.save();
+        ctx.translate(0, y);
+        ctx.scale(1, 0.18);
+        ctx.translate(0, -y);
+        ctx.fillRect(x - w * 0.1, y - w * 0.5, w, w);
+        ctx.restore();
+      }
+    }
+  }
+
+  /** Crows circling over the heap: the more of the town it has, the more of them. */
+  private crows(v: TownView): void {
+    const heaps = this.spots.filter((s) => v.owned.includes(s.id));
+    if (!heaps.length) return;
+    const { ctx } = this;
+    const cx = heaps.reduce((a, s) => a + s.x, 0) / heaps.length;
+    const cy = Math.min(...heaps.map((s) => s.y)) - this.h * 0.12;
+    const n = Math.min(9, 2 + Math.floor(heaps.length / 5));
+    ctx.strokeStyle = '#020804';
+    ctx.lineWidth = 1.2;
+    for (let k = 0; k < n; k++) {
+      const a = this.t * (0.35 + (k % 3) * 0.1) + k * 1.9;
+      const x = cx + Math.cos(a) * this.w * (0.08 + (k % 4) * 0.03);
+      const y = cy + Math.sin(a) * this.h * 0.04 + (k % 3) * 4;
+      const flap = Math.sin(this.t * 9 + k) * 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 4, y - flap);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x + 4, y - flap);
+      ctx.stroke();
+    }
+  }
+
+  /** The camera's own lamp on the district picked on the plan. */
+  private spotlight(id: string): void {
+    const sp = this.spots.find((s) => s.id === id);
+    if (!sp) return;
+    const { ctx, w, h } = this;
+    const sx = w * 0.5;
+    const sy = h + 10;
+    const r = sp.u * 2.6;
+    const g = ctx.createLinearGradient(sx, sy, sp.x, sp.y);
+    g.addColorStop(0, 'rgb(200 255 210 / 0)');
+    g.addColorStop(1, `rgb(200 255 210 / ${0.1 + 0.03 * Math.sin(this.t * 2)})`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(sx - 6, sy);
+    ctx.lineTo(sp.x - r, sp.y - sp.u);
+    ctx.lineTo(sp.x + r, sp.y - sp.u);
+    ctx.lineTo(sx + 6, sy);
+    ctx.fill();
+    const pool = ctx.createRadialGradient(sp.x, sp.y - sp.u, 0, sp.x, sp.y - sp.u, r * 1.2);
+    pool.addColorStop(0, 'rgb(200 255 210 / 0.14)');
+    pool.addColorStop(1, 'rgb(200 255 210 / 0)');
+    ctx.fillStyle = pool;
+    ctx.fillRect(sp.x - r * 1.2, sp.y - sp.u - r * 1.2, r * 2.4, r * 2.4);
+  }
+
+  /** The hill under the camera: grass moving in the wind, a fence, a pole with sagging wires. */
+  private foreground(): void {
+    const { ctx, w, h } = this;
+    ctx.fillStyle = '#020805';
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    ctx.lineTo(0, h * 0.9);
+    for (let x = 0; x <= w; x += 10) ctx.lineTo(x, h * 0.93 + Math.sin(x * 0.03) * 4 + (x / w) * h * 0.03);
+    ctx.lineTo(w, h);
+    ctx.fill();
+    ctx.strokeStyle = '#04130a';
+    ctx.lineWidth = 1;
+    for (let k = 0; k < 70; k++) {
+      const x = (k / 70) * w + ((k * 13) % 7);
+      const base = h * 0.93 + Math.sin(x * 0.03) * 4 + (x / w) * h * 0.03;
+      const tall = 5 + ((k * 7) % 9);
+      const sway = Math.sin(this.t * 1.4 + k * 0.6) * 2.5;
+      ctx.beginPath();
+      ctx.moveTo(x, base + 2);
+      ctx.quadraticCurveTo(x + sway * 0.5, base - tall * 0.5, x + sway, base - tall);
+      ctx.stroke();
+    }
+    // Fence posts with a wire, leaning, to the left.
+    ctx.strokeStyle = '#06180d';
+    ctx.lineWidth = 2;
+    for (let k = 0; k < 4; k++) {
+      const x = w * (0.03 + k * 0.08);
+      ctx.beginPath();
+      ctx.moveTo(x, h);
+      ctx.lineTo(x + (k % 2 ? 2 : -1), h * 0.78 + k * 3);
+      ctx.stroke();
+    }
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.03, h * 0.82);
+    ctx.quadraticCurveTo(w * 0.15, h * 0.86, w * 0.27, h * 0.84);
+    ctx.stroke();
+    // A pole on the right, its wires running out of the frame.
+    const px = w * 0.93;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(px, h);
+    ctx.lineTo(px - 2, h * 0.02);
+    ctx.moveTo(px - 14, h * 0.08);
+    ctx.lineTo(px + 10, h * 0.07);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+    for (const [k, end] of [[-12, 0.2], [0, 0.28], [8, 0.16]] as const) {
+      ctx.beginPath();
+      ctx.moveTo(px + k, h * 0.075);
+      const sway = Math.sin(this.t * 0.8 + k) * 2;
+      ctx.quadraticCurveTo(w * 0.45, h * (end + 0.08) + sway, -10, h * end);
+      ctx.stroke();
+    }
+  }
+
+  /** Ash coming down in front of the camera, slowly, slantwise. */
+  private ash(): void {
+    const { ctx, w, h } = this;
+    ctx.fillStyle = 'rgb(170 200 180 / 0.35)';
+    for (let k = 0; k < 40; k++) {
+      const p = (this.t * (0.03 + (k % 5) * 0.008) + k * 0.173) % 1;
+      const x = ((k * 97.3) % w) + p * w * 0.15 + Math.sin(this.t + k) * 3;
+      const y = p * h;
+      const s = k % 4 === 0 ? 2 : 1;
+      ctx.fillRect(x % w, y, s, s);
+    }
   }
 
   /** Water: a dark sheet with light drifting on it. */
@@ -318,10 +524,24 @@ export class TownCam extends Camera<TownView> {
   /** A district still standing, drawn as what it is. */
   private district(sp: Spot, dark: boolean, people: number, inhaling: number, pit: Spot): void {
     const { ctx } = this;
-    const { x, y, u } = sp;
+    const { x, y } = sp;
     const r = stream(sp.seed);
     const fill = sp.near > 0.6 ? '#16402a' : sp.near > 0.3 ? '#123321' : '#0e2a1b';
     const win = (wx: number, wy: number, bw: number, bh: number, n: number) => this.windows(wx, wy, bw, bh, n, sp, dark, people, inhaling, pit);
+    // The town leans toward the pit: the nearer, the more.
+    const dist = Math.hypot(pit.x - x, pit.y - y);
+    const lean = Math.sign(pit.x - x) * 0.14 * Math.max(0, 1 - dist / (this.w * 0.32)) * (1 + 0.15 * Math.sin(this.t * 0.4));
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(lean);
+    ctx.translate(-x, -y);
+    this.building(sp, r, fill, win);
+    ctx.restore();
+  }
+
+  private building(sp: Spot, r: () => number, fill: string, win: (wx: number, wy: number, bw: number, bh: number, n: number) => void): void {
+    const { ctx } = this;
+    const { x, y, u } = sp;
     switch (sp.type) {
       case 'live': {
         for (let k = 0; k < 4; k++) {
@@ -541,8 +761,8 @@ export class TownCam extends Camera<TownView> {
   private pit(sp: Spot, open: boolean, inhaling: number): void {
     const { ctx } = this;
     const { x, y, u } = sp;
-    const rw = u * 3.6;
-    const rh = u * 0.9;
+    const rw = u * 4.6;
+    const rh = u * 1.1;
     const glow = ctx.createRadialGradient(x, y, 0, x, y, rw * 1.4);
     glow.addColorStop(0, `rgb(255 80 60 / ${(open ? 0.35 : 0.2) + 0.1 * Math.sin(this.t * 0.9) + inhaling * 0.25})`);
     glow.addColorStop(1, 'rgb(255 80 60 / 0)');
