@@ -1555,3 +1555,31 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 }
 
 
+
+/* ---- The town: camera 08, the plan of Glukhovo, the district card, letters, the reform ---- */
+.c-people { color: var(--danger); font-size: 12px; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+.town-plan { width: 100%; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.town-canvas { display: block; width: 100%; cursor: pointer; touch-action: manipulation; }
+.c-card { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: rgb(0 0 0 / 0.25); }
+.c-card[data-state='next'] { border-color: var(--amber); }
+.c-card[data-state='owned'] { border-color: var(--dim); }
+.c-card-title { font-weight: 700; color: var(--glow); }
+.c-card[data-state='next'] .c-card-title { color: var(--amber); }
+.c-card-text { color: var(--mid); font-size: 12px; line-height: 1.45; }
+.c-annex { width: 100%; }
+.c-card[data-state='next'] .c-annex:not(:disabled) { border-color: var(--amber); color: var(--amber); }
+.c-effects { color: var(--mid); font-size: 11px; line-height: 1.5; }
+.c-letter {
+  padding: 8px 10px;
+  border-left: 2px solid var(--danger);
+  background: rgb(0 0 0 / 0.3);
+  color: var(--mid);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.5;
+}
+.c-letter + .c-letter { margin-top: 6px; }
+.c-reform { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--danger); border-radius: 6px; }
+.c-keeps { color: var(--dim); font-size: 11px; line-height: 1.45; }
+.c-reform-go { width: 100%; border-color: var(--danger); color: var(--danger); }
+.c-reform-go.armed { background: rgb(255 107 87 / 0.15); }

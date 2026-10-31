@@ -238,8 +238,8 @@ export const SORT_NEED_GROWTH = 10;
 export const sortNeed = (sorts: number) => SORT_AT.mul(Decimal.pow(SORT_NEED_GROWTH, sorts));
 
 /** Fractions for a resort: 100 at the first threshold, ×10 per hundredfold. */
-export const lumpFor = (cycleTotal: Decimal, mult = 1) =>
-  cycleTotal.lt(SORT_AT) ? D(0) : cycleTotal.div(SORT_AT).sqrt().mul(100 * mult).floor();
+export const lumpFor = (cycleTotal: Decimal, mult: Decimal | number = 1) =>
+  cycleTotal.lt(SORT_AT) ? D(0) : cycleTotal.div(SORT_AT).sqrt().mul(100).mul(mult).floor();
 
 /** Every resort doubles all income for good. */
 export const SORT_INCOME = 2;
@@ -294,6 +294,8 @@ export interface SortingState {
   cycleSeconds: number;
   /** What happened on the table since the screen last looked; not saved. */
   news: Inspection[];
+  /** The town's markets: every fraction comes this much more; set by the game each tick, not saved. */
+  boost: Decimal;
 }
 
 export type Inspection = { kind: 'unique'; id: string } | { kind: 'anomaly'; line: string } | { kind: 'fractions'; amount: Decimal; frac: Frac };
@@ -316,6 +318,7 @@ export function newSorting(): SortingState {
     found: [],
     cycleSeconds: 0,
     news: [],
+    boost: D(1),
   };
 }
 
@@ -358,7 +361,7 @@ export function lineRates(s: SortingState, rate: Decimal): Record<Frac, Decimal>
   const { caught } = runLine(s.line.slice(0, slotCount(s)), s.levels);
   const flow = flowPerSecond(s, rate);
   const out = {} as Record<Frac, Decimal>;
-  for (const f of FRACS) out[f] = flow.mul(caught[f] * fracMult(s, f));
+  for (const f of FRACS) out[f] = flow.mul(caught[f] * fracMult(s, f)).mul(s.boost);
   return out;
 }
 
@@ -382,7 +385,7 @@ export function sortingIncome(s: SortingState): Decimal {
 
 export const sortingGainMult = (s: SortingState) => (hasRecipe(s, 'e2') ? 2 : 1) * uniqueMult(s, 'gain');
 export const sortingCostMult = (s: SortingState) => (hasRecipe(s, 'e3') ? 0.5 : 1);
-export const lumpMult = (s: SortingState) => (hasRecipe(s, 'e4') ? 2 : 1) * uniqueMult(s, 'lump');
+export const lumpMult = (s: SortingState) => s.boost.mul((hasRecipe(s, 'e4') ? 2 : 1) * uniqueMult(s, 'lump'));
 
 export function canAfford(s: SortingState, price: Price): boolean {
   return FRACS.every((f) => s.fractions[f].gte(price[f] ?? 0));

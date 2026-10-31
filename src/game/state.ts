@@ -63,6 +63,7 @@ import {
   type ScriptsState,
 } from './scripts';
 import { afterLoss, hearingTick, newHearing, noiseMult, type HearingState } from './hearing';
+import { REFORM_SORTS, SCHOOL_SCRIPTS, cityEffects, newCity, reformGain, type CityState } from './city';
 import {
   FIRST_EVENT_SECONDS,
   FRESH_CASE_FACTOR,
@@ -122,6 +123,8 @@ export interface GameState {
   sorting: SortingState;
   /** The one that listens: the plant's noise and how much it has heard. */
   hearing: HearingState;
+  /** Third prestige layer: the town of Glukhovo, district by district. */
+  city: CityState;
   /** Epoch ms of the last simulated moment, used for offline progress. */
   lastTick: number;
 }
@@ -149,6 +152,7 @@ export function newGame(now = Date.now()): GameState {
     scripts: newScripts(),
     sorting: newSorting(),
     hearing: newHearing(),
+    city: newCity(),
     lastTick: now,
   };
 }
@@ -169,7 +173,8 @@ export function sharedMult(state: GameState): Decimal {
     .mul(compactMult(state.tracks))
     .mul(achievementMult(state.achievements))
     .mul(sortingIncome(state.sorting))
-    .mul(noiseMult(state.hearing, state.sorting.open));
+    .mul(noiseMult(state.hearing, state.sorting.open))
+    .mul(cityEffects(state.city).income);
 }
 
 /** One multiplier in the income, for the breakdown the player can open. */
@@ -195,6 +200,7 @@ export function incomeBreakdown(state: GameState): { base: Decimal; parts: Incom
     { label: 'Достижения', mult: D(achievementMult(state.achievements)), note: '+1% за каждое' },
     { label: 'Пересортировки', mult: Decimal.pow(SORT_INCOME, so.sorts).mul(rankIncome(so.sorts)), note: '×2 за каждую и разряды' },
     { label: 'Фракции', mult: fractionsIncome(so.total), note: 'все фракции за игру' },
+    { label: 'Город', mult: cityEffects(state.city).income, note: 'жилые кварталы и яма' },
     { label: 'Шум цеха', mult: D(noiseMult(state.hearing, so.open)), note: 'громче — больше, но оно слышит' },
     { label: 'Рецепты и находки', mult: D((hasRecipe(so, 'e1') ? 3 : 1) * uniqueMult(so, 'income')), note: 'сортировка' },
   ];
@@ -283,11 +289,12 @@ export function advance(state: GameState, seconds: number, offline = false): voi
     if (!offline) state.story.boost = Math.max(0, state.story.boost - dt);
     // Tails off the sorting line feed the thing: it climbs faster.
     state.threat.level = climb(state.threat.level, state.runTrash, dt * threatSpeed(state.sorting) * treeThreatSpeed(state.recycle), offline);
+    state.sorting.boost = cityEffects(state.city).fractions;
     const pushed = sortingTick(state.sorting, rate, dt, offline);
     // What falls back into the heap pushes it up, but never over the edge by itself.
     if (pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
     if (!state.sorting.open && state.recycle.total.gte(SORT_AT)) state.sorting.open = true;
-    hearingTick(state.hearing, dt, state.sorting.open, offline);
+    if (hearingTick(state.hearing, dt, state.sorting.open, offline) === 'check') silence(state);
     // At the edge production stops; the game plays the loss and calls loseShift or loseToHearing.
     if (state.threat.level >= 1 || state.hearing.phase === 'caught') break;
   }
@@ -402,7 +409,7 @@ export function takeNewUpgrades(state: GameState): UpgradeDef[] {
 // ---- Recycling ----------------------------------------------------------------
 
 /** What a recycle would give right now. */
-export const recycleMult = (state: GameState) => gainMult(state.recycle) * sortingGainMult(state.sorting);
+export const recycleMult = (state: GameState) => gainMult(state.recycle) * sortingGainMult(state.sorting) * cityEffects(state.city).recycled.toNumber();
 export const currentGain = (state: GameState) => recycleGain(state.runTrash, recycleMult(state));
 export const canRecycle = (state: GameState) => currentGain(state).gt(0);
 
@@ -462,6 +469,8 @@ export function resort(state: GameState): Decimal {
   const shares = resortShares(state);
   for (const f of FRACS) addFractions(s, f, gain.mul(shares[f]).floor());
   s.sorts += 1;
+  // Enough resorts in one cycle, and the town offers itself.
+  if (s.sorts >= REFORM_SORTS) state.city.open = true;
   s.cycleSeconds = 0;
   const n = s.sorts;
 
@@ -574,7 +583,7 @@ export const autoRecycleAt = (state: GameState) => state.recycle.total.mul(state
 
 /** Whether the auto-recycler should recycle now. */
 export function autoRecycleDue(state: GameState): boolean {
-  if (!state.autoRecycle.on || !hasNode(state.recycle, 'a3') || state.runSeconds < 10) return false;
+  if (!state.autoRecycle.on || !scriptOwned(state, 'recycle') || state.runSeconds < 10) return false;
   const gain = currentGain(state);
   if (gain.lte(0)) return false;
   const sc = state.scripts;
@@ -598,6 +607,10 @@ const recycleRate = (state: GameState) => recycleGainRaw(state.runTrash, recycle
 /** Whether a script is installed: through its tree node or bought for Recycled material. */
 export function scriptOwned(state: GameState, id: ScriptId): boolean {
   const def = scriptById(id)!;
+  // The town's schools and churches set scripts up on their own after a reform.
+  const town = cityEffects(state.city);
+  if ((SCHOOL_SCRIPTS as readonly string[]).slice(0, town.schools * 2).includes(id)) return true;
+  if (id === 'light' && town.church) return true;
   if (def.recipe) return state.sorting.recipes.includes(def.recipe);
   // The dispatcher and the second floodlight install scripts on their own.
   if ((id === 'upgrades' || id === 'endless') && hasNode(state.recycle, 'a5')) return true;
@@ -628,7 +641,8 @@ export function installScript(state: GameState, id: ScriptId): boolean {
 }
 
 /** Whether the Automation tab has anything on it yet. */
-export const automationOpen = (state: GameState) => hasNode(state.recycle, 'a1') || state.scripts.bought.length > 0;
+export const automationOpen = (state: GameState) =>
+  hasNode(state.recycle, 'a1') || state.scripts.bought.length > 0 || cityEffects(state.city).schools > 0 || cityEffects(state.city).church;
 
 export function buySpeed(state: GameState): boolean {
   const cost = speedCost(state.scripts.speed);
@@ -652,10 +666,11 @@ export function scriptTick(state: GameState): number {
   return tick / (1 + SPEED_STEP * state.scripts.speed);
 }
 
-export const lightFailChance = (state: GameState) => failChance(depthOf(state), state.scripts.reliability) * (hasNode(state.recycle, 't4') ? 0.5 : 1);
+export const lightFailChance = (state: GameState) =>
+  failChance(depthOf(state), state.scripts.reliability) * (hasNode(state.recycle, 't4') ? 0.5 : 1) * cityEffects(state.city).lightFail;
 
 /** Peak of the dark bonus: the base, the dark pact's levels and the tree. */
-export const darkPeakOf = (state: GameState) => darkPeak(state.tracks, DARK_BONUS) + treeDarkPeak(state.recycle);
+export const darkPeakOf = (state: GameState) => darkPeak(state.tracks, DARK_BONUS) + treeDarkPeak(state.recycle) + cityEffects(state.city).darkPeak;
 
 /** What a script did, for the log. */
 export interface ScriptNote {
@@ -713,6 +728,59 @@ export function runScripts(state: GameState, dt: number, rng: () => number = Mat
     }
   }
   return notes;
+}
+
+// ---- The town ---------------------------------------------------------------------
+
+/** The boilers' silencer: at the door it brings the plant down to nothing, unless it fails. */
+function silence(state: GameState, rand = Math.random): void {
+  const fail = cityEffects(state.city).silencerFail;
+  if (fail >= 1) return;
+  if (rand() >= fail) {
+    state.hearing.noise = 0;
+    state.hearing.auto = 'ok';
+  } else state.hearing.auto = 'fail';
+}
+
+export const canReform = (state: GameState) => state.city.open && state.sorting.sorts >= REFORM_SORTS;
+export const reformGainOf = (state: GameState) => reformGain(state.sorting.sorts, state.sorting.total);
+
+/**
+ * The reform: the town takes nearly everything. Trash, producers, upgrades, Recycling and
+ * its tree, Sorting and its line, automation, both threats start over; achievements, the
+ * finds on the table, the story and the town stay. Returns the hectares gained.
+ */
+export function reform(state: GameState): Decimal {
+  if (!canReform(state)) return D(0);
+  const gain = reformGainOf(state);
+  const city = state.city;
+  city.points = city.points.add(gain);
+  city.total = city.total.add(gain);
+  city.reforms += 1;
+  const fx = cityEffects(city);
+
+  const old = state.sorting;
+  const sorting = newSorting();
+  // The finds stay, with what was looked at, so the next ones come where they would have.
+  sorting.found = old.found;
+  sorting.inspected = old.inspected;
+  // The archive keeps a share of the fractions.
+  for (const f of FRACS) sorting.fractions[f] = old.fractions[f].mul(fx.keepFractions).floor();
+  state.sorting = sorting;
+
+  const layer = newLayer();
+  layer.points = fx.startPoints;
+  state.recycle = layer;
+  state.scripts = newScripts();
+  state.autoRecycle = { on: false, factor: 1 };
+  state.tracks = {};
+  state.compacted = 0;
+  state.upgrades = [];
+  state.revealed = ['collector'];
+  state.threat = { ...newThreat(), losses: state.threat.losses, lights: state.threat.lights, bravest: state.threat.bravest };
+  state.hearing = { ...newHearing(), survived: state.hearing.survived, losses: state.hearing.losses };
+  startNewRun(state);
+  return gain;
 }
 
 /** The threat reached the edge: the run is lost with nothing in return. Recycling progress stays. */

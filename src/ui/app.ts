@@ -22,6 +22,8 @@ import {
   milestoneUnits,
   automationOpen,
   resort,
+  reform,
+  scriptOwned,
   type ScriptNote,
   type BuyMode,
   type GameState,
@@ -35,6 +37,8 @@ import { RecyclePanel, plantView } from './recyclePanel';
 import { JournalPanel } from './journalPanel';
 import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
+import { CityPanel } from './cityPanel';
+import { LETTERS, districtById } from '../game/city';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
 import { Sound } from './sound';
@@ -51,7 +55,7 @@ import { HearingBar } from './hearingBar';
 import { hunt } from './lurker';
 import { heardLine, nearness, setNoise, type HearingPhase } from '../game/hearing';
 import { PHRASES, PLANT_KINDS, eventById, unwatched, watch, type EventDef, type EventKind, type Recording } from '../game/story';
-import { RECYCLE_AT, hasNode, holdMs, milestoneBase, passiveBonus } from '../game/layers';
+import { RECYCLE_AT, holdMs, milestoneBase, passiveBonus } from '../game/layers';
 import { STAGES, stageIndex, threatActive, threatMult } from '../game/threat';
 
 /** How long the lost-shift screen stays up before the run starts over. */
@@ -161,9 +165,11 @@ export class App {
   /** Camera 05 over the workshop, on the Upgrades tab. */
   private workshop = new WorkshopCam();
   /** Which layer the Layers tab shows. */
-  private layerView: 'recycle' | 'sorting' = 'recycle';
+  private layerView: 'recycle' | 'sorting' | 'city' = 'recycle';
   private layerSwitch!: HTMLElement;
-  private layerButtons = new Map<'recycle' | 'sorting', HTMLButtonElement>();
+  private layerButtons = new Map<'recycle' | 'sorting' | 'city', HTMLButtonElement>();
+  private cityPanel!: CityPanel;
+  private knownCityOpen = false;
   private knownSortOpen = false;
   /** Red marks on the tabs whose defence needs the player. */
   private dangerMarks = new Map<'dump' | 'plant', HTMLElement>();
@@ -239,6 +245,7 @@ export class App {
     this.knownRecycleReady = canRecycle(state);
     this.knownStage = stageIndex(state.threat.level);
     this.knownSortOpen = state.sorting.open;
+    this.knownCityOpen = state.city.open;
     this.knownPhase = state.hearing.phase === 'caught' ? 'check' : state.hearing.phase;
   }
 
@@ -324,7 +331,12 @@ export class App {
     this.layerSwitch.setAttribute('role', 'group');
     this.layerSwitch.setAttribute('aria-label', 'Слой');
     this.layerSwitch.hidden = true;
-    for (const [view, label] of [['recycle', 'Переработка'], ['sorting', 'Сортировка']] as const) {
+    this.cityPanel = new CityPanel(
+      this.getState,
+      (id) => this.onAnnex(id),
+      () => this.doReform(),
+    );
+    for (const [view, label] of [['recycle', 'Переработка'], ['sorting', 'Сортировка'], ['city', 'Город']] as const) {
       const b = el('button', 'mode', label);
       b.type = 'button';
       b.id = `layer-${view}`;
@@ -334,6 +346,8 @@ export class App {
         this.render();
       });
       this.layerButtons.set(view, b);
+      // The town shows on the switch once it has offered itself.
+      if (view === 'city') b.hidden = true;
       this.layerSwitch.append(b);
     }
 
@@ -359,6 +373,7 @@ export class App {
       this.buildUpgrades(),
       this.recyclePanel.root,
       this.sortingPanel.root,
+      this.cityPanel.root,
       this.automationPanel.root,
       this.journalPanel.root,
       this.buildSettings(),
@@ -684,9 +699,11 @@ export class App {
     for (const [t, b] of this.tabs) b.setAttribute('aria-current', t === tab ? 'page' : 'false');
     // The Layers tab shows one layer at a time, with the switch on top.
     const sorting = tab === 'recycle' && this.layerView === 'sorting';
+    const city = tab === 'recycle' && this.layerView === 'city';
     this.sortingPanel.root.hidden = !sorting;
-    if (sorting) this.recyclePanel.root.hidden = true;
-    const visible = sorting ? this.sortingPanel.root : this.recyclePanel.root;
+    this.cityPanel.root.hidden = !city;
+    if (sorting || city) this.recyclePanel.root.hidden = true;
+    const visible = sorting ? this.sortingPanel.root : city ? this.cityPanel.root : this.recyclePanel.root;
     if (this.layerSwitch.parentElement !== visible) visible.prepend(this.layerSwitch);
     for (const [view, b] of this.layerButtons) b.setAttribute('aria-pressed', String(view === this.layerView));
   }
@@ -876,6 +893,54 @@ export class App {
       this.intro.show(SORTING_INTRO);
     }
     if (!this.sortingPanel.root.hidden) this.sortingPanel.render(state);
+    this.renderCity(state);
+  }
+
+  /** The town: its button on the switch once it opens, and the view when it is on screen. */
+  private renderCity(state: GameState): void {
+    const city = state.city;
+    this.layerButtons.get('city')!.hidden = !city.open;
+    if (city.open && !this.knownCityOpen) {
+      this.knownCityOpen = true;
+      if (city.reforms === 0 && city.owned.length === 1) {
+        this.toast('Город Глухово предлагает реформу. «Слои» → «Город»');
+        this.typeLine('ГОРСОВЕТ ГЛУХОВО: ОТДАЁМ КВАРТАЛЫ. ЗАБЕРИТЕ ЕГО ОТ НАС');
+        this.glitch(1);
+      }
+    }
+    if (!this.cityPanel.root.hidden) this.cityPanel.render(state);
+  }
+
+  /** A district taken: the stain spreads, the town writes. */
+  private onAnnex(id: string): void {
+    const state = this.getState();
+    const d = districtById(id)!;
+    this.sound.press();
+    this.toast(`${d.name} отдан под свалку`);
+    const letter = LETTERS[state.city.owned.length - 2];
+    if (letter) this.typeLine('ГОРСОВЕТ: НОВОЕ ПИСЬМО');
+    if (id === 'pit') {
+      this.typeLine('ЯМА ОТКРЫТА. ПОД НЕЙ ЕЩЁ ОДНА СВАЛКА');
+      this.glitch(2);
+    }
+    writeSave(state);
+    this.render();
+  }
+
+  /** The reform: the town takes everything but itself, achievements, finds and the story. */
+  private doReform(): void {
+    const state = this.getState();
+    const gain = reform(state);
+    if (gain.lte(0)) return;
+    writeSave(state);
+    this.resetKnown();
+    this.toastQueue = [];
+    this.sound.lost();
+    this.glitch(2.5);
+    this.scene.flash('amber');
+    this.typeLine(`РЕФОРМА №${state.city.reforms}. ГОРОД ЗАБРАЛ ВСЁ. СВАЛКА ПОМНИТ ВАС`);
+    this.toast(`Реформа: +${format(gain)} га. Город отдаёт кварталы`);
+    this.render();
   }
 
   /** What the inspection table turned up since the last look. */
@@ -1184,6 +1249,8 @@ export class App {
     const state = this.getState();
     if (!this.losing) this.dread.update(dt, stageIndex(state.threat.level));
     if (!this.losing) this.huntFrame(dt, state);
+    // The town's plan is the view itself, not a camera: it draws folded or not.
+    if (!this.cityPanel.root.hidden) this.cityPanel.frame(dt, state);
     // The journal's monitor shows camera 01 live, or the recording it plays, folded or not.
     if (!this.journalPanel.root.hidden) this.journalPanel.monitor.frame(dt, this.yardView(state), plantView(state));
     // Folded cameras draw nothing, which also spares the battery.
@@ -1387,8 +1454,8 @@ export class App {
       if (layer.resets === 0) this.toast('Новая вкладка: Переработка');
     }
     // The badge calls for what is new since the player last looked at the tab.
-    const calls = [...this.recyclePanel.attention(state), ...this.sortingPanel.attention(state)];
-    const looking = !this.recyclePanel.root.hidden || !this.sortingPanel.root.hidden;
+    const calls = [...this.recyclePanel.attention(state), ...this.sortingPanel.attention(state), ...this.cityPanel.attention(state)];
+    const looking = !this.recyclePanel.root.hidden || !this.sortingPanel.root.hidden || !this.cityPanel.root.hidden;
     this.layersSeen = new Set(calls.filter((c) => looking || this.layersSeen.has(c)));
     this.recycleBadge.hidden = calls.every((c) => this.layersSeen.has(c));
     if (this.autoTab.hidden && automationOpen(state)) {
@@ -1408,7 +1475,7 @@ export class App {
     this.layerEl.hidden = layer.total.lte(0);
     this.layerEl.textContent = `${format(layer.points)} ВС · ×${format(passiveBonus(layer.total))}`;
 
-    this.autoButton.hidden = !hasNode(layer, 'a1');
+    this.autoButton.hidden = !scriptOwned(state, 'producers');
     this.autoButton.setAttribute('aria-pressed', String(state.autobuy));
 
     this.renderThreat(state);
@@ -1457,6 +1524,8 @@ export class App {
       this.toast('ОНО УСЛЫШАЛО. Идёт к будке, остановить нельзя. Когда подойдёт: шум на 0 и ни звука 10 секунд');
       navigator.vibrate?.([200, 80, 200]);
     } else if (h.phase === 'check') {
+      if (h.auto === 'ok') this.toast('Котельная заглушила цех. Не трогайте шум');
+      else if (h.auto === 'fail') this.toast('Автоглушитель: отказ! Шум на 0 вручную');
       this.sound.step(1);
       this.glitch(0.8);
       this.pop(this.hearingBar.root, 'alarm');

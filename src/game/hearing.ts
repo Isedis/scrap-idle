@@ -27,6 +27,8 @@ export interface HearingState {
   survived: number;
   /** Times it was heard too late. */
   losses: number;
+  /** What the town's silencer did at the door this time; not saved. */
+  auto?: 'ok' | 'fail';
 }
 
 export const newHearing = (): HearingState => ({ noise: 1, meter: 0, phase: 'idle', left: 0, walk: 0, held: 0, survived: 0, losses: 0 });

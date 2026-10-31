@@ -4,7 +4,7 @@ import { recycleAdvice } from '../game/advice';
 import { PlantCam, type PlantView } from './plantCam';
 import { CorridorCam, type CorridorView } from './corridorCam';
 import { nearness } from '../game/hearing';
-import { recycleMult, buyNode, buyRepeat, canRecycle, currentGain, repeatsOpen, type GameState } from '../game/state';
+import { recycleMult, scriptOwned, buyNode, buyRepeat, canRecycle, currentGain, repeatsOpen, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
 
 interface NodeRow {
@@ -223,7 +223,7 @@ export class RecyclePanel {
    */
   attention(state: GameState): string[] {
     const layer = state.recycle;
-    const auto = state.autoRecycle.on && hasNode(layer, 'a3');
+    const auto = state.autoRecycle.on && scriptOwned(state, 'recycle');
     const worth = canRecycle(state) && !auto && (layer.resets === 0 || currentGain(state).gte(layer.total));
     return [...(worth ? ['recycle'] : []), ...NODES.filter((n) => canBuyNode(layer, n)).map((n) => `node:${n.id}`)];
   }
