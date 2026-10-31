@@ -8,7 +8,7 @@ import type { TrackDef } from './infinite';
  * Recycled material. Speed and the floodlight's reliability level up without end.
  */
 
-export type ScriptId = 'producers' | 'upgrades' | 'endless' | 'recycle' | 'light' | 'sort';
+export type ScriptId = 'producers' | 'upgrades' | 'endless' | 'recycle' | 'light' | 'sort' | 'tree' | 'line';
 
 export interface ScriptDef {
   id: ScriptId;
@@ -24,6 +24,8 @@ export interface ScriptDef {
   cost?: Decimal;
   /** When the install offer shows up, for the bought ones. */
   hint?: string;
+  /** Schools in the town that set it up, for the ones the town gives. */
+  town?: number;
 }
 
 export const SCRIPTS: readonly ScriptDef[] = [
@@ -33,6 +35,8 @@ export const SCRIPTS: readonly ScriptDef[] = [
   { id: 'recycle', name: 'recycle', title: 'Автопереработчик', text: 'Сдаёт всё на переработку сам.', node: 'a3' },
   { id: 'light', name: 'light', title: 'Автопрожектор', text: 'Включает свет сам. Иногда не включает.', cost: D(20), hint: 'после 10 включений прожектора' },
   { id: 'sort', name: 'sort', title: 'Автосортировщик', text: 'Пересортировывает сам. Сжигает переработку без спроса.', recipe: 'a1' },
+  { id: 'tree', name: 'buy.tree', title: 'Завхоз', text: 'Покупает узлы дерева переработки, бесконечные узлы, разгон и надёжность — самое дешёвое первым.', town: 2 },
+  { id: 'line', name: 'buy.line', title: 'Наладчик', text: 'Ставит станции в пустые места линии, улучшает их, покупает рецепты и сплавы.', town: 3 },
 ];
 
 export const scriptById = (id: string) => SCRIPTS.find((s) => s.id === id);
@@ -69,6 +73,8 @@ export interface ScriptsState {
   sortShare: number;
   /** For the time mode: minutes of the sorting cycle. */
   sortMinutes: number;
+  treeOn: boolean;
+  lineOn: boolean;
   // Not saved: they rebuild within seconds.
   clock: number;
   cooldown: number;
@@ -93,6 +99,8 @@ export function newScripts(): ScriptsState {
     lightAt: 0.9,
     failures: 0,
     sortOn: false,
+    treeOn: true,
+    lineOn: true,
     sortMode: 'share',
     sortShare: 0.25,
     sortMinutes: 60,

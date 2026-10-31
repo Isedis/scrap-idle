@@ -71,7 +71,7 @@ interface LogLine {
 }
 
 /** Short names on the racks of camera 04. */
-const RACK_NAMES: Record<ScriptId, string> = { producers: 'PROD', upgrades: 'UPG', endless: 'END', recycle: 'RCY', light: 'LGT', sort: 'SRT' };
+const RACK_NAMES: Record<ScriptId, string> = { producers: 'PROD', upgrades: 'UPG', endless: 'END', recycle: 'RCY', light: 'LGT', sort: 'SRT', tree: 'TRE', line: 'LIN' };
 
 /** Whether a script is switched on, and how to flip it. */
 const SWITCHES: Record<ScriptId, [(s: GameState) => boolean, (s: GameState, on: boolean) => void]> = {
@@ -81,6 +81,8 @@ const SWITCHES: Record<ScriptId, [(s: GameState) => boolean, (s: GameState, on: 
   recycle: [(s) => s.autoRecycle.on, (s, on) => (s.autoRecycle.on = on)],
   light: [(s) => s.scripts.lightOn, (s, on) => (s.scripts.lightOn = on)],
   sort: [(s) => s.scripts.sortOn, (s, on) => (s.scripts.sortOn = on)],
+  tree: [(s) => s.scripts.treeOn, (s, on) => (s.scripts.treeOn = on)],
+  line: [(s) => s.scripts.lineOn, (s, on) => (s.scripts.lineOn = on)],
 };
 
 /** The Automation tab: scripts with their switches and settings, and the log of what they did. */
@@ -341,7 +343,7 @@ export class AutomationPanel {
 
     for (const card of this.cards) {
       // The sorter stays out of sight until the line opens.
-      card.root.hidden = card.def.recipe !== undefined && !state.sorting.open;
+      card.root.hidden = (card.def.recipe !== undefined && !state.sorting.open) || (card.def.town !== undefined && !state.city.open);
       const owned = scriptOwned(state, card.def.id);
       card.root.classList.toggle('off', !owned);
       card.toggle.hidden = !owned;
@@ -353,7 +355,10 @@ export class AutomationPanel {
         card.toggle.setAttribute('aria-pressed', String(on));
         continue;
       }
-      if (card.def.recipe) {
+      if (card.def.town) {
+        card.lockedNote.textContent = `Ставится школами города: нужно присоединить ${card.def.town} школы.`;
+        card.install.hidden = true;
+      } else if (card.def.recipe) {
         card.lockedNote.textContent = `Ставится рецептом сортировки «${recipeById(card.def.recipe)!.name}».`;
         card.install.hidden = true;
       } else if (card.def.node) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DISTRICTS, REFORM_SORTS, annex, annexCost, canAnnex, cityEffects, districtById, newCity, peopleLeft, plan, TOWN_PEOPLE } from '../src/game/city';
-import { advance, canReform, newGame, reform, resort, scriptOwned, type GameState } from '../src/game/state';
+import { advance, autoLine, autoTree, canReform, newGame, reform, resort, runScripts, scriptOwned, type GameState } from '../src/game/state';
 import { deserialize, serialize } from '../src/game/save';
 import { D } from '../src/game/num';
 
@@ -119,7 +119,8 @@ describe('reform', () => {
     reform(s);
     expect(scriptOwned(s, 'producers')).toBe(true);
     expect(scriptOwned(s, 'upgrades')).toBe(true);
-    expect(scriptOwned(s, 'endless')).toBe(false);
+    expect(scriptOwned(s, 'endless')).toBe(true);
+    expect(scriptOwned(s, 'recycle')).toBe(false);
     expect(s.recycle.points.gt(0)).toBe(true);
     expect(s.sorting.fractions.metal.toNumber()).toBe(50);
   });
@@ -164,4 +165,54 @@ describe('reform', () => {
     broken.layers.city.owned = ['zavod', 'nowhere', 7];
     expect(deserialize(JSON.stringify(broken))!.city.owned).toEqual(['dump', 'zavod']);
   });
+
+  it('three schools automate every earlier layer, switched on after a reform', () => {
+    const s = readyToReform();
+    s.city.owned.push('school1', 'school2', 'school3');
+    reform(s);
+    for (const id of ['producers', 'upgrades', 'endless', 'recycle', 'tree', 'sort', 'line'] as const) expect(scriptOwned(s, id), id).toBe(true);
+    expect(s.autoRecycle.on).toBe(true);
+    expect(s.scripts.sortOn).toBe(true);
+  });
+
+  it('the caretaker buys the tree cheapest first; the fitter fills the line, levels it, buys recipes', () => {
+    const s = newGame(0);
+    s.recycle.points = D(100);
+    // The cheapest node first: «Подъёмные» for 1.
+    expect(autoTree(s)).toBe('Подъёмные');
+    expect(s.recycle.nodes).toContain('s1');
+    s.sorting.open = true;
+    s.sorting.fractions = { plastic: D(1e6), metal: D(1e6), glass: D(1e6), paper: D(1e6) };
+    const first = autoLine(s);
+    expect(first).not.toBeNull();
+    let done = 0;
+    while (autoLine(s) && done < 500) done++;
+    expect(s.sorting.recipes.length).toBeGreaterThan(0);
+    expect(Object.keys(s.sorting.levels).length).toBeGreaterThan(0);
+  });
+
+  it('the caretaker and fitter run as scripts once the schools set them up', () => {
+    const s = newGame(0);
+    s.city.owned.push('school1', 'school2');
+    s.recycle.points = D(100);
+    const notes = runScripts(s, 5);
+    expect(notes.some((n) => n.script === 'tree')).toBe(true);
+    s.scripts.treeOn = false;
+    s.recycle.points = D(1e6);
+    expect(runScripts(s, 5).some((n) => n.script === 'tree')).toBe(false);
+  });
+
+  it('a v10 save keeps the town and gets the new switches on', () => {
+    const s = readyToReform();
+    const v10 = JSON.parse(serialize(s));
+    v10.v = 10;
+    delete v10.scripts.treeOn;
+    delete v10.scripts.lineOn;
+    const back = deserialize(JSON.stringify(v10))!;
+    expect(back.scripts.treeOn).toBe(true);
+    expect(back.scripts.lineOn).toBe(true);
+    s.scripts.treeOn = false;
+    expect(deserialize(serialize(s))!.scripts.treeOn).toBe(false);
+  });
 });
+

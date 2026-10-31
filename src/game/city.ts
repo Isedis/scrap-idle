@@ -36,7 +36,7 @@ export const DISTRICTS: readonly DistrictDef[] = [
   { id: 'zavod', type: 'live', name: 'ул. Заводская', x: 0.42, y: 0.08, people: 410 },
   { id: 'rabo', type: 'live', name: 'ул. Рабочая', x: 0.58, y: 0.07, people: 380 },
   { id: 'nikola', type: 'church', name: 'Церковь Николы', x: 0.78, y: 0.06, people: 20 },
-  { id: 'vysel', type: 'live', name: 'Выселки', x: 0.93, y: 0.15, people: 150 },
+  { id: 'school3', type: 'school', name: 'Школа-интернат', x: 0.93, y: 0.15, people: 150 },
   { id: 'school1', type: 'school', name: 'Школа №1', x: 0.68, y: 0.21, people: 90 },
   { id: 'sad', type: 'live', name: 'ул. Садовая', x: 0.45, y: 0.25, people: 360 },
   { id: 'rynok', type: 'market', name: 'Рынок', x: 0.1, y: 0.42, people: 120 },
@@ -83,7 +83,7 @@ export const TYPE_TEXT: Record<DistrictType, string> = {
   live: 'Весь доход ×1.5',
   prom: 'Вторсырьё ×2',
   market: 'Фракции ×1.5',
-  school: 'Автоматика сразу стоит после реформы: каждая школа ставит ещё скрипты',
+  school: 'Автоматика после реформы. 1-я школа: закупщик, снабженец, уплотнитель. 2-я: автопереработчик и завхоз (дерево). 3-я: автосортировщик и наладчик (линия)',
   boiler: 'Автоглушитель «Слуха»: у двери сам опускает шум цеха. Иногда отказывает',
   church: 'Автопрожектор стоит сразу и отказывает реже',
   cemetery: 'Пик бонуса тьмы +0.2',
@@ -234,7 +234,7 @@ export interface CityEffects {
   income: Decimal;
   recycled: Decimal;
   fractions: Decimal;
-  /** Schools: how many scripts stand ready after a reform. */
+  /** Schools owned: each sets up the next group of scripts. */
   schools: number;
   /** Boilers: chance the silencer fails; 1 without one. */
   silencerFail: number;
@@ -269,7 +269,7 @@ function computeEffects(city: CityState): CityEffects {
     income: mul('live', 0.5).mul(city.owned.includes('pit') ? 100 : 1),
     recycled: mul('prom', 1),
     fractions: mul('market', 0.5),
-    schools: Math.floor(power(city, 'school') + 1e-9),
+    schools: city.owned.filter((id) => districtById(id)!.type === 'school').length,
     silencerFail: boilers > 0 ? 0.35 * 0.6 ** (boilers - 1) : 1,
     church: churches > 0,
     lightFail: 0.7 ** churches,
@@ -285,8 +285,15 @@ export function reformGain(sorts: number, fractionsTotal: Decimal): Decimal {
   return D(Math.floor(sorts ** 1.3 + fractionsTotal.add(1).log10().toNumber()));
 }
 
-/** Scripts a school sets up, in order: one school the first two, and so on. */
-export const SCHOOL_SCRIPTS = ['producers', 'upgrades', 'endless', 'recycle', 'sort'] as const;
+/** Scripts the schools set up after a reform: the first school the first group, and so on. */
+export const SCHOOL_TIERS: readonly (readonly string[])[] = [
+  ['producers', 'upgrades', 'endless'],
+  ['recycle', 'tree'],
+  ['sort', 'line'],
+];
+
+/** Scripts the town's schools have set up. */
+export const schoolScripts = (schools: number) => SCHOOL_TIERS.slice(0, schools).flat();
 
 /** Letters to the town council, one for each district taken, stranger as the town goes. */
 export const LETTERS: readonly string[] = [

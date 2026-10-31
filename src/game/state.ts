@@ -62,8 +62,23 @@ import {
   type ScriptId,
   type ScriptsState,
 } from './scripts';
+import {
+  RECIPES,
+  STATIONS,
+  buyAlloy,
+  buyLevel,
+  buyRecipe,
+  canBuyRecipe,
+  levelCost,
+  levelsOf,
+  placeStation,
+  stationById,
+  stationOpen,
+  type StationId,
+} from './sorting';
+import { REPEATS } from './layers';
 import { afterLoss, hearingTick, newHearing, noiseMult, type HearingState } from './hearing';
-import { REFORM_SORTS, SCHOOL_SCRIPTS, cityEffects, newCity, reformGain, type CityState } from './city';
+import { REFORM_SORTS, cityEffects, schoolScripts, newCity, reformGain, type CityState } from './city';
 import {
   FIRST_EVENT_SECONDS,
   FRESH_CASE_FACTOR,
@@ -609,7 +624,8 @@ export function scriptOwned(state: GameState, id: ScriptId): boolean {
   const def = scriptById(id)!;
   // The town's schools and churches set scripts up on their own after a reform.
   const town = cityEffects(state.city);
-  if ((SCHOOL_SCRIPTS as readonly string[]).slice(0, town.schools * 2).includes(id)) return true;
+  if (schoolScripts(town.schools).includes(id)) return true;
+  if (def.town) return false;
   if (id === 'light' && town.church) return true;
   if (def.recipe) return state.sorting.recipes.includes(def.recipe);
   // The dispatcher and the second floodlight install scripts on their own.
@@ -726,6 +742,15 @@ export function runScripts(state: GameState, dt: number, rng: () => number = Mat
         .sort((a, b) => a.cost.cmp(b.cost))[0];
       if (cheapest && buyTrack(state, cheapest.t.id)) notes.push({ script: 'endless', text: cheapest.t.name });
     }
+    // The town's caretaker and fitter, once the schools have set them up.
+    if (sc.treeOn && scriptOwned(state, 'tree')) {
+      const bought = autoTree(state);
+      if (bought) notes.push({ script: 'tree', text: bought });
+    }
+    if (sc.lineOn && scriptOwned(state, 'line')) {
+      const done = autoLine(state);
+      if (done) notes.push({ script: 'line', text: done });
+    }
   }
   return notes;
 }
@@ -779,8 +804,50 @@ export function reform(state: GameState): Decimal {
   state.revealed = ['collector'];
   state.threat = { ...newThreat(), losses: state.threat.losses, lights: state.threat.lights, bravest: state.threat.bravest };
   state.hearing = { ...newHearing(), survived: state.hearing.survived, losses: state.hearing.losses };
+  // What the schools set up comes switched on.
+  if (fx.schools >= 2) state.autoRecycle.on = true;
+  if (fx.schools >= 3) state.scripts.sortOn = true;
   startNewRun(state);
   return gain;
+}
+
+/** The caretaker: buys the cheapest of tree nodes, endless nodes, speed and reliability. Returns what it bought. */
+export function autoTree(state: GameState): string | null {
+  const node = NODES.filter((n) => canBuyNode(state.recycle, n)).sort((a, b) => a.cost.cmp(b.cost))[0];
+  if (node && buyNode(state, node.id)) return node.name;
+  const options: { name: string; cost: Decimal; buy: () => boolean }[] = [];
+  if (repeatsOpen(state)) {
+    for (const r of REPEATS) options.push({ name: r.name, cost: repeatCost(r, state.recycle.repeats[r.id] ?? 0), buy: () => buyRepeat(state, r.id) });
+  }
+  if (automationOpen(state)) options.push({ name: 'Разгон', cost: speedCost(state.scripts.speed), buy: () => buySpeed(state) });
+  if (scriptOwned(state, 'light')) options.push({ name: 'Надёжность', cost: reliabilityCost(state.scripts.reliability), buy: () => buyReliability(state) });
+  const cheapest = options.sort((a, b) => a.cost.cmp(b.cost))[0];
+  return cheapest && cheapest.buy() ? cheapest.name : null;
+}
+
+/**
+ * The fitter: buys the cheapest recipe, else puts an open station into an empty slot, else
+ * the cheapest level of a station on the line, else an alloy. The order of the line stays
+ * the player's. Returns what it did.
+ */
+export function autoLine(state: GameState): string | null {
+  const so = state.sorting;
+  if (!so.open) return null;
+  const total = (r: (typeof RECIPES)[number]) => Object.values(r.cost).reduce((x: number, y) => x + (y ?? 0), 0);
+  const recipe = RECIPES.filter((r) => canBuyRecipe(so, r)).sort((a, b) => total(a) - total(b))[0];
+  if (recipe && buyRecipe(so, recipe.id)) return recipe.name;
+  const slots = slotCount(so);
+  const onLine = so.line.slice(0, slots);
+  const empty = onLine.findIndex((id) => id === null);
+  const spare = STATIONS.find((d) => stationOpen(so, d) && !onLine.includes(d.id));
+  if (empty >= 0 && spare && placeStation(so, empty, spare.id)) return spare.name;
+  const levels = onLine
+    .filter((id): id is StationId => id !== null)
+    .flatMap((id) => (['speed', 'purity'] as const).map((kind) => ({ id, kind, cost: levelCost(levelsOf(so, id)[kind], kind) })))
+    .sort((a, b) => a.cost.cmp(b.cost));
+  const level = levels.find((o) => buyLevel(so, o.id, o.kind));
+  if (level) return `${stationById(level.id)!.name}: ${level.kind === 'speed' ? 'скорость' : 'чистота'}`;
+  return buyAlloy(so) ? `сплав ${so.alloys}` : null;
 }
 
 /** The threat reached the edge: the run is lost with nothing in return. Recycling progress stays. */
