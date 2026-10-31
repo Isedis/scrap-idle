@@ -98,3 +98,20 @@ describe.runIf(process.env.PACE_CITY)('pacing: the town', () => {
     expect(open, hm(open)).toBeLessThan(4 * hour);
   });
 });
+
+// The whole town: reforms, districts, the pit. About ten minutes: run with PACE_REFORM=1
+// (PACE_HOURS sets the length, 14 by default).
+describe.runIf(process.env.PACE_REFORM)('pacing: the reform and the pit', () => {
+  let events: Simulation['events'] = [];
+  const hours = Number(process.env.PACE_HOURS ?? 14);
+  beforeAll(() => {
+    ({ events } = simulate(hours * hour, { recycle: true, sort: true, city: true }));
+    for (const e of events.filter((e) => /РЕФОРМА|ЯМА|город|квартал (1|10|20|30|40|47)\//.test(e.what))) console.log(hm(e.t).padStart(6), e.what);
+    const districts = events.filter((e) => e.what.startsWith('квартал'));
+    console.log(`кварталов: ${districts.length}, реформ: ${events.filter((e) => e.what.startsWith('РЕФОРМА')).length}`);
+  }, 60 * 60 * 1000);
+
+  it('the first reform comes', () => {
+    expect(events.some((e) => e.what.startsWith('РЕФОРМА'))).toBe(true);
+  });
+});

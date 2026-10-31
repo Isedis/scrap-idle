@@ -24,8 +24,12 @@ import {
   canResort,
   resort,
   resortGain,
+  canReform,
+  reform,
+  reformGainOf,
   type GameState,
 } from './state';
+import { DISTRICTS, annex, annexCost, canAnnex, districtById, streetsOwned, STREETS, type DistrictType } from './city';
 import {
   FRACS,
   RECIPES,
@@ -76,6 +80,10 @@ interface Option {
 
 /** Recycle once the gain at least matches what was earned before, or the run drags on past this. */
 const RECYCLE_PATIENCE = 45 * 60;
+/** The bot reforms once this long has passed since the last resort with no new one in reach. */
+const REFORM_PATIENCE = 20 * 60;
+/** Districts by what they are worth to a player racing to the pit: income first. */
+const CITY_ORDER: DistrictType[] = ['live', 'school', 'prom', 'market', 'station', 'river', 'archive', 'hospital', 'boiler', 'church', 'depot', 'post', 'cemetery', 'pit', 'dump'];
 /** With this many times the price on hand, the bot buys a producer in bulk. */
 const RICH = 100;
 /** Threat level at which the bot turns the floodlight on. */
@@ -91,7 +99,7 @@ const BOT_LINE: StationId[] = ['optic', 'blower', 'magnet', 'sieve', 'briquetter
 
 export function simulate(
   seconds: number,
-  opts: { recycle?: boolean; sort?: boolean; snap?: (s: GameState, what: string) => void } = {},
+  opts: { recycle?: boolean; sort?: boolean; city?: boolean; snap?: (s: GameState, what: string) => void } = {},
 ): Simulation {
   const s = newGame(0);
   s.buyMode = 'one';
@@ -218,12 +226,39 @@ export function simulate(
     while (buyAlloy(so)) log({ t, what: `сплав ${so.alloys}` });
   };
 
+  /** Hectares go on districts as they come: the kinds that pay the most first, the pit once it is ready. */
+  const spendCity = () => {
+    for (;;) {
+      const open = DISTRICTS.filter((d) => canAnnex(s.city, d.id));
+      if (!open.length) break;
+      const pick = open.sort((a, b) => CITY_ORDER.indexOf(a.type) - CITY_ORDER.indexOf(b.type))[0];
+      const cost = annexCost(s.city, pick.id);
+      if (!annex(s.city, pick.id)) break;
+      log({ t, what: pick.type === 'pit' ? `ЯМА за ${cost.toString()} га` : `квартал ${streetsOwned(s.city)}/${STREETS}: ${districtById(pick.id)!.name} (${pick.type}) за ${cost.toString()} га` });
+    }
+  };
+  let lastResortAt = 0;
+
   let lastSpend = -Infinity;
   let sortOpenLogged = false;
   let cityLogged = false;
   let sortReadyLogged = false;
   note();
   while (t < seconds) {
+    // The reform, once resorts slow down: the next one is far off and the town pays well enough.
+    if (opts.city && canReform(s) && !canResort(s) && t - lastResortAt > REFORM_PATIENCE) {
+      const gain = reformGainOf(s);
+      const sorts = s.sorting.sorts;
+      reform(s);
+      log({ t, what: `РЕФОРМА #${s.city.reforms}: +${gain.toString()} га после ${sorts} пересортировок, всего ${s.city.points.toString()} га` });
+      lastResortAt = t;
+      sortReadyLogged = false;
+      shown = 0;
+      milestones = {};
+      spendCity();
+      note();
+      continue;
+    }
     if (opts.sort && canResort(s) && !sortReadyLogged) {
       sortReadyLogged = true;
       log({ t, what: `пересортировка доступна (цикл ${Math.round(s.sorting.cycleSeconds / 60)} мин)` });
@@ -233,6 +268,7 @@ export function simulate(
       // Every resort needs ten times more than the last, so the bot takes each one as it comes.
       if (gain.gt(0)) {
         resort(s);
+        lastResortAt = t;
         sortReadyLogged = false;
         log({ t, what: `ПЕРЕСОРТИРОВКА #${s.sorting.sorts}: +${gain.toString()} · ${FRACS.map((f) => s.sorting.fractions[f].floor().toString()).join('/')}` });
         if (s.city.open && !cityLogged) log({ t, what: 'город открыт' });
@@ -269,8 +305,8 @@ export function simulate(
     // An attentive player rides the dark bonus to its peak and then switches the floodlight on.
     if (s.threat.level >= LIGHT_AT) lightUp(s);
     const best = options().sort((a, b) => a.payback - b.payback)[0];
-    const rate = ratePerSecond(s).toNumber();
-    const wait = Math.max(0, (best.cost.toNumber() - s.trash.toNumber()) / rate);
+    // In Decimals: late in the game trash runs past what a number holds.
+    const wait = s.trash.gte(best.cost) ? 0 : best.cost.sub(s.trash).div(ratePerSecond(s)).toNumber();
     // Step in slices so unlocks are timed accurately.
     const step = Math.min(wait, 10, seconds - t);
     advance(s, step);
