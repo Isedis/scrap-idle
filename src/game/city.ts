@@ -242,7 +242,7 @@ export const newCity = (): CityState => ({ open: false, points: D(0), total: D(0
 /** Resorts, counted since the last reform, that open the Town view: a look at what is coming. */
 export const CITY_OPEN_SORTS = 5;
 /** Resorts the reform itself needs. */
-export const REFORM_SORTS = 9;
+export const REFORM_SORTS = 7;
 
 /**
  * What the next district costs: gently dearer each time, 3 ha for the first, about 430
@@ -357,9 +357,18 @@ function computeEffects(city: CityState): CityEffects {
  * Hectares a reform gives now: about 24 at the ninth resort, and twice as many for each
  * resort past it, so holding on for one more pays.
  */
+/** Hectares per reform at the plain rate, as a multiple of the formula. */
+const REFORM_SCALE = 2.5;
+/**
+ * Each resort past the seventh makes the reform this much richer. Doubling was too much:
+ * with the town's income behind it a cycle reaches 15-18 resorts, and the bot took the
+ * whole town in under three hours.
+ */
+const REFORM_STEP = 1.2;
+
 export function reformGain(sorts: number, fractionsTotal: Decimal): Decimal {
   if (sorts < REFORM_SORTS) return D(0);
-  return D(sorts ** 1.3 + fractionsTotal.add(1).log10().toNumber()).mul(Decimal.pow(2, sorts - REFORM_SORTS)).floor();
+  return D(REFORM_SCALE * (sorts ** 1.3 + fractionsTotal.add(1).log10().toNumber())).mul(Decimal.pow(REFORM_STEP, sorts - REFORM_SORTS)).floor();
 }
 
 /** Scripts the schools set up after a reform: the first school the first group, and so on. */
