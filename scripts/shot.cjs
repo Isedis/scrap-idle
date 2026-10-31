@@ -90,7 +90,11 @@ async function ensureServer() {
     const hideToasts = () => page.evaluate(() => document.querySelectorAll('.toast').forEach((t) => (t.style.display = 'none')));
     for (const step of o.steps) {
       await hideToasts();
-      if (step.click) await page.click(step.click);
+      if (step.click) {
+        // Centre it first: scrolled only just into view, the fixed tab bar covers it.
+        await page.$eval(step.click, (e) => e.scrollIntoView({ block: 'center' }));
+        await page.click(step.click);
+      }
       else {
         const [sel, at] = step.tap.split('@');
         const [fx, fy] = at.split(',').map(Number);

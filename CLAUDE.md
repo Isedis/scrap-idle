@@ -45,7 +45,7 @@ Idle-хоррор про мусор: свалка → переработка →
   `npm run shot -- city --tab recycle --layer city --el .town-plan --out /tmp/shots/plan.png`.
   Флаги: `--tab`, `--layer`, `--click <css>`, `--tap <css>@x,y`, `--el`, `--full`, `--wait`, `--debug`. Описание — в шапке `scripts/shot.cjs`.
   Вьюпорт 390×844, ×2. Смотри результат через Read, автору отправляй через SendUserFile.
-- Готовые сохранения — `tests/fixtures/*.json`: `start`, `recycle-ready`, `recycle-tree`, `sorting`, `hearing-walk`, `city`, `city-late`.
+- Готовые сохранения — `tests/fixtures/*.json`: `start`, `recycle-ready`, `recycle-tree`, `sorting`, `hearing-walk`, `city`, `city-late`, `bottom` (дно ямы, собирается из `city-late`: `-t bottom`).
   Пересобрать после смены формата или баланса: `FIXTURES=1 npx vitest run tests/fixtures.gen.test.ts` (бот, около 3 минут). `tests/fixtures.test.ts` следит, что они грузятся.
 - Отладка в игре: `?debug` в адресе включает кнопку DBG (запоминается, `?debug=0` выключает). Кнопки — в `src/game/debug.ts`, там же добавлять новые; сохранения из `tests/fixtures` грузятся отдельными чанками.
 - Чтобы воспроизвести баг автора, проси строку из Настройки → «Сохранение» → «Экспорт» и клади её в файл: `importSave` понимает и base64, и JSON.

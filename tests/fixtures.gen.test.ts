@@ -1,10 +1,11 @@
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { describe, it } from 'vitest';
 import { simulate } from '../src/game/bot';
 import { DISTRICTS } from '../src/game/city';
 import { D } from '../src/game/num';
 import { deserialize, serialize } from '../src/game/save';
-import { newGame, type GameState } from '../src/game/state';
+import { descend, newGame, type GameState } from '../src/game/state';
+import { ABOVE_SCRIPTS, CONTAINERS, TOOLS, bottomTick, buyAboveScript, buyTool, canOpen, openOne } from '../src/game/bottom';
 
 /**
  * Writes the save fixtures in tests/fixtures: states the bot reaches on the way, plus a
@@ -15,6 +16,26 @@ const out = (name: string, s: GameState) =>
 const copy = (s: GameState) => deserialize(serialize(s))!;
 
 describe.runIf(process.env.FIXTURES)('save fixtures', () => {
+  // A few hours at the bottom of the pit, built from the late town: quick on its own,
+  // FIXTURES=1 npx vitest run tests/fixtures.gen.test.ts -t bottom
+  it('writes the bottom', () => {
+    const s = deserialize(readFileSync('tests/fixtures/city-late.json', 'utf8'))!;
+    s.city.owned = DISTRICTS.map((d) => d.id);
+    descend(s);
+    let seed = 7;
+    const rng = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const b = s.bottom;
+    for (let m = 0; m < 150; m++) {
+      bottomTick(b, 60, 3 + m * 0.05, rng);
+      for (const c of CONTAINERS) while (canOpen(b, c.id) && b.stock[c.id] > (c.id === 'sack' ? 3 : 1)) openOne(b, c.id, rng);
+      // No automatic opening: the fixture shows the strip by hand.
+      for (const t of TOOLS) buyTool(b, t.id);
+      for (const sc of ABOVE_SCRIPTS) buyAboveScript(b, sc.id);
+    }
+    b.recent = [];
+    out('bottom', s);
+  });
+
   it('writes them', () => {
     out('start', newGame(0));
     const got: Record<string, GameState> = {};

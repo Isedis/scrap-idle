@@ -25,6 +25,7 @@ import {
   automationOpen,
   resort,
   reform,
+  descend,
   scriptOwned,
   type ScriptNote,
   type BuyMode,
@@ -40,6 +41,7 @@ import { JournalPanel } from './journalPanel';
 import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
 import { CityPanel } from './cityPanel';
+import { BottomPanel } from './bottomPanel';
 import { LETTERS, REFORM_SORTS, districtById } from '../game/city';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
@@ -169,10 +171,11 @@ export class App {
   /** Camera 05 over the workshop, on the Upgrades tab. */
   private workshop = new WorkshopCam();
   /** Which layer the Layers tab shows. */
-  private layerView: 'recycle' | 'sorting' | 'city' = 'recycle';
+  private layerView: 'recycle' | 'sorting' | 'city' | 'bottom' = 'recycle';
   private layerSwitch!: HTMLElement;
-  private layerButtons = new Map<'recycle' | 'sorting' | 'city', HTMLButtonElement>();
+  private layerButtons = new Map<'recycle' | 'sorting' | 'city' | 'bottom', HTMLButtonElement>();
   private cityPanel!: CityPanel;
+  private bottomPanel!: BottomPanel;
   private knownCityOpen = false;
   private knownSortOpen = false;
   /** Red marks on the tabs whose defence needs the player. */
@@ -356,8 +359,16 @@ export class App {
       this.getState,
       (id) => this.onAnnex(id),
       () => this.doReform(),
+      () => this.doDescend(),
     );
-    for (const [view, label] of [['recycle', 'Переработка'], ['sorting', 'Сортировка'], ['city', 'Город']] as const) {
+    this.bottomPanel = new BottomPanel(this.getState, (message) => {
+      if (message) {
+        this.sound.click();
+        this.toast(message);
+      }
+      this.render();
+    });
+    for (const [view, label] of [['recycle', 'Переработка'], ['sorting', 'Сортировка'], ['city', 'Город'], ['bottom', 'Дно']] as const) {
       const b = el('button', 'mode', label);
       b.type = 'button';
       b.id = `layer-${view}`;
@@ -368,7 +379,7 @@ export class App {
       });
       this.layerButtons.set(view, b);
       // The town shows on the switch once it has offered itself.
-      if (view === 'city') b.hidden = true;
+      if (view === 'city' || view === 'bottom') b.hidden = true;
       this.layerSwitch.append(b);
     }
 
@@ -394,6 +405,7 @@ export class App {
       this.recyclePanel.root,
       this.sortingPanel.root,
       this.cityPanel.root,
+      this.bottomPanel.root,
       this.automationPanel.root,
       this.journalPanel.root,
       this.buildSettings(),
@@ -721,10 +733,12 @@ export class App {
     // The Layers tab shows one layer at a time, with the switch on top.
     const sorting = tab === 'recycle' && this.layerView === 'sorting';
     const city = tab === 'recycle' && this.layerView === 'city';
+    const bottom = tab === 'recycle' && this.layerView === 'bottom';
     this.sortingPanel.root.hidden = !sorting;
     this.cityPanel.root.hidden = !city;
-    if (sorting || city) this.recyclePanel.root.hidden = true;
-    const visible = sorting ? this.sortingPanel.root : city ? this.cityPanel.root : this.recyclePanel.root;
+    this.bottomPanel.root.hidden = !bottom;
+    if (sorting || city || bottom) this.recyclePanel.root.hidden = true;
+    const visible = sorting ? this.sortingPanel.root : city ? this.cityPanel.root : bottom ? this.bottomPanel.root : this.recyclePanel.root;
     if (this.layerSwitch.parentElement !== visible) visible.prepend(this.layerSwitch);
     for (const [view, b] of this.layerButtons) b.setAttribute('aria-pressed', String(view === this.layerView));
   }
@@ -887,7 +901,7 @@ export class App {
   /** The switch to Sorting shows up as the line comes into view; then the tab is called Layers. */
   private renderSorting(state: GameState): void {
     const so = state.sorting;
-    const near = so.open || state.recycle.total.gte(1e4);
+    const near = so.open || state.recycle.total.gte(1e4) || state.bottom.open;
     if (near && this.layerSwitch.hidden) {
       this.layerSwitch.hidden = false;
       this.recycleTab.querySelector('span:not(.badge)')!.textContent = 'Слои';
@@ -923,6 +937,8 @@ export class App {
       }
     }
     if (!this.cityPanel.root.hidden) this.cityPanel.render(state);
+    this.layerButtons.get('bottom')!.hidden = !state.bottom.open;
+    if (!this.bottomPanel.root.hidden) this.bottomPanel.render(state);
   }
 
   /** A district taken: the stain spreads, the town writes. */
@@ -935,7 +951,7 @@ export class App {
     if (letter) this.typeLine('ГОРСОВЕТ: НОВОЕ ПИСЬМО');
     if (id === 'pit') {
       this.typeLine('ЯМА ОТКРЫТА. ПОД НЕЙ ЕЩЁ ОДНА СВАЛКА');
-      this.toast('Слой «Под ямой» ещё строится: доход ×100 уже ваш');
+      this.toast('Яма открыта. Спуститься — внизу вкладки «Город»');
       this.glitch(2);
     }
     writeSave(state);
@@ -953,6 +969,21 @@ export class App {
     this.sound.lost();
     this.typeLine(`РЕФОРМА №${state.city.reforms}. ГОРОД ЗАБРАЛ ВСЁ. СВАЛКА ПОМНИТ ВАС`);
     this.toast(`Реформа: +${format(gain)} га. Город отдаёт кварталы`);
+    this.render();
+  }
+
+  /** The descent: the world above starts over, the bottom of the pit opens. */
+  private doDescend(): void {
+    const state = this.getState();
+    if (!descend(state)) return;
+    writeSave(state);
+    this.resetKnown();
+    this.toastQueue = [];
+    this.sound.lost();
+    this.typeLine('ОПЕРАТОР СПУСТИЛСЯ. ВНИЗУ ГОРИТ ФОНАРЬ. ИГНАТЬЕВ КОПАЕТ');
+    this.toast('Дно ямы: «Слои» → «Дно». Наверху всё началось заново');
+    this.layerView = 'bottom';
+    this.show('recycle');
     this.render();
   }
 
@@ -1282,6 +1313,7 @@ export class App {
     if (!this.losing) this.huntFrame(dt, state);
     // The town's plan is the view itself, not a camera: it draws folded or not.
     if (!this.cityPanel.root.hidden) this.cityPanel.frame(dt, state);
+    if (!this.bottomPanel.root.hidden) this.bottomPanel.frame(dt, state);
     // The journal's monitor shows camera 01 live, or the recording it plays, folded or not.
     if (!this.journalPanel.root.hidden) this.journalPanel.monitor.frame(dt, this.yardView(state), plantView(state));
     // Folded cameras draw nothing, which also spares the battery.
@@ -1475,14 +1507,14 @@ export class App {
 
     // Recycling: the tab shows up as the first recycle comes into view.
     const layer = state.recycle;
-    const recycleVisible = layer.resets > 0 || state.runTrash.gte(RECYCLE_AT.div(100));
+    const recycleVisible = layer.resets > 0 || state.runTrash.gte(RECYCLE_AT.div(100)) || state.bottom.open;
     if (recycleVisible && this.recycleTab.hidden) {
       this.recycleTab.hidden = false;
       if (layer.resets === 0) this.toast('Новая вкладка: Переработка');
     }
     // The badge calls for what is new since the player last looked at the tab.
-    const calls = [...this.recyclePanel.attention(state), ...this.sortingPanel.attention(state), ...this.cityPanel.attention(state)];
-    const looking = !this.recyclePanel.root.hidden || !this.sortingPanel.root.hidden || !this.cityPanel.root.hidden;
+    const calls = [...this.recyclePanel.attention(state), ...this.sortingPanel.attention(state), ...this.cityPanel.attention(state), ...this.bottomPanel.attention(state)];
+    const looking = !this.recyclePanel.root.hidden || !this.sortingPanel.root.hidden || !this.cityPanel.root.hidden || !this.bottomPanel.root.hidden;
     this.layersSeen = new Set(calls.filter((c) => looking || this.layersSeen.has(c)));
     this.recycleBadge.hidden = calls.every((c) => this.layersSeen.has(c));
     if (this.autoTab.hidden && automationOpen(state)) {

@@ -33,7 +33,7 @@ export const MELT: Record<Exclude<Rarity, 'anomaly'>, number> & { anomaly: numbe
   nonferrous: 10,
   antique: 6,
   relic: 5,
-  anomaly: 100,
+  anomaly: 150,
 };
 
 // ---- Containers ---------------------------------------------------------------------
@@ -161,7 +161,7 @@ export interface ToolDef {
 
 export const TOOLS: readonly ToolDef[] = [
   { id: 'pick', name: 'Кирка', text: 'Копает на 30% быстрее за уровень', base: 60, growth: 1.7, costIn: 'dust', max: 25 },
-  { id: 'lamp', name: 'Фонарь', text: 'Ценная тара попадается на 35% чаще за уровень', base: 8, growth: 1.8, costIn: 'scrap', max: 15 },
+  { id: 'lamp', name: 'Фонарь', text: 'Ценная тара попадается чаще: +12% за уровень на каждую ступень', base: 8, growth: 1.8, costIn: 'scrap', max: 15 },
   { id: 'luck', name: 'Чутьё', text: 'Редкое внутри на 20% чаще за уровень', base: 4, growth: 1.9, costIn: 'nonferrous', max: 15 },
 ];
 
@@ -221,6 +221,12 @@ export interface BottomState {
   opened: number;
   /** Ultra-waste units: never spent here. */
   ume: Decimal;
+  /** Trash collected above since the descent: what keeps falling in. */
+  above: Decimal;
+  /** Scripts of the world above bought with currencies from here. */
+  scripts: string[];
+  /** The last openings, newest first, for the screen; not saved. */
+  recent: Opening[];
 }
 
 const zeroMoney = (): Record<Rarity, Decimal> => ({ dust: D(0), scrap: D(0), nonferrous: D(0), antique: D(0), relic: D(0), anomaly: D(0) });
@@ -238,6 +244,9 @@ export const newBottom = (): BottomState => ({
   found: {},
   opened: 0,
   ume: D(0),
+  above: D(0),
+  scripts: [],
+  recent: [],
 });
 
 // ---- Collection ---------------------------------------------------------------------
@@ -259,9 +268,12 @@ export const aboveIncome = (b: BottomState) => (setPower(b, 'prehistoric') ? D(1
 
 // ---- Digging ------------------------------------------------------------------------
 
+/** Each lamp level makes every next kind of container this much likelier than the one before. */
+export const LAMP_STEP = 1.12;
+
 /** Odds of each container per tonne, with the lamp. */
 export function containerOdds(b: BottomState): number[] {
-  return CONTAINERS.map((c, i) => c.weight * 1.35 ** (b.tools.lamp * i));
+  return CONTAINERS.map((c, i) => c.weight * LAMP_STEP ** (b.tools.lamp * i));
 }
 
 function pick<T>(items: readonly T[], weights: readonly number[], r: number): T {
@@ -335,7 +347,20 @@ export function openOne(b: BottomState, id: ContainerId, rand: () => number): Op
   b.found[found.id] = (b.found[found.id] ?? 0) + 1;
   const amount = D(YIELD[rarity]);
   b.money[rarity] = b.money[rarity].add(amount);
-  return { item: found, container: id, amount, fresh };
+  const opening = { item: found, container: id, amount, fresh };
+  b.recent.unshift(opening);
+  if (b.recent.length > RECENT_KEPT) b.recent.length = RECENT_KEPT;
+  return opening;
+}
+
+/** Openings kept for the screen. */
+const RECENT_KEPT = 12;
+
+/** Opens what the automatic opening takes care of, at most `limit` containers. Returns how many. */
+export function autoOpen(b: BottomState, rand: () => number, limit = 500): number {
+  let n = 0;
+  for (const id of autoOpens(b)) while (n < limit && openOne(b, id, rand)) n++;
+  return n;
 }
 
 /** Containers the automatic opening takes care of now. */
@@ -383,4 +408,30 @@ export function melt(b: BottomState, from: Rarity, times = 1): number {
   if (from === 'anomaly') b.ume = b.ume.add(can);
   else b.money[RARITIES[i + 1]] = b.money[RARITIES[i + 1]].add(can);
   return can;
+}
+
+// ---- The world above, run from below ------------------------------------------------
+
+/**
+ * Scripts of the world above, bought one by one with what comes up from the bottom; after
+ * the descent the tree, the town and its schools start over, and this is how the world
+ * above comes to run itself again. The town's own two are still to come.
+ */
+export const ABOVE_SCRIPTS: readonly { id: string; cost: number; costIn: Rarity }[] = [
+  { id: 'producers', cost: 40, costIn: 'dust' },
+  { id: 'upgrades', cost: 80, costIn: 'dust' },
+  { id: 'endless', cost: 6, costIn: 'scrap' },
+  { id: 'light', cost: 10, costIn: 'scrap' },
+  { id: 'recycle', cost: 15, costIn: 'scrap' },
+  { id: 'tree', cost: 6, costIn: 'nonferrous' },
+  { id: 'sort', cost: 10, costIn: 'nonferrous' },
+  { id: 'line', cost: 4, costIn: 'antique' },
+];
+
+export function buyAboveScript(b: BottomState, id: string): boolean {
+  const s = ABOVE_SCRIPTS.find((x) => x.id === id);
+  if (!s || b.scripts.includes(id) || b.money[s.costIn].lt(s.cost)) return false;
+  b.money[s.costIn] = b.money[s.costIn].sub(s.cost);
+  b.scripts.push(id);
+  return true;
 }

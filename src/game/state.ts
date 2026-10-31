@@ -81,6 +81,7 @@ import {
 import { REPEATS } from './layers';
 import { afterLoss, hearingTick, newHearing, noiseMult, type HearingState } from './hearing';
 import { CITY_OPEN_SORTS, REFORM_SORTS, cityEffects, schoolScripts, newCity, reformGain, type CityState } from './city';
+import { START_HEAP, aboveIncome, autoOpen, bottomTick, fallPerMinute, newBottom, type BottomState } from './bottom';
 import {
   FIRST_EVENT_SECONDS,
   FRESH_CASE_FACTOR,
@@ -142,6 +143,8 @@ export interface GameState {
   hearing: HearingState;
   /** Third prestige layer: the town of Glukhovo, district by district. */
   city: CityState;
+  /** Fourth: the bottom of the pit, where Ignatyev digs what falls in. */
+  bottom: BottomState;
   /** Epoch ms of the last simulated moment, used for offline progress. */
   lastTick: number;
 }
@@ -170,6 +173,7 @@ export function newGame(now = Date.now()): GameState {
     sorting: newSorting(),
     hearing: newHearing(),
     city: newCity(),
+    bottom: newBottom(),
     lastTick: now,
   };
 }
@@ -191,7 +195,8 @@ export function sharedMult(state: GameState): Decimal {
     .mul(achievementMult(state.achievements))
     .mul(sortingIncome(state.sorting))
     .mul(noiseMult(state.hearing, state.sorting.open))
-    .mul(cityEffects(state.city).income);
+    .mul(cityEffects(state.city).income)
+    .mul(aboveIncome(state.bottom));
 }
 
 /** One multiplier in the income, for the breakdown the player can open. */
@@ -313,6 +318,13 @@ export function advance(state: GameState, seconds: number, offline = false, slic
     state.trash = state.trash.add(gained);
     state.totalTrash = state.totalTrash.add(gained);
     state.runTrash = state.runTrash.add(gained);
+    // Down there, all of it lands on the heap Ignatyev digs.
+    const b = state.bottom;
+    if (b.open) {
+      b.above = b.above.add(gained);
+      bottomTick(b, dt, fallPerMinute(b.above), Math.random);
+      autoOpen(b, Math.random);
+    }
     state.runSeconds += dt;
     if (!offline) state.story.boost = Math.max(0, state.story.boost - dt);
     // Tails off the sorting line feed the thing: it climbs faster.
@@ -648,6 +660,8 @@ export function scriptOwned(state: GameState, id: ScriptId): boolean {
   // The town's schools set scripts up on their own after a reform.
   const town = cityEffects(state.city);
   if (schoolScripts(town.schools).includes(id)) return true;
+  // Bought from the bottom of the pit.
+  if (state.bottom.scripts.includes(id)) return true;
   if (def.town) return false;
   if (def.recipe) return state.sorting.recipes.includes(def.recipe);
   // The dispatcher and the second floodlight install scripts on their own.
@@ -866,6 +880,40 @@ export function reform(state: GameState): Decimal {
   if (fx.schools >= 3) state.scripts.sortOn = true;
   startNewRun(state);
   return gain;
+}
+
+/** The pit is taken: the way down is open. */
+export const canDescend = (state: GameState) => state.city.owned.includes('pit');
+
+/**
+ * The descent: everything above starts over, the town included; achievements, the finds on
+ * the table, the story and the bottom stay. The town left on the heap is the first to dig.
+ */
+export function descend(state: GameState): boolean {
+  if (!canDescend(state)) return false;
+  const b = state.bottom;
+  if (!b.open) {
+    b.open = true;
+    b.heap += START_HEAP;
+  }
+  b.above = D(0);
+  const old = state.sorting;
+  const sorting = newSorting();
+  sorting.found = old.found;
+  sorting.inspected = old.inspected;
+  state.sorting = sorting;
+  state.recycle = newLayer();
+  state.city = newCity();
+  state.scripts = newScripts();
+  state.autoRecycle = { on: false, factor: AUTO_FACTOR_DEFAULT };
+  state.tracks = {};
+  state.compacted = 0;
+  state.upgrades = [];
+  state.revealed = ['collector'];
+  state.threat = { ...newThreat(), losses: state.threat.losses, lights: state.threat.lights, bravest: state.threat.bravest };
+  state.hearing = { ...newHearing(), survived: state.hearing.survived, losses: state.hearing.losses };
+  startNewRun(state);
+  return true;
 }
 
 /** The caretaker: buys the cheapest of tree nodes, endless nodes, speed and reliability. Returns what it bought. */

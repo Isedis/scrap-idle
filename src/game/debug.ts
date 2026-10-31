@@ -2,7 +2,8 @@ import { CITY_OPEN_SORTS, DISTRICTS } from './city';
 import type { Decimal } from './num';
 import { FRACS } from './sorting';
 import { WALK_MIN } from './hearing';
-import { advance, type GameState } from './state';
+import { advance, descend, type GameState } from './state';
+import { RARITIES } from './bottom';
 
 /**
  * Shortcuts for testing on a phone, behind ?debug: give currency, jump to a layer, call
@@ -80,6 +81,32 @@ export const DEBUG_ACTIONS: readonly DebugAction[] = [
       Object.assign(s.hearing, { meter: 1, phase: 'walk', left: 1, walk: WALK_MIN, held: 0 });
     },
   },
+  {
+    label: 'Дно: спуститься',
+    run: (s) => {
+      s.city.open = true;
+      s.city.owned = DISTRICTS.map((d) => d.id);
+      descend(s);
+    },
+  },
+  {
+    label: 'Дно: валюты ×10',
+    run: (s) => {
+      for (const r of RARITIES) s.bottom.money[r] = boost(s.bottom.money[r], 50);
+    },
+  },
+  {
+    label: 'Дно: тара +50',
+    run: (s) => {
+      const st = s.bottom.stock;
+      st.sack += 30;
+      st.crate += 12;
+      st.suitcase += 5;
+      st.safe += 2;
+      st.coffin += 1;
+    },
+  },
+  { label: 'Дно: вглубь +3000 т', run: (s) => void (s.bottom.dug += 3000) },
   { label: 'Промотать 10 мин', run: (s) => advance(s, 600) },
   { label: 'Промотать 1 час', run: (s) => advance(s, 3600) },
 ];

@@ -1682,3 +1682,65 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .classic-ui .operator-goal, .classic-ui .threat-effect, .classic-ui .reset-preview { display: none; }
 
 .feed.cam.workshop { height: 270px; }
+
+/* ---- The bottom of the pit: camera 09, currencies, the strip, containers, the ladder, the collection ---- */
+.feed.cam.pit { height: 230px; }
+.bottom {
+  --r-dust: #7f9a86;
+  --r-scrap: #9fe8a8;
+  --r-nonferrous: #6fd6e0;
+  --r-antique: #ffbf47;
+  --r-relic: #ff8a4c;
+  --r-anomaly: #ff4d6d;
+}
+.bottom .r-dust { --rc: var(--r-dust); }
+.bottom .r-scrap { --rc: var(--r-scrap); }
+.bottom .r-nonferrous { --rc: var(--r-nonferrous); }
+.bottom .r-antique { --rc: var(--r-antique); }
+.bottom .r-relic { --rc: var(--r-relic); }
+.bottom .r-anomaly { --rc: var(--r-anomaly); }
+
+.b-money { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 8px 0; }
+.b-coin { display: flex; flex-direction: column; gap: 1px; padding: 5px 6px; border: 1px solid var(--line); border-left: 3px solid var(--rc, var(--glow)); border-radius: 4px; min-width: 0; }
+.b-coin-name { font-size: 10px; color: var(--rc, var(--mid)); text-transform: uppercase; letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b-coin-value { font-weight: 700; font-variant-numeric: tabular-nums; }
+.b-ume { --rc: #e8ffe8; border-color: var(--glow); box-shadow: 0 0 10px rgb(125 255 154 / 0.25); }
+
+.b-reel { position: relative; height: 74px; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: rgb(0 0 0 / 0.45); }
+.b-strip { display: flex; gap: 6px; padding: 7px 0 7px 6px; will-change: transform; }
+.b-card { flex: 0 0 86px; height: 58px; display: flex; flex-direction: column; justify-content: space-between; padding: 5px 6px; border: 1px solid var(--rc); border-radius: 4px; background: linear-gradient(180deg, rgb(0 0 0 / 0.2), color-mix(in srgb, var(--rc) 18%, transparent)); }
+.b-card-rarity { font-size: 9px; text-transform: uppercase; color: var(--rc); letter-spacing: 0.05em; }
+.b-card-name { font-size: 11px; line-height: 1.15; color: var(--glow); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.b-marker { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.b-result { min-height: 40px; margin: 6px 0 10px; font-size: 13px; color: var(--mid); }
+.b-result[class*='r-'] { color: var(--rc); }
+
+.b-list { display: grid; gap: 6px; margin-bottom: 8px; }
+.b-row { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.b-row.none, .b-row.done { opacity: 0.55; }
+.b-row-text { flex: 1; min-width: 0; }
+.b-row-title { display: flex; gap: 8px; align-items: baseline; font-weight: 700; color: var(--glow); }
+.b-row-title .r-dust, .b-row-title [class*='r-'] { color: var(--rc); }
+.b-row-count { font-weight: 400; font-size: 12px; color: var(--mid); }
+.b-row-sub { font-size: 12px; color: var(--mid); }
+.b-open { min-width: 56px; min-height: 44px; padding: 6px 10px; font-size: 12px; }
+.b-all { min-width: 48px; }
+.b-buy { min-width: 108px; min-height: 44px; padding: 6px 8px; font-size: 11px; border-color: var(--rc, var(--mid)); color: var(--rc, var(--glow)); text-transform: none; }
+
+.b-finds { display: grid; gap: 2px; margin: -2px 0 10px; font-size: 12px; }
+.b-find { color: var(--rc); }
+
+.b-collection { display: grid; gap: 6px; }
+.b-set { font-size: 12px; color: var(--mid); margin: 2px 0 4px; }
+.b-set.done { color: var(--amber); }
+.b-items { display: grid; gap: 2px; }
+.b-epoch.folded .b-items, .b-epoch.folded .b-set { display: none; }
+.b-item { display: flex; justify-content: space-between; gap: 8px; padding: 3px 6px; border-left: 3px solid var(--rc); font-size: 12px; color: var(--glow); }
+.b-item.unseen { color: var(--dim); }
+.b-item-count { color: var(--mid); font-variant-numeric: tabular-nums; }
+.c-descent { border-color: var(--amber); }
+.c-descent .c-reform-go { border-color: var(--amber); color: var(--amber); }
+.b-card-blank { --rc: var(--line); align-items: center; justify-content: center; color: var(--dim); font-size: 20px; }
+.bottom .btn:disabled { opacity: 0.38; }
+.b-row.done .b-row-sub { display: none; }
+.b-row.done { padding-block: 2px; }

@@ -93,3 +93,58 @@ describe('the bottom of the pit', () => {
     expect(b.auto).toBe(1);
   });
 });
+
+describe('the descent and the save', () => {
+  it('opens the bottom only once the pit is taken, and starts the world above over', async () => {
+    const { newGame, descend, advance } = await import('../src/game/state');
+    const s = newGame(0);
+    expect(descend(s)).toBe(false);
+    s.city.owned.push('pit');
+    s.sorting.found = ['lantern'];
+    s.achievements = ['kg1e3'];
+    s.trash = D(1e30);
+    expect(descend(s)).toBe(true);
+    expect(s.bottom.open).toBe(true);
+    expect(s.bottom.heap).toBeGreaterThan(0);
+    expect(s.city.owned).toEqual(['dump']);
+    expect(s.sorting.found).toEqual(['lantern']);
+    expect(s.achievements).toEqual(['kg1e3']);
+    expect(s.trash.lt(1e30)).toBe(true);
+    // The world above keeps falling in, and Ignatyev digs.
+    advance(s, 120);
+    expect(s.bottom.dug).toBeGreaterThan(0);
+  });
+
+  it('round-trips in a v13 save; a v12 save loads with the bottom closed', async () => {
+    const { newGame } = await import('../src/game/state');
+    const { deserialize, serialize } = await import('../src/game/save');
+    const s = newGame(0);
+    const b = s.bottom;
+    b.open = true;
+    b.heap = 120.5;
+    b.dug = 3000;
+    b.stock.safe = 2;
+    b.money.relic = D(7);
+    b.tools.pick = 4;
+    b.auto = 1;
+    b.found = { bell: 3 };
+    b.ume = D(2);
+    b.scripts = ['producers', 'nope'];
+    const back = deserialize(serialize(s))!;
+    expect(back.bottom.open).toBe(true);
+    expect(back.bottom.heap).toBe(120.5);
+    expect(back.bottom.stock.safe).toBe(2);
+    expect(back.bottom.money.relic.toNumber()).toBe(7);
+    expect(back.bottom.tools.pick).toBe(4);
+    expect(back.bottom.found).toEqual({ bell: 3 });
+    expect(back.bottom.ume.toNumber()).toBe(2);
+    expect(back.bottom.scripts).toEqual(['producers']);
+    const v12 = JSON.parse(serialize(newGame(0)));
+    v12.v = 12;
+    delete v12.layers.bottom;
+    v12.autoRecycle = { on: true, factor: 0.25 };
+    const old = deserialize(JSON.stringify(v12))!;
+    expect(old.bottom.open).toBe(false);
+    expect(old.autoRecycle.factor).toBe(0.25);
+  });
+});

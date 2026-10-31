@@ -1,0 +1,241 @@
+{
+ "v": 13,
+ "trash": "0",
+ "totalTrash": "3.008734618278703e40",
+ "owned": {
+  "collector": 1
+ },
+ "revealed": [
+  "collector"
+ ],
+ "upgrades": [],
+ "seenUpgrades": [
+  "collector-1",
+  "cart-1",
+  "collector-2",
+  "night-shift",
+  "collector-3",
+  "truck-1",
+  "hitch",
+  "cart-2",
+  "union",
+  "sorter-1",
+  "cart-3",
+  "collector-4",
+  "truck-2",
+  "city-contract",
+  "press-1",
+  "truck-3",
+  "feed-sorter",
+  "sorter-2",
+  "plant-1",
+  "sorter-3",
+  "state-order",
+  "truck-4",
+  "cart-4",
+  "press-2",
+  "landfill-1",
+  "press-3",
+  "bales",
+  "plant-2",
+  "space-license",
+  "incinerator-1",
+  "plant-3",
+  "sorter-4",
+  "press-4",
+  "orbital-1",
+  "landfill-2",
+  "scrap-exchange",
+  "landfill-3",
+  "waste-fuel",
+  "incinerator-2",
+  "galactic-tender",
+  "singularity-1",
+  "incinerator-3",
+  "plant-4",
+  "landfill-4",
+  "orbital-2",
+  "orbital-3",
+  "orbital-drop",
+  "singularity-2",
+  "singularity-3",
+  "incinerator-4",
+  "orbital-4",
+  "singularity-4"
+ ],
+ "buyMode": "one",
+ "runTrash": "0",
+ "runSeconds": 0,
+ "layers": {
+  "recycle": {
+   "points": "0",
+   "total": "0",
+   "resets": 0,
+   "nodes": [],
+   "bestSeconds": null,
+   "repeats": {}
+  },
+  "sorting": {
+   "open": false,
+   "fractions": {
+    "plastic": "0",
+    "metal": "0",
+    "glass": "0",
+    "paper": "0"
+   },
+   "total": "0",
+   "sorts": 0,
+   "line": [
+    "optic",
+    "blower"
+   ],
+   "levels": {},
+   "recipes": [],
+   "alloys": 0,
+   "queue": 0,
+   "progress": 0,
+   "arrival": 0,
+   "inspected": 39,
+   "found": [
+    "lantern",
+    "boot",
+    "bag",
+    "letter",
+    "eye"
+   ],
+   "cycleSeconds": 0
+  },
+  "city": {
+   "open": false,
+   "points": "0",
+   "total": "0",
+   "reforms": 0,
+   "owned": [
+    "dump"
+   ]
+  },
+  "bottom": {
+   "open": true,
+   "heap": 0,
+   "dig": 0.7499999999999396,
+   "dug": 1308.7499999999995,
+   "stock": {
+    "sack": 3,
+    "crate": 1,
+    "suitcase": 1,
+    "safe": 1,
+    "coffin": 1
+   },
+   "money": {
+    "dust": "2115",
+    "scrap": "23",
+    "nonferrous": "26",
+    "antique": "7",
+    "relic": "58",
+    "anomaly": "20"
+   },
+   "tools": {
+    "pick": 7,
+    "lamp": 6,
+    "luck": 4
+   },
+   "auto": 0,
+   "dry": {
+    "antique": 0,
+    "relic": 1
+   },
+   "found": {
+    "fishbone": 154,
+    "lapot": 152,
+    "horseshoe": 166,
+    "sherd": 132,
+    "arrowhead": 171,
+    "pewtercross": 87,
+    "birchbark": 123,
+    "buckle": 86,
+    "helm": 57,
+    "bell": 19,
+    "spear": 13,
+    "coin": 21,
+    "waxtab": 24,
+    "sickle": 25,
+    "grain": 14,
+    "embers": 12,
+    "amphora": 8,
+    "curse": 18,
+    "seajar": 1,
+    "mask": 18
+   },
+   "opened": 1301,
+   "ume": "0",
+   "above": "0",
+   "scripts": [
+    "producers",
+    "upgrades",
+    "endless",
+    "light",
+    "tree",
+    "line",
+    "recycle",
+    "sort"
+   ]
+  }
+ },
+ "autobuy": true,
+ "threat": {
+  "level": 0,
+  "losses": 0,
+  "lights": 27,
+  "bravest": 0.544814276089194
+ },
+ "story": {
+  "cases": [],
+  "notes": 0,
+  "voices": [],
+  "records": [],
+  "traces": [],
+  "nextIn": 20,
+  "boost": 0,
+  "seq": 0
+ },
+ "tracks": {},
+ "compacted": 0,
+ "achievements": [],
+ "autoRecycle": {
+  "on": false,
+  "factor": 0.1
+ },
+ "scripts": {
+  "bought": [],
+  "speed": 0,
+  "reliability": 0,
+  "producerMode": "one",
+  "producerOff": [],
+  "upgradesOn": true,
+  "upgradesShare": 0.1,
+  "endlessOn": true,
+  "endlessOff": [],
+  "recycleMode": "gain",
+  "recycleMinutes": 5,
+  "lightOn": true,
+  "lightAt": 0.9,
+  "failures": 0,
+  "sortOn": false,
+  "treeOn": true,
+  "lineOn": true,
+  "sortMode": "share",
+  "sortShare": 0.25,
+  "sortMinutes": 60
+ },
+ "hearing": {
+  "noise": 1,
+  "meter": 0,
+  "phase": "idle",
+  "left": 0,
+  "walk": 0,
+  "held": 0,
+  "survived": 0,
+  "losses": 0
+ },
+ "lastTick": 0
+}

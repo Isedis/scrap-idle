@@ -20,6 +20,7 @@ const FIXTURE_NAMES: Record<string, string> = {
   'hearing-walk': 'Слух идёт',
   city: 'Город открыт',
   'city-late': 'Город почти весь',
+  bottom: 'Дно ямы',
 };
 
 /** ?debug turns the panel on and keeps it on (the home-screen copy drops the query); ?debug=0 turns it off. */

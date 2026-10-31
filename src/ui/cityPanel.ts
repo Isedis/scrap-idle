@@ -52,6 +52,9 @@ export class CityPanel {
   private reformText!: HTMLElement;
   private reformButton!: HTMLButtonElement;
   private armed = 0;
+  private descent!: HTMLElement;
+  private descentButton!: HTMLButtonElement;
+  private descendArmed = 0;
   private shown = '';
   private locked!: HTMLElement;
   private lockedText!: HTMLElement;
@@ -62,6 +65,7 @@ export class CityPanel {
     private getState: () => GameState,
     private onAnnex: (id: string) => void,
     private onReform: () => void,
+    private onDescend: () => void,
   ) {
     this.root = el('section', 'panel city');
     this.plan = new TownPlan(() => this.render(this.getState()));
@@ -118,7 +122,19 @@ export class CityPanel {
     this.lockedBar = el('div', 'c-locked-bar');
     this.locked.append(el('div', 'c-card-title', 'Город закрыт'), this.lockedText, this.lockedBar);
     this.openPart = el('div', 'c-open');
-    this.openPart.append(this.card, this.effects, lettersHead, this.letters, this.moreLetters, reformHead, reform);
+    // Once the pit is the landfill's: the way down.
+    this.descent = el('div', 'c-reform c-descent');
+    this.descentButton = el('button', 'btn c-reform-go', 'Спуститься');
+    this.descentButton.type = 'button';
+    this.descentButton.id = 'descend';
+    this.descentButton.addEventListener('click', () => this.pressDescend());
+    this.descent.append(
+      el('div', 'c-card-title', 'Под ямой'),
+      el('div', 'c-card-text', 'Внизу ещё одна свалка, и на ней кто-то копает. Спуск сбрасывает всё наверху, город тоже: останутся находки со стола, достижения и журнал.'),
+      this.descentButton,
+    );
+    this.descent.hidden = true;
+    this.openPart.append(this.card, this.effects, this.descent, lettersHead, this.letters, this.moreLetters, reformHead, reform);
     this.root.append(
       this.camera.root,
       head,
@@ -128,6 +144,24 @@ export class CityPanel {
       this.plan.root,
       this.openPart,
     );
+  }
+
+  private pressDescend(): void {
+    if (!this.descendArmed) {
+      this.descentButton.textContent = 'Нажмите ещё раз: спуститься';
+      this.descentButton.classList.add('armed');
+      this.descendArmed = window.setTimeout(() => {
+        this.descendArmed = 0;
+        this.descentButton.textContent = 'Спуститься';
+        this.descentButton.classList.remove('armed');
+      }, 3000);
+      return;
+    }
+    clearTimeout(this.descendArmed);
+    this.descendArmed = 0;
+    this.descentButton.textContent = 'Спуститься';
+    this.descentButton.classList.remove('armed');
+    this.onDescend();
   }
 
   private pressReform(): void {
@@ -210,6 +244,7 @@ export class CityPanel {
       ? `За этот цикл: +${format(gain)} га.`
       : `Нужно ${REFORM_SORTS} пересортировок, сейчас ${state.sorting.sorts}.`;
     this.reformButton.disabled = !ready;
+    this.descent.hidden = !city.owned.includes('pit');
 
     // Letters and the archive change only when a district is taken.
     const sig = JSON.stringify([city.owned.length, city.owned.includes('archive'), this.allLetters]);
