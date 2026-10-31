@@ -1834,9 +1834,9 @@ export class App {
 
   private renderThreat(state: GameState): void {
     const level = state.threat.level;
-    this.threatEffect.textContent = level >= 0.7
-      ? 'На 100% — потеря смены. Удерживайте прожектор.'
-      : 'На 100% — потеря смены; вторсырьё и дерево останутся.';
+    // Said only when it matters: high up, where the edge is close.
+    this.threatEffect.textContent = level >= 0.7 ? 'На 100% — потеря смены. Удерживайте прожектор.' : '';
+    this.threatEffect.hidden = level < 0.7;
     const active = threatActive(state.runTrash) || level > 0 || state.threat.losses > 0;
     if (active && this.threatEl.hidden) {
       this.threatEl.hidden = false;

@@ -235,7 +235,6 @@ export class SortingPanel {
     this.lineList = el('div', 's-line');
     this.tails = el('div', 's-tails');
     box.append(
-      this.why('С кучи по ленте едет мусор. Каждая станция снимает свои буквы — это фракции, новая валюта. Что доехало до конца, падает обратно в кучу и кормит его.'),
       this.lineList,
       this.tails,
     );
@@ -505,10 +504,10 @@ export class SortingPanel {
       });
     }
     what.textContent = def.frac
-      ? `Забирает ${share(capture(lv.speed))} букв «${FRAC_LETTER[def.frac]}». Сбивает в брак ${share(impurity(lv.purity))} чужих — станциям ниже их уже не достанется.`
+      ? `Ловит ${share(capture(lv.speed))} «${FRAC_LETTER[def.frac]}» · сбивает ${share(impurity(lv.purity))} чужих`
       : id === 'briquetter'
-        ? `Прессует всё, что поймали станции выше: их выход ×${press(lv.speed).toFixed(1)}. Ставь ниже тех, кого хочешь усилить.`
-        : `Перемалывает ${share(crush(lv.purity))} того, что едет мимо: меньше уходит в кучу. Станциям ниже достаётся меньше — ставь последней.`;
+        ? `Пойманное выше ×${press(lv.speed).toFixed(1)} · ставь ниже тех, кого усиливает`
+        : `Хвостов в кучу −${share(crush(lv.purity))} · ставь последней`;
     card.append(head, what, ...(def.frac ? [binEl] : []), levels);
     if (free.length) card.append(chips('Заменить на:'));
     return card;
@@ -553,7 +552,7 @@ export class SortingPanel {
       cell.rate.textContent = `+${format(rates[f].mul(60))}/мин`;
     }
 
-    this.income.textContent = `Всего фракций за игру: ${format(so.total.floor())} → весь доход ×${format(fractionsIncome(so.total))}. Каждая новая поднимает доход, даже если её потратить.`;
+    this.income.textContent = `Фракций за игру ${format(so.total.floor())} → доход ×${format(fractionsIncome(so.total))}`;
     for (const [view, el] of this.views) el.hidden = view !== this.view;
     const marks: Record<View, boolean> = {
       line: so.line.slice(0, slotCount(so)).some((id) => !id),

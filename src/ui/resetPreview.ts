@@ -7,16 +7,13 @@ type Kind = 'recycle' | 'sorting' | 'city';
 /** Preview the real reset on a detached save; never mutate the live game. */
 export function resetPreview(state: GameState, kind: Kind): string[] {
   const ready = { recycle: canRecycle, sorting: canResort, city: canReform }[kind];
-  if (!ready(state)) return ['Получите: награда появится, когда сброс станет доступен.'];
+  if (!ready(state)) return [];
   const after = deserialize(serialize(state))!;
   const gain = { recycle, sorting: resort, city: reform }[kind](after);
+  // Two lines: what comes, and where the next run starts; what burns is said by the panel itself.
   return [
-    `Получите: +${format(gain)} ${kind === 'city' ? 'га' : kind === 'sorting' ? 'фракций · доход ×2' : 'вторсырья'}.`,
-    kind === 'city' ? 'Сбросятся: текущий заход, переработка, сортировка и настройки автоматики.' : kind === 'sorting' ? 'Сбросятся: текущий заход и переработка, кроме сохранённого разрядами.' : 'Сбросится текущий заход. Стартовые бонусы дерева учтены ниже.',
-    `После сброса: ${format(after.trash)} кг · ${Object.values(after.owned).reduce((a, b) => a + b, 0)} производителей · ${after.upgrades.length} улучшений.`,
-    `Переработка: ${format(after.recycle.points)} ВС · ${after.recycle.nodes.length} узлов дерева.`,
-    kind === 'city' ? 'Сохранятся: город, достижения, уникальные находки и журнал. Линию и рецепты нужно развивать заново.'
-      : 'Сохранятся: сортировка, город, достижения, находки и журнал.',
+    `Получите: +${format(gain)} ${kind === 'city' ? 'га' : kind === 'sorting' ? 'фракций · доход ×2' : 'вторсырья'}`,
+    `Старт: ${format(after.trash)} кг · ${Object.values(after.owned).reduce((a, b) => a + b, 0)} произв. · ${after.upgrades.length} улучш. · ${format(after.recycle.points)} ВС`,
   ];
 }
 

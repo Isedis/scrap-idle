@@ -61,7 +61,7 @@ export class RecyclePanel {
     this.root.append(
       this.camSlot,
       head,
-      el('p', 's-why', 'Сдаёшь весь мусор и производителей — получаешь вторсырьё. Оно навсегда усиливает доход и тратится на дерево ниже.'),
+      el('p', 's-why', 'Заход → вторсырьё: постоянный бонус к доходу и узлы дерева.'),
       this.now,
     );
 
@@ -101,8 +101,8 @@ export class RecyclePanel {
 
     this.root.append(this.buildRepeats());
 
-    // The next layers, shown as closed doors.
-    this.root.append(el('h2', 'panel-title', 'Дальше'));
+    // The next layers, shown as closed doors, while there are any.
+    if (LAYERS.some((l) => !l.playable)) this.root.append(el('h2', 'panel-title', 'Дальше'));
     for (const layer of LAYERS.filter((l) => !l.playable)) {
       const door = el('div', 'r-door');
       const first = layer === LAYERS.find((l) => !l.playable);
@@ -177,6 +177,8 @@ export class RecyclePanel {
     this.preview.render(state, 'recycle');
     for (const { fold, ids } of this.folds) fold.update(ids.filter((id) => state.recycle.nodes.includes(id)).length, ids.length);
     this.now.textContent = recycleAdvice(state);
+    // Ready to recycle, the box with the button says it already: no second line for it.
+    this.now.hidden = canRecycle(state) || !this.now.textContent;
     const layer = state.recycle;
     const lines: string[] = [];
     lines.push(`вторсырьё: ${format(layer.points)}`);

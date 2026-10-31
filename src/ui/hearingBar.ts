@@ -52,7 +52,7 @@ export class HearingBar {
       : h.phase === 'walk' ? 'Идёт к будке. У двери потребуется 10 секунд тишины.'
       : h.phase === 'caught' ? 'Переработка потеряна. Сортировка останется.'
       : h.noise > 1 ? 'Доход выше, но слух накапливается. Свет не поможет.'
-      : 'До 100% нагрузки слух не накапливается.';
+      : '';
     const pct = Math.round(h.noise * 100);
     // Never move the thumb under a finger that is dragging it.
     if (!this.dragging) this.slider.value = String(pct);
