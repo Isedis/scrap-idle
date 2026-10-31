@@ -1,3 +1,5 @@
+import type { Release } from '../update';
+import { nextGoal } from './guidance';
 import { format } from '../game/num';
 import { PRODUCERS, milestonesReached, nextMilestone, prevMilestone, producerById, type ProducerDef } from '../game/producers';
 import { UPGRADES, describeUpgrade, type UpgradeDef } from '../game/upgrades';
@@ -145,6 +147,8 @@ export class App {
   private recycleBadge!: HTMLElement;
   /** Recycling was announced as ready for this run. */
   private knownRecycleReady = false;
+  private goalEl!: HTMLButtonElement;
+  private threatEffect!: HTMLElement;
   private threatEl!: HTMLElement;
   private threatBar!: HTMLElement;
   private stageEl!: HTMLElement;
@@ -210,6 +214,7 @@ export class App {
   private toastQueue: string[] = [];
   private toastTimer = 0;
   private settingsBadge!: HTMLElement;
+  private updateCredit!: HTMLElement;
   private updateStatus!: HTMLElement;
   private updateButton!: HTMLButtonElement;
   /** Set by main: checks for a newer build and reloads into it. */
@@ -301,7 +306,15 @@ export class App {
     this.alertEl.type = 'button';
     this.alertEl.hidden = true;
     this.alertEl.addEventListener('click', () => this.goToDanger());
-    header.append(figures, this.incomeEl, this.alertEl, this.consoleEl);
+    this.goalEl = el('button', 'operator-goal');
+    this.goalEl.type = 'button';
+    this.goalEl.addEventListener('click', () => {
+      const goal = nextGoal(this.getState());
+      this.layerView = goal.layer;
+      this.show(goal.tab);
+      this.render();
+    });
+    header.append(figures, this.incomeEl, this.alertEl, this.consoleEl, this.goalEl);
 
     this.recyclePanel = new RecyclePanel(
       this.getState,
@@ -447,7 +460,8 @@ export class App {
     const text = el('div', 'threat-text');
     this.threatBar = el('div', 'threat-bar');
     this.stageEl = el('div', 'threat-stage');
-    text.append(this.threatBar, this.stageEl);
+    this.threatEffect = el('div', 'threat-effect');
+    text.append(this.threatBar, this.stageEl, this.threatEffect);
 
     this.lightButton = el('button', 'light', 'Прожектор');
     this.lightButton.type = 'button';
@@ -826,7 +840,7 @@ export class App {
       if (bought.length === 0) return;
       this.sound.click();
       for (const u of bought) this.toast(`Куплено: ${u.name}`);
-      this.workshop.bought();
+      this.workshop.bought(bought.map(u => u.id));
       this.pop(this.rateEl, 'pulse');
       this.render();
     });
@@ -845,7 +859,7 @@ export class App {
   private onTrack(def: TrackDef): void {
     const state = this.getState();
     this.sound.click();
-    this.workshop.bought();
+    this.workshop.bought([def.id]);
     this.pop(this.rateEl, 'pulse');
     if (def.id === 'compact' && state.compacted % COMPACT_MILESTONE === 0) {
       this.typeLine(`УПЛОТНЕНИЕ ×${state.compacted}. ТО, ЧТО ВНИЗУ, ПОДНЯЛОСЬ БЛИЖЕ`);
@@ -1030,7 +1044,7 @@ export class App {
       if (buyUpgrade(this.getState(), def.id)) {
         this.sound.click();
         this.toast(`Куплено: ${def.name}`);
-        this.workshop.bought();
+        this.workshop.bought([def.id]);
         this.caption(describeUpgrade(def));
         this.pop(this.rateEl, 'pulse');
         this.render();
@@ -1047,7 +1061,7 @@ export class App {
 
     panel.append(el('h2', 'panel-title', 'Обновление'));
     panel.append(el('p', 'note', `Версия ${__APP_VERSION__}, сборка ${__BUILD_ID__}`));
-    this.updateStatus = el('p', 'update-status', 'Игра сама проверяет обновления каждые 5 минут.');
+    this.updateStatus = el('p', 'update-status', 'Новая версия включится только по кнопке «Обновить». Проверка — каждые 5 минут.');
     this.updateButton = el('button', 'btn update-btn', 'Обновить');
     this.updateButton.type = 'button';
     this.updateButton.id = 'update';
@@ -1061,10 +1075,35 @@ export class App {
       }
       this.updateButton.disabled = false;
       this.updateButton.textContent = 'Обновить';
-      this.updateStatus.textContent = result === 'latest' ? 'У вас последняя версия.' : 'Нет связи с сайтом. Попробуйте позже.';
+      this.updateStatus.textContent = result === 'latest' ? 'У вас последняя версия.' : 'Не удалось подготовить обновление. Текущая версия сохранена. Попробуйте позже.';
       this.updateStatus.classList.remove('ready');
     });
-    panel.append(this.updateStatus, this.updateButton);
+    this.updateCredit = el('p', 'note release-credit', __RELEASE_AUTHOR__ === 'Codex' ? `От Codex · ${__RELEASE_SUMMARY__}` : '');
+    this.updateCredit.hidden = !this.updateCredit.textContent;
+    panel.append(this.updateStatus, this.updateCredit, this.updateButton);
+
+    panel.append(el('h2', 'panel-title', 'Вид интерфейса'));
+    const interfaceStatus = el('p', 'note');
+    const rollback = el('button', 'btn update-btn');
+    rollback.type = 'button';
+    rollback.id = 'rollback-ui';
+    let classic = false;
+    try { classic = localStorage.getItem('scrap-idle-classic-ui') === '1'; } catch { /* Storage may be unavailable. */ }
+    const showInterface = () => {
+      this.root.classList.toggle('classic-ui', classic);
+      rollback.textContent = classic ? 'Вернуть новый интерфейс' : 'Вернуть прежний интерфейс';
+      interfaceStatus.textContent = classic
+        ? 'Прежний вид: без строки цели и новых пояснений. Прогресс и обновления сохранены.'
+        : 'Новый вид: ближайшая цель, пояснения угроз и предпросмотр сброса. Можно вернуться к прежнему виду в любой момент.';
+    };
+    showInterface();
+    rollback.addEventListener('click', () => {
+      classic = !classic;
+      showInterface();
+      try { localStorage.setItem('scrap-idle-classic-ui', classic ? '1' : '0'); }
+      catch { interfaceStatus.textContent += ' Выбор действует до закрытия игры: хранилище недоступно.'; }
+    });
+    panel.append(interfaceStatus, rollback);
 
     panel.append(el('h2', 'panel-title', 'Звук'));
     panel.append(el('p', 'note', 'Музыка, которая темнеет с угрозой, свет, помехи и то, что шепчет. Звук включается с первым касанием в игре.'));
@@ -1227,8 +1266,9 @@ export class App {
   }
 
   /** Marks a newer build as published: a badge on Settings and a note above the button. */
-  setUpdateAvailable(): void {
-    if (!this.settingsBadge.hidden) return;
+  setUpdateAvailable(release: Release): void {
+    this.updateCredit.textContent = [release.author === 'Codex' ? 'От Codex' : '', release.summary].filter(Boolean).join(' · ');
+    this.updateCredit.hidden = !this.updateCredit.textContent;
     this.settingsBadge.hidden = false;
     this.updateStatus.textContent = 'Вышла новая версия. Нажмите «Обновить», прогресс сохранится.';
     this.updateStatus.classList.add('ready');
@@ -1251,8 +1291,7 @@ export class App {
     if (!this.automationPanel.root.hidden) this.automationPanel.frame(dt, state);
     if (!this.panels.get('upgrades')!.hidden) {
       this.workshop.update(dt, {
-        bought: state.upgrades.length,
-        total: UPGRADES.length,
+        upgrades: state.upgrades,
         compact: state.tracks.compact ?? 0,
         bulk: state.tracks.bulk ?? 0,
         dark: state.tracks.dark ?? 0,
@@ -1367,6 +1406,8 @@ export class App {
     const state = this.getState();
     this.announce(state);
 
+    this.goalEl.textContent = `ЦЕЛЬ · ${nextGoal(state).text} →`;
+    this.goalEl.hidden = state.hearing.phase !== 'idle' || state.threat.level >= 0.7;
     this.trashEl.textContent = format(state.trash);
     this.rateEl.textContent = `+${format(ratePerSecond(state))} кг/с`;
     const now = new Date();
@@ -1755,6 +1796,9 @@ export class App {
 
   private renderThreat(state: GameState): void {
     const level = state.threat.level;
+    this.threatEffect.textContent = level >= 0.7
+      ? 'На 100% — потеря смены. Удерживайте прожектор.'
+      : 'На 100% — потеря смены; вторсырьё и дерево останутся.';
     const active = threatActive(state.runTrash) || level > 0 || state.threat.losses > 0;
     if (active && this.threatEl.hidden) {
       this.threatEl.hidden = false;

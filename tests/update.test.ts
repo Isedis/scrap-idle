@@ -36,3 +36,19 @@ describe('latestBuild', () => {
     expect(await latestBuild(async () => { throw new Error('offline'); })).toBeNull();
   });
 });
+
+import { latestRelease } from '../src/update';
+
+describe('release metadata', () => {
+  it('credits only an explicitly attributed release', async () => {
+    expect(await latestRelease(reply({ build: 'abc1234', author: 'Codex', summary: 'Manual updates' })))
+      .toEqual({ build: 'abc1234', author: 'Codex', summary: 'Manual updates' });
+    expect(await latestRelease(reply({ build: 'abc1234' })))
+      .toEqual({ build: 'abc1234', author: null, summary: '' });
+  });
+  it('rejects invalid release identifiers and unavailable manifests', async () => {
+    expect(await latestRelease(reply({ build: '../other' }))).toBeNull();
+    expect(await latestRelease(reply(null))).toBeNull();
+    expect(await latestRelease(reply({}, false))).toBeNull();
+  });
+});
