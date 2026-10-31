@@ -309,7 +309,6 @@ export function advance(state: GameState, seconds: number, offline = false): voi
     // Tails off the sorting line feed the thing: it climbs faster.
     state.threat.level = climb(state.threat.level, state.runTrash, dt * threatSpeed(state.sorting) * treeThreatSpeed(state.recycle) * town.threatSpeed, offline);
     state.sorting.boost = town.fractions;
-    state.sorting.inspectBoost = 1 / town.inspect;
     const pushed = sortingTick(state.sorting, rate, dt, offline);
     // What falls back into the heap pushes it up, but never over the edge by itself.
     if (pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
@@ -793,7 +792,8 @@ function silence(state: GameState, rand = Math.random): void {
 }
 
 export const canReform = (state: GameState) => state.city.open && state.sorting.sorts >= REFORM_SORTS;
-export const reformGainOf = (state: GameState) => reformGain(state.sorting.sorts, state.sorting.total);
+export const reformGainOf = (state: GameState) =>
+  reformGain(state.sorting.sorts, state.sorting.total).mul(cityEffects(state.city).hectares).floor();
 
 /**
  * The reform: the town takes nearly everything. Trash, producers, upgrades, Recycling and

@@ -191,7 +191,7 @@ export class CityPanel {
       fx.hearingFill < 1 ? `слух копится ×${fx.hearingFill.toFixed(2)}` : '',
       fx.threatSpeed < 1 ? `угроза растёт ×${fx.threatSpeed.toFixed(2)}` : '',
       fx.offline > 1 ? `офлайн ×${fx.offline.toFixed(2)}` : '',
-      fx.inspect < 1 ? `осмотр ×${fx.inspect.toFixed(2)}` : '',
+      fx.hectares > 1 ? `гектары с реформы ×${fx.hectares.toFixed(2)}` : '',
       fx.annexDiscount < 1 ? `кварталы ×${fx.annexDiscount.toFixed(2)}` : '',
       fx.darkPeak ? `тьма +${fx.darkPeak.toFixed(1)}` : '',
       fx.keepFractions ? `фракций переживает реформу: ${Math.round(fx.keepFractions * 100)}%` : '',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CITY_OPEN_SORTS, DISTRICTS, REFORM_SORTS, annex, annexCost, canAnnex, cityEffects, districtById, newCity, peopleLeft, pitReady, plan, STREETS, TOWN_PEOPLE, visible } from '../src/game/city';
-import { advance, autoLine, autoTree, canReform, newGame, reform, resort, runScripts, scriptOwned, type GameState } from '../src/game/state';
+import { advance, autoLine, autoTree, canReform, newGame, reform, reformGainOf, resort, runScripts, scriptOwned, type GameState } from '../src/game/state';
 import { deserialize, serialize } from '../src/game/save';
 import { D } from '../src/game/num';
 
@@ -52,16 +52,25 @@ describe('annexing', () => {
     expect(cityEffects(c).income.div(fx.income).toNumber()).toBeCloseTo(100);
   });
 
-  it('the new kinds: hospitals slow the threat, depots pay offline, posts speed the table, the station cuts prices', () => {
+  it('the new kinds: hospitals slow the threat, depots pay offline, posts bring more hectares, the station cuts prices', () => {
     const c = newCity();
     const before = annexCost(c, 'prom1').toNumber();
     c.owned.push('hospital', 'autobase', 'post', 'station');
     const fx = cityEffects(c);
     expect(fx.threatSpeed).toBeCloseTo(0.85);
     expect(fx.offline).toBeCloseTo(1.2);
-    expect(fx.inspect).toBeCloseTo(0.8);
+    expect(fx.hectares).toBeCloseTo(1.25);
     expect(fx.annexDiscount).toBeCloseTo(0.9);
     expect(before).toBe(3);
+  });
+
+  it('a post office brings a quarter more hectares from the reform', () => {
+    const s = newGame();
+    s.sorting.sorts = 10;
+    s.sorting.total = D(1e6);
+    const plain = reformGainOf(s).toNumber();
+    s.city.owned.push('post');
+    expect(reformGainOf(s).toNumber()).toBe(Math.floor(plain * 1.25));
   });
 
   it('fog: only the landfill and what borders it is seen', () => {

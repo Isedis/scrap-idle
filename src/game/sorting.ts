@@ -303,8 +303,6 @@ export interface SortingState {
   news: Inspection[];
   /** The town's markets: every fraction comes this much more; set by the game each tick, not saved. */
   boost: Decimal;
-  /** Inspection speed-up from the town's post offices (not saved): >1 is faster. */
-  inspectBoost: number;
 }
 
 export type Inspection = { kind: 'unique'; id: string } | { kind: 'anomaly'; line: string } | { kind: 'fractions'; amount: Decimal; frac: Frac };
@@ -328,7 +326,6 @@ export function newSorting(): SortingState {
     cycleSeconds: 0,
     news: [],
     boost: D(1),
-    inspectBoost: 1,
   };
 }
 
@@ -356,7 +353,7 @@ export function uniqueMult(s: SortingState, kind: UniqueKind): number {
 
 export const queueSize = (s: SortingState) => QUEUE_BASE + (hasRecipe(s, 'i2') ? 2 : 0) + uniqueMult(s, 'queue');
 export const inspectSeconds = (s: SortingState) =>
-  INSPECT_SECONDS / ((hasRecipe(s, 'i1') ? 2 : 1) * (hasRecipe(s, 'i3') ? 2 : 1) * uniqueMult(s, 'inspect') * s.inspectBoost);
+  INSPECT_SECONDS / ((hasRecipe(s, 'i1') ? 2 : 1) * (hasRecipe(s, 'i3') ? 2 : 1) * uniqueMult(s, 'inspect'));
 
 /** Stream onto the belt per second: grows with the order of magnitude of the trash income. */
 export function flowPerSecond(s: SortingState, rate: Decimal): Decimal {

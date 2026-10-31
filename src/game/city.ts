@@ -133,7 +133,7 @@ export const TYPE_TEXT: Record<DistrictType, string> = {
   river: 'Каждый цикл начинается с запасом вторсырья',
   hospital: 'Угроза растёт медленнее, ×0.85',
   depot: 'Доход вне игры ×1.2',
-  post: 'Осмотр на столе сортировки быстрее, ×0.8 по времени',
+  post: 'Шлёт в уезд прошения о земле: реформа даёт гектаров ×1.25',
   station: 'Следующие кварталы дешевле, ×0.9',
   pit: 'Последняя покупка: когда весь город под свалкой. Под ней — следующий слой',
 };
@@ -306,8 +306,8 @@ export interface CityEffects {
   threatSpeed: number;
   /** Depots: income while away this much higher. */
   offline: number;
-  /** Post offices: an inspection takes this share of its time. */
-  inspect: number;
+  /** Post offices: the town writes to the uyezd for more land; the reform gives this many times the hectares. */
+  hectares: number;
   /** The station: districts cost this share. */
   annexDiscount: number;
   darkPeak: number;
@@ -343,7 +343,7 @@ function computeEffects(city: CityState): CityEffects {
     hearingFill: 0.7 ** churches,
     threatSpeed: 0.85 ** power(city, 'hospital'),
     offline: 1.2 ** power(city, 'depot'),
-    inspect: 0.8 ** power(city, 'post'),
+    hectares: 1.25 ** power(city, 'post'),
     annexDiscount: 0.9 ** power(city, 'station'),
     darkPeak: 0.2 * power(city, 'cemetery'),
     keepFractions: Math.min(0.1 * power(city, 'archive'), 0.5),
