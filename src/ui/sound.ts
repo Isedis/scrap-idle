@@ -57,21 +57,25 @@ export class Sound {
       // No storage: music on.
     }
     this.musicOn = music !== 'off';
-    // The first touch anywhere starts the sound; a phone allows nothing before it.
-    const start = () => {
-      this.start();
-      if (this.ctx) {
-        window.removeEventListener('pointerdown', start);
-        window.removeEventListener('keydown', start);
+    // iOS mutes web audio with the ring/silent switch unless the page says it plays media.
+    const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+    if (session) {
+      try {
+        session.type = 'playback';
+      } catch {
+        // An older Safari: the switch decides.
       }
-    };
-    window.addEventListener('pointerdown', start);
-    window.addEventListener('keydown', start);
+    }
+    // The first touch anywhere starts the sound; a phone allows nothing before it. Every
+    // later touch wakes it again if the phone stopped it (a call, the lock screen, another
+    // app): iOS will not resume a context without a touch, so these listeners stay.
+    const wake = () => this.start();
+    for (const type of ['pointerdown', 'touchend', 'keydown']) window.addEventListener(type, wake, { passive: true });
     // In the background the hum stops, which also spares the battery.
     document.addEventListener('visibilitychange', () => {
       if (!this.ctx) return;
       if (document.visibilityState === 'hidden') void this.ctx.suspend();
-      else void this.ctx.resume();
+      else void this.ctx.resume().catch(() => undefined);
     });
   }
 
@@ -91,7 +95,11 @@ export class Sound {
 
   private start(): void {
     if (this.ctx) {
-      void this.ctx.resume();
+      // 'suspended' after the background, 'interrupted' after a call or the lock screen on iOS.
+      if (this.ctx.state !== 'running') {
+        void this.ctx.resume().catch(() => undefined);
+        this.unlock(this.ctx);
+      }
       return;
     }
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -111,6 +119,15 @@ export class Sound {
     this.music.setOn(this.musicOn);
     this.music.start();
     this.setThreat(this.threat);
+    this.unlock(ctx);
+  }
+
+  /** A blank sound played inside the touch: older iOS opens the audio only for that. */
+  private unlock(ctx: AudioContext): void {
+    const src = ctx.createBufferSource();
+    src.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+    src.connect(ctx.destination);
+    src.start(0);
   }
 
   /** The music follows the threat; under pressure, something creaks now and then. Called every render. */
