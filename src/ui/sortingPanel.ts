@@ -114,6 +114,9 @@ interface RecipeRow {
 
 /** The Sorting view on the Layers tab, in four parts: the line, the table, recipes, the reset. */
 export class SortingPanel {
+  /** The belts and bins before a rebuild, so what rides on them carries over. */
+  private oldBelts: Belt[] = [];
+  private oldBins: Bin[] = [];
   /** Recipe branches that fold away once bought out. */
   private recipeFolds: { fold: Fold; ids: string[] }[] = [];
   readonly root: HTMLElement;
@@ -348,8 +351,10 @@ export class SortingPanel {
   }
 
   private belt(mix: Record<string, number>, cls = ''): Belt {
-    const cells = Array.from({ length: BELT_CELLS }, () => draw(mix));
-    const b: Belt = { el: el('div', `s-belt ${cls}`), cells, mix };
+    // A rebuilt line keeps what was riding on its belts, and shows it at once.
+    const old = this.oldBelts[this.belts.length];
+    const cells = old ? [...old.cells] : Array.from({ length: BELT_CELLS }, () => draw(mix));
+    const b: Belt = { el: el('div', `s-belt ${cls}`, `${cells.join(' ')} ▶`), cells, mix };
     this.belts.push(b);
     return b;
   }
@@ -360,6 +365,8 @@ export class SortingPanel {
     const n = slotCount(so);
     const line = so.line.slice(0, n);
     const result = runLine(line, so.levels);
+    this.oldBelts = this.belts;
+    this.oldBins = this.bins;
     this.belts = [];
     this.bins = [];
     this.slotUpdaters = [];
@@ -432,10 +439,12 @@ export class SortingPanel {
 
     // The bin shows what the station takes off the belt, live.
     const lv = levelsOf(so, id);
-    const binEl = el('div', 's-bin');
+    const oldBin = this.oldBins[this.bins.length];
+    const binCells = oldBin ? [...oldBin.cells] : [];
+    const binEl = el('div', 's-bin', binCells.length ? `⇐ ${binCells.join(' ')}` : '');
     const bin: Bin = {
       el: binEl,
-      cells: [],
+      cells: binCells,
       frac: def.frac,
       catchChance: def.frac ? Math.min(0.9, (slot?.caught ?? 0) * 2.2) : 0,
       spoilChance: Math.min(0.5, (slot?.spoiled ?? 0) * 1.2),
