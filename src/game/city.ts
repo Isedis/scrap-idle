@@ -192,7 +192,7 @@ export interface CityState {
 export const newCity = (): CityState => ({ open: false, points: D(0), total: D(0), reforms: 0, owned: ['dump'] });
 
 /** Resorts in one cycle that open the town: the reform needs as many. */
-export const REFORM_SORTS = 6;
+export const REFORM_SORTS = 9;
 
 /** What the next district costs: each one dearer than the last, the pit far dearer. */
 export function annexCost(city: CityState, id: string): Decimal {
