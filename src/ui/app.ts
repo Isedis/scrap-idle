@@ -309,7 +309,6 @@ export class App {
       (node) => {
         this.toast(`Дерево: ${node.name}`);
         this.sound.click();
-        this.scene.flash('amber');
         this.caption(node.text);
         this.pop(this.rateEl, 'pulse');
         this.render();
@@ -331,7 +330,6 @@ export class App {
         if (message) {
           this.sound.click();
           this.toast(message);
-          this.scene.flash('amber');
         }
         this.render();
       },
@@ -372,7 +370,6 @@ export class App {
       if (message) {
         this.sound.click();
         this.toast(message);
-        this.scene.flash('amber');
       }
       this.render();
     });
@@ -800,7 +797,6 @@ export class App {
         this.pop(button);
         if (before === 0) {
           // The first unit shows up on camera: make an entrance.
-          this.glitch(0.6);
           this.caption(`Новое на камере: ${def.name}`);
         }
         this.render();
@@ -830,7 +826,6 @@ export class App {
       if (bought.length === 0) return;
       this.sound.click();
       for (const u of bought) this.toast(`Куплено: ${u.name}`);
-      this.scene.flash('amber');
       this.workshop.bought();
       this.pop(this.rateEl, 'pulse');
       this.render();
@@ -850,12 +845,10 @@ export class App {
   private onTrack(def: TrackDef): void {
     const state = this.getState();
     this.sound.click();
-    this.scene.flash('amber');
     this.workshop.bought();
     this.pop(this.rateEl, 'pulse');
     if (def.id === 'compact' && state.compacted % COMPACT_MILESTONE === 0) {
       this.typeLine(`УПЛОТНЕНИЕ ×${state.compacted}. ТО, ЧТО ВНИЗУ, ПОДНЯЛОСЬ БЛИЖЕ`);
-      this.glitch(0.8);
       this.toast('Куча осела. То, что под ней, стало ближе');
     } else {
       this.caption(`${def.name}: ур. ${state.tracks[def.id]}`);
@@ -870,7 +863,6 @@ export class App {
     if (gain.lte(0)) return;
     writeSave(state);
     this.resetKnown();
-    this.glitch(0.4);
     this.toast(`Автопереработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
     this.recyclePanel.camera.slam();
     this.sound.press();
@@ -894,7 +886,6 @@ export class App {
         this.intro.show(SORTING_INTRO);
       }
       this.typeLine('ЛЕНТА ПОШЛА. ХВОСТЫ УХОДЯТ ОБРАТНО В КУЧУ. ОНО ИХ ЖДЁТ');
-      this.glitch(0.8);
     }
     this.drainFinds(state);
     // The first look at the running line comes with a walk-through.
@@ -915,7 +906,6 @@ export class App {
       if (city.reforms === 0 && city.owned.length === 1) {
         this.toast(`Новая вкладка: «Слои» → «Город». Реформа — после ${REFORM_SORTS} пересортировок`);
         this.typeLine('ГОРСОВЕТ ГЛУХОВО: СКОРО ОТДАДИМ КВАРТАЛЫ. ЗАБЕРИТЕ ЕГО ОТ НАС');
-        this.glitch(1);
       }
     }
     if (!this.cityPanel.root.hidden) this.cityPanel.render(state);
@@ -947,8 +937,6 @@ export class App {
     this.resetKnown();
     this.toastQueue = [];
     this.sound.lost();
-    this.glitch(2.5);
-    this.scene.flash('amber');
     this.typeLine(`РЕФОРМА №${state.city.reforms}. ГОРОД ЗАБРАЛ ВСЁ. СВАЛКА ПОМНИТ ВАС`);
     this.toast(`Реформа: +${format(gain)} га. Город отдаёт кварталы`);
     this.render();
@@ -991,9 +979,7 @@ export class App {
     writeSave(state);
     this.resetKnown();
     this.toastQueue = [];
-    this.glitch(auto ? 0.6 : 2);
     this.sound.press();
-    this.scene.flash('amber');
     if (!auto) this.typeLine(`ПЕРЕСОРТИРОВКА №${state.sorting.sorts}. ПЕРЕРАБОТКА СОЖЖЕНА. КУЧА ПОМНИТ`);
     this.toast(`Пересортировка №${state.sorting.sorts}: +${format(gain)} фракций, доход ×2`);
     for (const r of RANKS.filter((x) => x.at > before && x.at <= state.sorting.sorts)) this.toast(`Разряд ${r.at}: ${r.text}`);
@@ -1045,7 +1031,6 @@ export class App {
         this.sound.click();
         this.toast(`Куплено: ${def.name}`);
         this.workshop.bought();
-        this.scene.flash('amber');
         this.caption(describeUpgrade(def));
         this.pop(this.rateEl, 'pulse');
         this.render();
@@ -1323,8 +1308,6 @@ export class App {
     writeSave(state);
     this.resetKnown();
     this.toastQueue = [];
-    this.glitch(1.4);
-    this.scene.flash('amber');
     this.recyclePanel.camera.slam();
     this.sound.press();
     this.caption(`Переработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
@@ -1341,7 +1324,6 @@ export class App {
       this.announced.producers.push(id);
       saveAnnounced(this.announced);
       this.toast(`Новый производитель: ${producerById(id)?.name}`);
-      this.glitch(0.35);
     }
     this.knownRevealed = state.revealed.length;
 
@@ -1357,7 +1339,6 @@ export class App {
     if (!this.knownRecycleReady && canRecycle(state)) {
       this.knownRecycleReady = true;
       this.toast(state.recycle.resets === 0 ? 'Открыта переработка! Загляните во вкладку' : 'Переработка снова доступна');
-      this.glitch(0.5);
       this.caption('Доступна переработка');
     }
 
@@ -1372,7 +1353,6 @@ export class App {
           saveAnnounced(this.announced);
           this.toast(`${def.name}: ${prevMilestone(units)} шт, доход ×${base}`);
         }
-        this.scene.flash('green');
         this.scene.burst();
         this.caption(`${def.name} ×${base}`);
         this.pop(this.rateEl, 'pulse');

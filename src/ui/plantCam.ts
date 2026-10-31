@@ -98,7 +98,6 @@ export class PlantCam extends Camera<PlantView> {
   slam(): void {
     this.pressT = 0;
     this.bales = [];
-    this.flash();
   }
 
   /** Plays a recording on this camera; `replay` puts the archive mark on it. */

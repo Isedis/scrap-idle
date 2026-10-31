@@ -47,7 +47,6 @@ body::after {
   z-index: 50;
   pointer-events: none;
   background: repeating-linear-gradient(transparent 0 2px, rgb(0 0 0 / 0.1) 2px 3px);
-  animation: flicker 9s infinite;
 }
 
 [hidden] { display: none !important; }
@@ -995,11 +994,6 @@ button { font: inherit; color: inherit; }
 
 @keyframes blink { 50% { opacity: 0; } }
 
-@keyframes flicker {
-  0%, 94%, 100% { opacity: 1; }
-  95% { opacity: 0.6; }
-  97% { opacity: 0.9; }
-}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
