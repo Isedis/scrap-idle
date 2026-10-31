@@ -604,7 +604,7 @@ export class SortingPanel {
     this.foundNote.textContent =
       so.found.length < UNIQUES.length
         ? `Уникальных находок: ${so.found.length} из ${UNIQUES.length}. Все они — в Журнале.`
-        : `Все ${UNIQUES.length} находок собраны. Каждый ${ECHO_EVERY}-й осмотр — повтор одной из них: +10% к её силе. Повторов: ${repeats}.`;
+        : `Все ${UNIQUES.length} находки собраны. Каждый ${ECHO_EVERY}-й осмотр — повтор одной из них: её эффект в степени 1,1, потом 1,2… (×1,5 → ×1,56 → ×1,63). Повторов: ${repeats}.`;
   }
 
   private renderRecipes(state: GameState): void {
