@@ -57,6 +57,8 @@ export class JournalPanel {
   private achievements!: HTMLElement;
   /** Open case cards. */
   private openCases = new Set<string>();
+  /** Chapters folded to their title, kept on the device. */
+  private foldedChapters = loadFolded();
   private openFinds = new Set<string>();
   /** What each part held when last looked at, so the rest counts as new. */
   private seen: Record<Exclude<View, 'records'>, number> | null = null;
@@ -260,10 +262,27 @@ export class JournalPanel {
         const list = CASES.filter((c) => !!c.plant === ch.plant);
         const open = list.filter((c) => story.cases.includes(c.id)).length;
         const locked = ch.plant && !state.sorting.open;
-        const head = el('div', 'j-chapter-head');
-        head.append(el('span', 'j-chapter-title', locked ? `${ch.title.split(' · ')[0]} · ???` : ch.title), el('span', 'panel-meta', locked ? 'откроется с сортировкой' : `${open}/${list.length} · ${ch.cam}`));
+        // A tap on the chapter's head folds it to its title and how many cases are open.
+        const folded = this.foldedChapters.has(ch.title);
+        const head = el('button', 'j-chapter-head');
+        head.type = 'button';
+        head.disabled = locked;
+        head.setAttribute('aria-expanded', String(!folded));
+        const meta = locked ? 'откроется с сортировкой' : `${open}/${list.length} · ${ch.cam}`;
+        head.append(
+          el('span', 'j-chapter-title', locked ? `${ch.title.split(' · ')[0]} · ???` : ch.title),
+          el('span', 'panel-meta', locked ? meta : `${meta} ${folded ? '▸' : '▾'}`),
+        );
+        head.addEventListener('click', () => {
+          if (folded) this.foldedChapters.delete(ch.title);
+          else this.foldedChapters.add(ch.title);
+          saveFolded(this.foldedChapters);
+          this.shown = '';
+          this.render(this.lastState!);
+        });
+        box.classList.toggle('folded', folded);
         box.append(head);
-        if (!locked) box.append(...list.map((c) => this.caseRow(c, state)));
+        if (!locked && !folded) box.append(...list.map((c) => this.caseRow(c, state)));
         return box;
       }),
     );
@@ -401,5 +420,25 @@ export class JournalPanel {
   /** Recordings not yet watched, for the tab badge. */
   pending(state: GameState): number {
     return unwatched(state.story);
+  }
+}
+
+/** Folded chapters are a per-device convenience: local storage is enough. */
+const FOLDED_KEY = 'scrap-idle-folded-chapters';
+
+function loadFolded(): Set<string> {
+  try {
+    const list = JSON.parse(localStorage.getItem(FOLDED_KEY) ?? '[]');
+    return new Set(Array.isArray(list) ? list.filter((x) => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveFolded(folded: Set<string>): void {
+  try {
+    localStorage.setItem(FOLDED_KEY, JSON.stringify([...folded]));
+  } catch {
+    // Without storage the chapters simply open again next time.
   }
 }

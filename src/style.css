@@ -1520,7 +1520,25 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .j-rec.new .j-rec-play { border-color: var(--danger); color: var(--danger); }
 .j-chapters { display: flex; flex-direction: column; gap: 14px; }
 .j-chapter { border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px 6px; }
-.j-chapter-head { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.j-chapter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.j-chapter-head:disabled { cursor: default; }
+.j-chapter-head .panel-meta { flex-shrink: 0; white-space: nowrap; }
+.j-chapter.folded .j-chapter-head { border-bottom: 0; }
 .j-chapter-title { color: var(--glow); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; }
 .j-case:last-child { border-bottom: 0; }
 .j-case-toggle {
