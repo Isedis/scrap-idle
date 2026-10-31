@@ -1605,3 +1605,22 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .c-locked-bar { color: var(--amber); font-size: 12px; font-variant-numeric: tabular-nums; }
 .c-open { display: flex; flex-direction: column; gap: 12px; }
 .town-plan.closed { opacity: 0.45; filter: grayscale(0.6); pointer-events: none; }
+
+/* Upgrade branches fold to their title and how much is bought. */
+.r-fold {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.r-fold::before { content: none; }
+.r-fold-meta { color: var(--mid); font-weight: 400; letter-spacing: 0; }
+.r-branch.folded > :not(.r-fold) { display: none; }
+.r-branch.folded .r-fold { color: var(--dim); }

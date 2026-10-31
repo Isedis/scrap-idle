@@ -48,6 +48,7 @@ import {
 import { sortingAdvice } from '../game/advice';
 import { BeltCam } from './beltCam';
 import { canResort, ratePerSecond, scriptOwned, resortGain, resortShares, type GameState } from '../game/state';
+import { Fold } from './fold';
 import { el, progress, textBar } from './dom';
 
 type View = 'line' | 'table' | 'recipes' | 'reset';
@@ -112,6 +113,8 @@ interface RecipeRow {
 
 /** The Sorting view on the Layers tab, in four parts: the line, the table, recipes, the reset. */
 export class SortingPanel {
+  /** Recipe branches that fold away once bought out. */
+  private recipeFolds: { fold: Fold; ids: string[] }[] = [];
   readonly root: HTMLElement;
   /** Camera 02 over the belt, on top of every part of the tab. */
   readonly camera = new BeltCam();
@@ -257,7 +260,9 @@ export class SortingPanel {
     box.append(this.why('Рецепты — постоянные улучшения. Платятся фракциями и никогда не сгорают, даже при пересортировке.'));
     for (const branch of RECIPE_BRANCHES) {
       const list = el('div', 'r-branch');
-      list.append(el('div', 'r-branch-title', branch.name));
+      const fold = new Fold(list, branch.name, `recipes:${branch.id}`);
+      this.recipeFolds.push({ fold, ids: RECIPES.filter((r) => r.branch === branch.id).map((r) => r.id) });
+      list.append(fold.head);
       const defs = RECIPES.filter((r) => r.branch === branch.id);
       defs.forEach((def, i) => {
         const root = el('div', 'r-node');
@@ -502,6 +507,7 @@ export class SortingPanel {
   }
 
   render(state: GameState): void {
+    for (const { fold, ids } of this.recipeFolds) fold.update(ids.filter((id) => state.sorting.recipes.includes(id)).length, ids.length);
     const so = state.sorting;
     this.closed.hidden = so.open;
     this.body.hidden = !so.open;

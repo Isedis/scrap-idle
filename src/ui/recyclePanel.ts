@@ -6,6 +6,7 @@ import { CorridorCam, type CorridorView } from './corridorCam';
 import { nearness } from '../game/hearing';
 import { recycleMult, scriptOwned, buyNode, buyRepeat, canRecycle, currentGain, repeatsOpen, type GameState } from '../game/state';
 import { el, progress, textBar } from './dom';
+import { Fold } from './fold';
 
 interface NodeRow {
   def: NodeDef;
@@ -33,6 +34,8 @@ export class RecyclePanel {
   private actionNote!: HTMLElement;
   private button!: HTMLButtonElement;
   private nodeRows: NodeRow[] = [];
+  /** Tree branches that fold away once bought out. */
+  private folds: { fold: Fold; ids: string[] }[] = [];
   private armed = 0;
   private repeatsBox!: HTMLElement;
   private repeatsLocked!: HTMLElement;
@@ -82,7 +85,9 @@ export class RecyclePanel {
     this.root.append(el('h2', 'panel-title', 'Дерево переработки'));
     for (const [branch, label] of BRANCHES) {
       const group = el('div', 'r-branch');
-      group.append(el('div', 'r-branch-title', label));
+      const fold = new Fold(group, label, `tree:${branch}`);
+      this.folds.push({ fold, ids: NODES.filter((n) => n.branch === branch).map((n) => n.id) });
+      group.append(fold.head);
       const nodes = NODES.filter((n) => n.branch === branch);
       nodes.forEach((def, i) => {
         const row = this.buildNode(def, i === nodes.length - 1);
@@ -167,6 +172,7 @@ export class RecyclePanel {
   }
 
   render(state: GameState): void {
+    for (const { fold, ids } of this.folds) fold.update(ids.filter((id) => state.recycle.nodes.includes(id)).length, ids.length);
     this.now.textContent = recycleAdvice(state);
     const layer = state.recycle;
     const lines: string[] = [];
