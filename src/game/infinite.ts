@@ -42,10 +42,10 @@ export const TRACKS: readonly TrackDef[] = [
   {
     id: 'dark',
     name: 'Тёмный договор',
-    text: 'Бонус в темноте +0.1 за уровень',
+    text: 'Бонус в темноте ×1.2 за уровень',
     flavor: 'Куча отдаёт больше, если не смотреть. Условия договора мелким шрифтом',
     baseCost: D(1e12),
-    growth: 12,
+    growth: 8,
     unlockAt: D(1e11),
   },
 ];
@@ -62,7 +62,8 @@ export type TrackLevels = Partial<Record<TrackDef['id'], number>>;
 export const COMPACT_MULT = 1.25;
 /** Units every bought producer counts toward its milestones per Bulk level. */
 export const BULK_HEAD_START = 5;
-export const DARK_STEP = 0.1;
+/** Each Dark Pact level makes what the dark adds this many times bigger. */
+export const DARK_GROWTH = 1.2;
 /** Every this many Compaction levels ever bought, the terminal marks the thing rising. */
 export const COMPACT_MILESTONE = 10;
 /** Compaction levels ever bought count as this many extra powers of ten for the depth. */
@@ -70,4 +71,5 @@ export const COMPACT_DEPTH_DIGITS = 0.25;
 
 export const compactMult = (levels: TrackLevels) => Decimal.pow(COMPACT_MULT, levels.compact ?? 0);
 export const milestoneHeadStart = (levels: TrackLevels) => BULK_HEAD_START * (levels.bulk ?? 0);
-export const darkPeak = (levels: TrackLevels, base: number) => base + DARK_STEP * (levels.dark ?? 0);
+/** Peak of the dark bonus: 1 plus what the dark adds (`extra`), grown by the pact's levels. Adding a fixed step soon stopped mattering. */
+export const darkPeak = (levels: TrackLevels, extra: number) => 1 + extra * DARK_GROWTH ** (levels.dark ?? 0);

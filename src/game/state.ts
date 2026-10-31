@@ -679,7 +679,10 @@ export const automationOpen = (state: GameState) =>
  * Whether speed can still be bought and still does something: under the cap, and with no
  * school in town (a school makes the buyers instant, and a tick no longer matters).
  */
-export const speedUseful = (state: GameState) => automationOpen(state) && state.scripts.speed < SPEED_MAX && cityEffects(state.city).schools === 0;
+export const speedUseful = (state: GameState) => automationOpen(state) && state.scripts.speed < SPEED_MAX && !instantBuyers(state);
+
+/** The buyers do not wait for a tick: a school in town, or the dispatcher from the tree. */
+export const instantBuyers = (state: GameState) => cityEffects(state.city).schools > 0 || hasNode(state.recycle, 'a5');
 
 export function buySpeed(state: GameState): boolean {
   const cost = speedCost(state.scripts.speed);
@@ -707,7 +710,7 @@ export const lightFailChance = (state: GameState) =>
   failChance(depthOf(state), state.scripts.reliability) * (hasNode(state.recycle, 't4') ? 0.5 : 1);
 
 /** Peak of the dark bonus: the base, the dark pact's levels and the tree. */
-export const darkPeakOf = (state: GameState) => darkPeak(state.tracks, DARK_BONUS) + treeDarkPeak(state.recycle) + cityEffects(state.city).darkPeak;
+export const darkPeakOf = (state: GameState) => darkPeak(state.tracks, DARK_BONUS - 1 + treeDarkPeak(state.recycle) + cityEffects(state.city).darkPeak);
 
 /** What a script did, for the log. */
 export interface ScriptNote {
@@ -743,32 +746,38 @@ export function runScripts(state: GameState, dt: number, rng: () => number = Mat
 
   if (scriptOwned(state, 'recycle')) sc.peak = Math.max(sc.peak, recycleRate(state));
 
-  // With a school in town the buyers do not wait for their tick: everything affordable, at once.
-  const instant = cityEffects(state.city).schools > 0;
-  if (instant) {
+  // The town's caretaker and fitter come with the schools, so they work at once as well:
+  // tied to the tick, they waited two seconds per purchase after every reform.
+  if (instantBuyers(state)) {
     for (let i = 0; i < INSTANT_BUYS; i++) {
       const before = notes.length;
       buyOnce(state, notes);
+      townScripts(state, notes);
       if (notes.length === before) break;
     }
+    return notes;
   }
 
   const interval = scriptTick(state);
   sc.clock = Math.min(sc.clock + dt, interval * MAX_TICKS_PER_FRAME);
   while (sc.clock >= interval) {
     sc.clock -= interval;
-    if (!instant) buyOnce(state, notes);
-    // The town's caretaker and fitter, once the schools have set them up.
-    if (sc.treeOn && scriptOwned(state, 'tree')) {
-      const bought = autoTree(state);
-      if (bought) notes.push({ script: 'tree', text: bought });
-    }
-    if (sc.lineOn && scriptOwned(state, 'line')) {
-      const done = autoLine(state);
-      if (done) notes.push({ script: 'line', text: done });
-    }
+    buyOnce(state, notes);
   }
   return notes;
+}
+
+/** One purchase each by the caretaker and the fitter, once the schools have set them up. */
+function townScripts(state: GameState, notes: ScriptNote[]): void {
+  const sc = state.scripts;
+  if (sc.treeOn && scriptOwned(state, 'tree')) {
+    const bought = autoTree(state);
+    if (bought) notes.push({ script: 'tree', text: bought });
+  }
+  if (sc.lineOn && scriptOwned(state, 'line')) {
+    const done = autoLine(state);
+    if (done) notes.push({ script: 'line', text: done });
+  }
 }
 
 /** Most purchases the instant buyers make in one frame, so a huge backlog cannot stall it. */

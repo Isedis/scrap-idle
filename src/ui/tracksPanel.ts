@@ -1,6 +1,5 @@
 import { D, format } from '../game/num';
-import { BULK_HEAD_START, COMPACT_MULT, DARK_STEP, TRACKS, trackCost, type TrackDef } from '../game/infinite';
-import { DARK_BONUS } from '../game/threat';
+import { BULK_HEAD_START, COMPACT_MULT, DARK_GROWTH, TRACKS, trackCost, type TrackDef } from '../game/infinite';
 import { buyTrack, trackLevel, visibleTracks, type GameState } from '../game/state';
 import { el, progress } from './dom';
 
@@ -21,7 +20,7 @@ function current(def: TrackDef, level: number): string {
     case 'bulk':
       return `сейчас пороги на ${BULK_HEAD_START * level} шт. ближе`;
     case 'dark':
-      return `пик в темноте ×${(DARK_BONUS + DARK_STEP * level).toFixed(1)}`;
+      return `бонус в темноте ×${(DARK_GROWTH ** level).toFixed(2)}`;
   }
 }
 

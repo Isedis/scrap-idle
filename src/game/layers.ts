@@ -126,7 +126,7 @@ export const NODES: readonly NodeDef[] = [
   { id: 'a2', branch: 'automation', name: 'Шустрый закупщик', text: 'Автозакупщик срабатывает 4 раза в секунду', cost: D(20), requires: 'a1' },
   { id: 'a3', branch: 'automation', name: 'Автопереработчик', text: 'Сам перерабатывает, когда награда достигает порога', cost: D(80), requires: 'a2' },
   { id: 'a4', branch: 'automation', name: 'Бригадир', text: 'Скрипты покупок срабатывают 10 раз в секунду', cost: D(5000), requires: 'a3', extra: true },
-  { id: 'a5', branch: 'automation', name: 'Диспетчер', text: 'Скрипты buy.upgrades и buy.endless ставятся сами', cost: D(5e4), requires: 'a4', extra: true },
+  { id: 'a5', branch: 'automation', name: 'Диспетчер', text: 'Скрипты покупок не ждут такта: берут всё доступное сразу; buy.upgrades и buy.endless ставятся сами', cost: D(5e4), requires: 'a4', extra: true },
   { id: 'o1', branch: 'offline', name: 'Ночной сторож', text: 'Офлайн копится до 2 суток', cost: D(2) },
   { id: 'o2', branch: 'offline', name: 'Вахтовый метод', text: 'Офлайн копится до 7 суток', cost: D(8), requires: 'o1' },
   { id: 'o3', branch: 'offline', name: 'Сторожевой пёс', text: 'Вне игры доход ×0.75 вместо ×0.5', cost: D(500), requires: 'o2', extra: true },
@@ -199,11 +199,12 @@ export interface RepeatDef {
 /** Bought with Recycled material, any number of times, after the tree; never reset by recycling. */
 export const REPEATS: readonly RepeatDef[] = [
   { id: 'memory', name: 'Память кучи', text: 'Весь доход ×1.2 за уровень', baseCost: D(50), growth: 2.5 },
-  { id: 'recipe', name: 'Рецепт переработки', text: 'Вторсырья за переработку +10% за уровень', baseCost: D(100), growth: 3 },
+  { id: 'recipe', name: 'Рецепт переработки', text: 'Вторсырья за переработку ×1.1 за уровень', baseCost: D(100), growth: 3 },
 ];
 
 export const MEMORY_MULT = 1.2;
-export const RECIPE_STEP = 0.1;
+/** Each level multiplies the gain: a fixed +10% soon stopped mattering against a price that triples. */
+export const RECIPE_MULT = 1.1;
 
 export const repeatById = (id: string) => REPEATS.find((r) => r.id === id);
 
@@ -212,4 +213,4 @@ export function repeatCost(def: RepeatDef, level: number): Decimal {
 }
 
 /** Multiplier on Recycled material per recycle. */
-export const gainMult = (layer: LayerState) => 1 + RECIPE_STEP * (layer.repeats.recipe ?? 0);
+export const gainMult = (layer: LayerState) => RECIPE_MULT ** (layer.repeats.recipe ?? 0);

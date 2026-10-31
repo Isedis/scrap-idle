@@ -25,6 +25,7 @@ import {
   buyReliability,
   buySpeed,
   installScript,
+  instantBuyers,
   lightFailChance,
   resortGain,
   scriptOffered,
@@ -425,11 +426,11 @@ export class AutomationPanel {
     }
     this.speedMeta.textContent = `такт ${scriptTick(state).toFixed(2)} с`;
     const cost = speedCost(sc.speed);
-    const school = cityEffects(state.city).schools > 0;
-    if (school || sc.speed >= SPEED_MAX) {
-      this.speedPrice.textContent = school ? 'не нужен' : `ур. ${SPEED_MAX} · МАКС`;
-      this.speedText.textContent = school
-        ? 'Школа в городе: скрипты покупок срабатывают сразу, такт им больше не нужен.'
+    const instant = instantBuyers(state);
+    if (instant || sc.speed >= SPEED_MAX) {
+      this.speedPrice.textContent = instant ? 'не нужен' : `ур. ${SPEED_MAX} · МАКС`;
+      this.speedText.textContent = instant
+        ? `${cityEffects(state.city).schools > 0 ? 'Школа в городе' : 'Диспетчер'}: скрипты покупок берут всё сразу, такт им больше не нужен.`
         : 'Скрипты покупок срабатывают так часто, как только можно.';
       this.speedButton.disabled = true;
       this.speedButton.style.setProperty('--p', '1');

@@ -264,3 +264,38 @@ describe('save v7', () => {
     expect(back.scripts.endlessOff).toEqual(['dark']);
   });
 });
+
+describe('the audit fixes', () => {
+  it('the dispatcher makes the buyers instant and speed unneeded', async () => {
+    const { newGame, runScripts, speedUseful, instantBuyers } = await import('../src/game/state');
+    const s = newGame(0);
+    s.recycle.nodes = ['a1', 'a2', 'a3', 'a4', 'a5'];
+    s.recycle.points = D(1e9);
+    expect(instantBuyers(s)).toBe(true);
+    expect(speedUseful(s)).toBe(false);
+    s.trash = D(1e9);
+    s.revealed = ['collector', 'cart', 'truck'];
+    runScripts(s, 0.016, () => 0.99);
+    // One frame buys far more than one tick would.
+    expect((s.owned.collector ?? 0) + (s.owned.cart ?? 0) + (s.owned.truck ?? 0)).toBeGreaterThan(20);
+  });
+
+  it('with schools, the caretaker buys many things in one frame', async () => {
+    const { newGame, runScripts } = await import('../src/game/state');
+    const s = newGame(0);
+    s.city.owned.push('school1', 'school2');
+    s.recycle.points = D(1e6);
+    runScripts(s, 0.016, () => 0.99);
+    expect(s.recycle.nodes.length).toBeGreaterThan(5);
+  });
+
+  it('the dark pact and the recycle recipe multiply, so later levels still count', async () => {
+    const { darkPeak } = await import('../src/game/infinite');
+    const { gainMult, newLayer } = await import('../src/game/layers');
+    expect(darkPeak({ dark: 0 }, 0.5)).toBeCloseTo(1.5);
+    expect(darkPeak({ dark: 10 }, 0.5)).toBeCloseTo(1 + 0.5 * 1.2 ** 10);
+    const layer = newLayer();
+    layer.repeats.recipe = 10;
+    expect(gainMult(layer)).toBeCloseTo(1.1 ** 10);
+  });
+});
