@@ -721,26 +721,21 @@ export function runScripts(state: GameState, dt: number, rng: () => number = Mat
 
   if (scriptOwned(state, 'recycle')) sc.peak = Math.max(sc.peak, recycleRate(state));
 
+  // With a school in town the buyers do not wait for their tick: everything affordable, at once.
+  const instant = cityEffects(state.city).schools > 0;
+  if (instant) {
+    for (let i = 0; i < INSTANT_BUYS; i++) {
+      const before = notes.length;
+      buyOnce(state, notes);
+      if (notes.length === before) break;
+    }
+  }
+
   const interval = scriptTick(state);
   sc.clock = Math.min(sc.clock + dt, interval * MAX_TICKS_PER_FRAME);
   while (sc.clock >= interval) {
     sc.clock -= interval;
-    if (state.autobuy && scriptOwned(state, 'producers')) {
-      const id = autoBuy(state, sc.producerMode, sc.producerOff);
-      if (id) notes.push({ script: 'producers', text: producerById(id)!.name });
-    }
-    if (sc.upgradesOn && scriptOwned(state, 'upgrades')) {
-      const limit = state.trash.mul(sc.upgradesShare);
-      const u = availableUpgrades(state).find((x) => x.cost.lte(limit));
-      if (u && buyUpgrade(state, u.id)) notes.push({ script: 'upgrades', text: u.name });
-    }
-    if (sc.endlessOn && scriptOwned(state, 'endless')) {
-      const cheapest = visibleTracks(state)
-        .filter((t) => !sc.endlessOff.includes(t.id))
-        .map((t) => ({ t, cost: trackCost(t, trackLevel(state, t.id)) }))
-        .sort((a, b) => a.cost.cmp(b.cost))[0];
-      if (cheapest && buyTrack(state, cheapest.t.id)) notes.push({ script: 'endless', text: cheapest.t.name });
-    }
+    if (!instant) buyOnce(state, notes);
     // The town's caretaker and fitter, once the schools have set them up.
     if (sc.treeOn && scriptOwned(state, 'tree')) {
       const bought = autoTree(state);
@@ -752,6 +747,30 @@ export function runScripts(state: GameState, dt: number, rng: () => number = Mat
     }
   }
   return notes;
+}
+
+/** Most purchases the instant buyers make in one frame, so a huge backlog cannot stall it. */
+const INSTANT_BUYS = 200;
+
+/** One round of the buying scripts: a producer, an upgrade, an endless upgrade. */
+function buyOnce(state: GameState, notes: ScriptNote[]): void {
+  const sc = state.scripts;
+  if (state.autobuy && scriptOwned(state, 'producers')) {
+    const id = autoBuy(state, sc.producerMode, sc.producerOff);
+    if (id) notes.push({ script: 'producers', text: producerById(id)!.name });
+  }
+  if (sc.upgradesOn && scriptOwned(state, 'upgrades')) {
+    const limit = state.trash.mul(sc.upgradesShare);
+    const u = availableUpgrades(state).find((x) => x.cost.lte(limit));
+    if (u && buyUpgrade(state, u.id)) notes.push({ script: 'upgrades', text: u.name });
+  }
+  if (sc.endlessOn && scriptOwned(state, 'endless')) {
+    const cheapest = visibleTracks(state)
+      .filter((t) => !sc.endlessOff.includes(t.id))
+      .map((t) => ({ t, cost: trackCost(t, trackLevel(state, t.id)) }))
+      .sort((a, b) => a.cost.cmp(b.cost))[0];
+    if (cheapest && buyTrack(state, cheapest.t.id)) notes.push({ script: 'endless', text: cheapest.t.name });
+  }
 }
 
 // ---- The town ---------------------------------------------------------------------

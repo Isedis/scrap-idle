@@ -231,5 +231,19 @@ describe('reform', () => {
     expect(belled.hearing.phase).toBe('idle');
     expect(belled.hearing.meter).toBeCloseTo(0.7, 1);
   });
+
+  it('with a school the buyers buy everything affordable at once', () => {
+    const slow = newGame(0);
+    slow.trash = D(1e12);
+    const fast = newGame(0);
+    fast.trash = D(1e12);
+    fast.city.owned.push('school1');
+    slow.recycle.nodes = ['a1'];
+    slow.scripts.bought = ['upgrades'];
+    const a = runScripts(slow, 0.016).length;
+    const b = runScripts(fast, 0.016).length;
+    expect(a).toBeLessThanOrEqual(1);
+    expect(b).toBeGreaterThan(20);
+  });
 });
 
