@@ -27,7 +27,7 @@ import {
 
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
-const VERSION = 15;
+const VERSION = 16;
 
 /** Run length for a run whose start is not known; stays negative however long it is played. */
 const UNKNOWN_RUN_SECONDS = -1e12;
@@ -176,7 +176,7 @@ interface BottomSave {
 }
 
 interface SaveV13 extends Omit<SaveV12, 'v' | 'layers'> {
-  v: 13 | 14 | 15;
+  v: 13 | 14 | 15 | 16;
   layers: { recycle: LayerSave; sorting: SortingSave; city: CitySave; bottom: BottomSave };
 }
 
@@ -354,6 +354,8 @@ function loadScripts(data: Partial<ScriptsSave> | undefined): ScriptsState {
   // Since v11: the town's caretaker and fitter, on unless switched off.
   sc.treeOn = data.treeOn !== false;
   sc.lineOn = data.lineOn !== false;
+  // v16: older saves retain their manual layout until the player opts in.
+  sc.lineBuild = data.lineBuild === true;
   return sc;
 }
 
@@ -456,7 +458,7 @@ export function deserialize(text: string): GameState | null {
   } catch {
     return null;
   }
-  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].includes(data.v as number)) return null;
+  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].includes(data.v as number)) return null;
 
   const state = newGame(typeof data.lastTick === 'number' ? data.lastTick : Date.now());
   const trash = parseNum(data.trash ?? '0');
@@ -473,7 +475,7 @@ export function deserialize(text: string): GameState | null {
   if (!state.revealed.includes('collector')) state.revealed.unshift('collector');
 
   // A v1 save simply has none of these yet.
-  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15) {
+  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16) {
     const ids = (list: unknown) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string' && upgradeById(id)) : []);
     state.upgrades = [...new Set(ids(data.upgrades))];
     state.seenUpgrades = [...new Set([...ids(data.seenUpgrades), ...state.upgrades])];
@@ -483,7 +485,7 @@ export function deserialize(text: string): GameState | null {
   // Before v3 there was a single run: everything collected so far belongs to it, length unknown.
   state.runTrash = state.totalTrash;
   state.runSeconds = UNKNOWN_RUN_SECONDS;
-  if (data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15) {
+  if (data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16) {
     const run = parseNum(data.runTrash ?? '0');
     const recycle = loadLayer(data.layers?.recycle);
     if (!run || !recycle) return null;
@@ -494,14 +496,14 @@ export function deserialize(text: string): GameState | null {
   }
 
   // Older saves start with nothing stirring.
-  if (data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15) {
+  if (data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16) {
     const t = data.threat;
     const level = typeof t?.level === 'number' && Number.isFinite(t.level) ? t.level : 0;
     state.threat.level = Math.min(Math.max(level, 0), 1);
     state.threat.losses = typeof t?.losses === 'number' && t.losses >= 0 ? Math.floor(t.losses) : 0;
   }
-  if (data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15) state.story = loadStory(data.story);
-  if (data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15) {
+  if (data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16) state.story = loadStory(data.story);
+  if (data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16) {
     const t = data.threat;
     state.threat.lights = typeof t?.lights === 'number' && t.lights >= 0 ? Math.floor(t.lights) : 0;
     state.threat.bravest = typeof t?.bravest === 'number' && Number.isFinite(t.bravest) ? Math.min(Math.max(t.bravest, 0), 1) : 0;
@@ -513,27 +515,27 @@ export function deserialize(text: string): GameState | null {
     state.autoRecycle = {
       on: ar?.on === true,
       // Before v12 the factor was a multiple of everything earned and could never be reached.
-      factor: (data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15) && AUTO_FACTORS.includes(ar?.factor as (typeof AUTO_FACTORS)[number]) ? ar!.factor : AUTO_FACTOR_DEFAULT,
+      factor: (data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16) && AUTO_FACTORS.includes(ar?.factor as (typeof AUTO_FACTORS)[number]) ? ar!.factor : AUTO_FACTOR_DEFAULT,
     };
   }
   // Before v7 there was no Automation tab: every script starts uninstalled, with default settings.
-  if (data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15) state.scripts = loadScripts(data.scripts);
+  if (data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16) state.scripts = loadScripts(data.scripts);
   // Before v8 there was no Sorting: the line opens on its own once Recycling has earned enough.
-  if (data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15) {
+  if (data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16) {
     const sorting = loadSorting(data.layers?.sorting);
     if (!sorting) return null;
     state.sorting = sorting;
   }
   // Before v9 nothing listened: the plant starts at normal load.
-  if (data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15) state.hearing = loadHearing(data.hearing);
+  if (data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16) state.hearing = loadHearing(data.hearing);
   // Before v10 there was no town: it opens on its own after enough resorts in one cycle.
-  if (data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15) {
+  if (data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16) {
     const city = loadCity((data.layers as SaveV10['layers'] | undefined)?.city);
     if (!city) return null;
     state.city = city;
   }
   // Before v13 nobody had gone down: the bottom is closed.
-  if (data.v === 13 || data.v === 14 || data.v === 15) {
+  if (data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16) {
     const bottom = loadBottom((data.layers as SaveV13['layers'] | undefined)?.bottom);
     if (!bottom) return null;
     state.bottom = bottom;

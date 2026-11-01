@@ -33,6 +33,6 @@ describe('city archive', () => {
     const descended = deserialize(JSON.stringify(old))!;
     expect(descended.story.cityLetters).toBe(LETTERS.length);
     expect(descended.story.cityDocuments).toBe(true);
-    expect(JSON.parse(serialize(descended)).v).toBe(15);
+    expect(JSON.parse(serialize(descended)).v).toBe(16);
   });
 });

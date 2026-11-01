@@ -37,7 +37,7 @@ export const SCRIPTS: readonly ScriptDef[] = [
   { id: 'light', name: 'light', title: 'Автопрожектор', text: 'Включает свет сам. Иногда не включает.', cost: D(20), hint: 'после 10 включений прожектора' },
   { id: 'sort', name: 'sort', title: 'Автосортировщик', text: 'Пересортировывает сам. Сжигает переработку без спроса.', recipe: 'a1' },
   { id: 'tree', name: 'buy.tree', title: 'Завхоз', text: 'Покупает узлы дерева переработки, бесконечные узлы, разгон и надёжность — самое дешёвое первым.', town: 2 },
-  { id: 'line', name: 'buy.line', title: 'Наладчик', text: 'Ставит станции в пустые места линии, улучшает их, покупает рецепты и сплавы.', town: 3 },
+  { id: 'line', name: 'buy.line', title: 'Наладчик', text: 'Подбирает станции и порядок под следующий рецепт, строит и улучшает линию, покупает рецепты и сплавы.', town: 3 },
 ];
 
 export const scriptById = (id: string) => SCRIPTS.find((s) => s.id === id);
@@ -76,6 +76,8 @@ export interface ScriptsState {
   sortMinutes: number;
   treeOn: boolean;
   lineOn: boolean;
+  /** Let the fitter choose stations and their order; manual edits turn this off. */
+  lineBuild: boolean;
   // Not saved: they rebuild within seconds.
   clock: number;
   cooldown: number;
@@ -102,6 +104,7 @@ export function newScripts(): ScriptsState {
     sortOn: false,
     treeOn: true,
     lineOn: true,
+    lineBuild: true,
     sortMode: 'share',
     sortShare: 0.25,
     sortMinutes: 60,

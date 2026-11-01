@@ -354,6 +354,13 @@ export class AutomationPanel {
         box.append(shares, minutes, note);
         break;
       }
+      case 'line': {
+        box.append(this.choice('Сборка ленты', [[false, 'Ручная'], [true, 'Авто']] as [boolean, string][],
+          (s) => s.scripts.lineBuild,
+          (s, on) => { s.scripts.lineBuild = on; if (on) s.scripts.lineOn = true; }));
+        box.append(el('div', 'a-note', 'Авто подбирает станции и порядок под следующий рецепт. Ручная перестановка отключает автосборку.'));
+        break;
+      }
       case 'light': {
         const levels = LIGHT_LEVELS.map((v) => [v, pct(v)] as [number, string]);
         box.append(this.choice('Включать на угрозе', levels, (s) => s.scripts.lightAt, (s, v) => (s.scripts.lightAt = v)));

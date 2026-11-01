@@ -46,6 +46,7 @@ import {
   type LevelKind,
   type RecipeDef,
   type StationId, ECHO_EVERY } from '../game/sorting';
+import { lineRecipe } from '../game/linePlanner';
 import { sortingAdvice } from '../game/advice';
 import { BeltCam } from './beltCam';
 import { canResort, ratePerSecond, scriptOwned, resortGain, resortShares, type GameState } from '../game/state';
@@ -135,6 +136,9 @@ export class SortingPanel {
   private income!: HTMLElement;
   // Line.
   private lineList!: HTMLElement;
+  private lineBuildControls!: HTMLElement;
+  private lineBuildNote!: HTMLElement;
+  private lineBuildButtons = new Map<boolean, HTMLButtonElement>();
   private lineFor = '';
   private belts: Belt[] = [];
   private bins: Bin[] = [];
@@ -231,9 +235,30 @@ export class SortingPanel {
 
   private buildLine(): HTMLElement {
     const box = el('div', 's-view');
+    this.lineBuildControls = el('div', 's-line-build');
+    const modes = el('div', 'modes s-tabs');
+    modes.setAttribute('role', 'group');
+    modes.setAttribute('aria-label', 'Сборка ленты');
+    for (const [auto, label] of [[false, 'Ручная'], [true, 'Авто']] as const) {
+      const button = el('button', 'mode', label);
+      button.type = 'button';
+      button.id = auto ? 'line-build-auto' : 'line-build-manual';
+      button.addEventListener('click', () => {
+        const s = this.getState();
+        if (!scriptOwned(s, 'line')) return;
+        s.scripts.lineBuild = auto;
+        if (auto) s.scripts.lineOn = true;
+        this.onChange();
+      });
+      modes.append(button);
+      this.lineBuildButtons.set(auto, button);
+    }
+    this.lineBuildNote = el('div', 'a-note');
+    this.lineBuildControls.append(el('div', 'a-label', 'Сборка ленты'), modes, this.lineBuildNote);
     this.lineList = el('div', 's-line');
     this.tails = el('div', 's-tails');
     box.append(
+      this.lineBuildControls,
       this.lineList,
       this.tails,
     );
@@ -389,6 +414,13 @@ export class SortingPanel {
     window.setTimeout(() => (this.lineList.style.minHeight = ''), 500);
   }
 
+  /** A manual edit owns the layout until the player explicitly enables construction again. */
+  private manualLine(action: () => boolean): void {
+    if (!action()) return;
+    this.getState().scripts.lineBuild = false;
+    this.onChange();
+  }
+
   private stationCard(state: GameState, i: number, id: StationId | null, slot: { caught: number; spoiled: number } | undefined): HTMLElement {
     const so = state.sorting;
     const n = slotCount(so);
@@ -404,7 +436,7 @@ export class SortingPanel {
         const b = el('button', 'chip', d.frac ? `${d.name} · ${FRAC_LETTER[d.frac]}` : d.name);
         b.type = 'button';
         b.addEventListener('click', () => {
-          if (placeStation(this.getState().sorting, i, d.id)) this.onChange();
+          this.manualLine(() => placeStation(this.getState().sorting, i, d.id));
         });
         row.append(b);
       }
@@ -428,7 +460,7 @@ export class SortingPanel {
       b.disabled = disabled;
       b.setAttribute('aria-label', label);
       b.addEventListener('click', () => {
-        if (action()) this.onChange();
+        this.manualLine(action);
       });
       moves.append(b);
     };
@@ -572,6 +604,13 @@ export class SortingPanel {
 
   private renderLine(state: GameState): void {
     const so = state.sorting;
+    this.lineBuildControls.hidden = !scriptOwned(state, 'line');
+    for (const [auto, button] of this.lineBuildButtons) button.setAttribute('aria-pressed', String(state.scripts.lineBuild === auto));
+    const target = state.scripts.lineBuild ? lineRecipe(so) : undefined;
+    this.lineBuildNote.textContent = !state.scripts.lineOn ? 'Наладчик выключен. Автосборка приостановлена.'
+      : !state.scripts.lineBuild ? 'Ручная схема. Наладчик покупает улучшения, не меняя станции.'
+      : target ? `Наладчик подбирает станции и копит фракции на «${target.name}».`
+      : 'Наладчик подбирает порядок для общего выхода фракций.';
     const n = slotCount(so);
     const sig = `${n}|${so.line.slice(0, n).join()}|${so.recipes.join()}|${JSON.stringify(so.levels)}`;
     // The list is rebuilt under the finger that just bought a level: the page must not move.

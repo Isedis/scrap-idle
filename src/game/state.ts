@@ -1,4 +1,5 @@
 import { D, Decimal } from './num';
+import { affordableLineRecipes, assembleLine, lineRecipe } from './linePlanner';
 import { PRODUCERS, affordableCount, costOf, costOfMany, milestonesReached, producerById } from './producers';
 import { UPGRADES, upgradeById, type UpgradeDef } from './upgrades';
 import {
@@ -66,17 +67,12 @@ import {
   type ScriptsState,
 } from './scripts';
 import {
-  RECIPES,
-  STATIONS,
   buyAlloy,
   buyLevel,
   buyRecipe,
-  canBuyRecipe,
   levelCost,
   levelsOf,
-  placeStation,
   stationById,
-  stationOpen,
   type StationId,
 } from './sorting';
 import { REPEATS } from './layers';
@@ -992,26 +988,27 @@ export function autoTree(state: GameState): string | null {
 }
 
 /**
- * The fitter: buys the cheapest recipe, else puts an open station into an empty slot, else
- * the cheapest level of a station on the line, else an alloy. The order of the line stays
- * the player's. Returns what it did.
+ * The fitter: buys recipes, assembles the belt if enabled, then buys affordable levels.
+ * Automatic construction reserves the next recipe's ingredients. Manual mode preserves
+ * station choices, vacant slots and order. Returns what it did.
  */
 export function autoLine(state: GameState): string | null {
   const so = state.sorting;
   if (!so.open) return null;
-  const total = (r: (typeof RECIPES)[number]) => Object.values(r.cost).reduce((x: number, y) => x + (y ?? 0), 0);
-  const recipe = RECIPES.filter((r) => canBuyRecipe(so, r)).sort((a, b) => total(a) - total(b))[0];
+  const recipe = affordableLineRecipes(so)[0];
   if (recipe && buyRecipe(so, recipe.id)) return recipe.name;
+  if (state.scripts.lineBuild && assembleLine(so)) return 'лента: автосборка';
+  const reserve = state.scripts.lineBuild ? lineRecipe(so)?.cost : undefined;
   const slots = slotCount(so);
   const onLine = so.line.slice(0, slots);
-  const empty = onLine.findIndex((id) => id === null);
-  const spare = STATIONS.find((d) => stationOpen(so, d) && !onLine.includes(d.id));
-  if (empty >= 0 && spare && placeStation(so, empty, spare.id)) return spare.name;
   const levels = onLine
     .filter((id): id is StationId => id !== null)
     .flatMap((id) => (['speed', 'purity'] as const).map((kind) => ({ id, kind, cost: levelCost(levelsOf(so, id)[kind], kind) })))
     .sort((a, b) => a.cost.cmp(b.cost));
-  const level = levels.find((o) => buyLevel(so, o.id, o.kind));
+  const level = levels.find((o) => {
+    const pays = stationById(o.id)!.pays;
+    return so.fractions[pays].gte(o.cost.add(reserve?.[pays] ?? 0)) && buyLevel(so, o.id, o.kind);
+  });
   if (level) return `${stationById(level.id)!.name}: ${level.kind === 'speed' ? 'скорость' : 'чистота'}`;
   return buyAlloy(so) ? `сплав ${so.alloys}` : null;
 }

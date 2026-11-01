@@ -1111,6 +1111,7 @@ button { font: inherit; color: inherit; }
 .s-tails { color: var(--mid); font-size: 12px; }
 .s-tails.bad { color: var(--danger); }
 
+.s-line-build { display: grid; gap: 6px; }
 .s-slots { display: grid; gap: 8px; }
 .s-slot { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; }
 .s-slot.vacant { border-style: dashed; }
