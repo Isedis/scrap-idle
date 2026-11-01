@@ -1,3 +1,4 @@
+import { cityArchive } from '../game/city';
 import { CASES, CASE_BONUS, NOTES, PHRASES, PLANT_KINDS, eventById, unwatched, type EventDef, type Recording } from '../game/story';
 import type { GameState } from '../game/state';
 import { ACHIEVEMENTS, achievementMult } from '../game/achievements';
@@ -151,7 +152,7 @@ export class JournalPanel {
     const story = state.story;
     return {
       cases: story.cases.length,
-      clues: story.notes + story.voices.length + Math.min(state.hearing.survived, HEARD.length) + state.sorting.found.length,
+      clues: cityArchive(state.city, state.story).letters.length + cityArchive(state.city, state.story).pages.length + story.notes + story.voices.length + Math.min(state.hearing.survived, HEARD.length) + state.sorting.found.length,
       ach: state.achievements.length,
     };
   }
@@ -181,6 +182,9 @@ export class JournalPanel {
       state.achievements.length,
       state.sorting.found.length,
       state.sorting.open,
+      state.city.owned,
+      state.story.cityLetters,
+      state.story.cityDocuments,
       state.hearing.survived,
       this.allRecords,
       this.monitor.busy,
@@ -193,6 +197,17 @@ export class JournalPanel {
     else if (this.view === 'cases') this.renderCases(state);
     else if (this.view === 'clues') this.renderClues(state);
     else this.renderAch(state);
+  }
+
+  openCityArchive(state: GameState): void {
+    this.view = 'clues';
+    this.shown = '';
+    this.render(state);
+    const folder = this.root.querySelector<HTMLElement>('#city-letters');
+    if (folder) {
+      folder.style.scrollMarginTop = `${(document.querySelector('.top')?.getBoundingClientRect().height ?? 0) + 12}px`;
+      folder.scrollIntoView({ block: 'start' });
+    }
   }
 
   // ---- Recordings ----------------------------------------------------------------------
@@ -376,6 +391,28 @@ export class JournalPanel {
             : found.map((id) => this.findRow(id))),
         ),
       );
+    }
+    if (state.city.open || state.city.owned.length > 1 || state.story.cityLetters > 0) {
+      const archive = cityArchive(state.city, state.story);
+      const letters = archive.letters.map(letter => {
+        const item = el('details', 'j-city-letter');
+        item.append(el('summary', '', `Письмо ${String(letter.number).padStart(2, '0')} · Глухово`), el('p', 'j-note', letter.text));
+        return item;
+      });
+      const folder = part('Глухово · городской архив', `${letters.length} писем`, ...letters.slice(0, 3));
+      if (letters.length > 3) {
+        const older = el('details', 'j-city-letter');
+        older.append(el('summary', '', `Ранние письма (${letters.length - 3})`), ...letters.slice(3));
+        folder.append(older);
+      }
+      folder.id = 'city-letters';
+      if (!letters.length) folder.append(el('p', 'empty', 'Письма появятся после присоединения кварталов.'));
+      if (archive.pages.length) {
+        const pages = el('details', 'j-city-letter');
+        pages.append(el('summary', '', 'Документы городского архива'), ...archive.pages.map(text => el('p', 'j-note', text)));
+        folder.append(pages);
+      }
+      out.unshift(folder);
     }
     this.clues.replaceChildren(...out);
   }

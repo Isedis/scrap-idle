@@ -80,7 +80,7 @@ import {
 } from './sorting';
 import { REPEATS } from './layers';
 import { afterLoss, hearingTick, newHearing, noiseMult, type HearingState } from './hearing';
-import { CITY_OPEN_SORTS, REFORM_SORTS, cityEffects, schoolScripts, newCity, reformGain, type CityState } from './city';
+import { rememberCity, CITY_OPEN_SORTS, REFORM_SORTS, cityEffects, schoolScripts, newCity, reformGain, type CityState } from './city';
 import { START_HEAP, aboveIncome, autoOpen, bottomTick, fallPerMinute, newBottom, type BottomState } from './bottom';
 import {
   FIRST_EVENT_SECONDS,
@@ -961,6 +961,7 @@ export function descend(state: GameState): boolean {
   sorting.echoes = old.echoes;
   state.sorting = sorting;
   state.recycle = newLayer();
+  rememberCity(state.story, state.city);
   state.city = newCity();
   state.scripts = newScripts();
   state.autoRecycle = { on: false, factor: AUTO_FACTOR_DEFAULT };

@@ -416,3 +416,16 @@ export const ARCHIVE_PAGES: readonly string[] = [
   '1911. Мартынов пропал. В яме нашли его шапку. Сухую, хотя шёл дождь. И сложенную.',
   '1923. Решение горсовета: свозить в яму весь мусор посёлка, «чтобы ей было чем заняться».',
 ];
+
+/** The journal reads the same unlocks formerly displayed inside the city panel. */
+export function cityArchive(city: CityState, history?: { cityLetters: number; cityDocuments: boolean }) {
+  return {
+    letters: LETTERS.slice(0, Math.max(history?.cityLetters ?? 0, city.owned.length - 1)).map((text, index) => ({ number: index + 1, text })).reverse(),
+    pages: history?.cityDocuments || city.owned.includes('archive') ? ARCHIVE_PAGES : [],
+  };
+}
+
+export function rememberCity(history: { cityLetters: number; cityDocuments: boolean }, city: CityState): void {
+  history.cityLetters = Math.min(LETTERS.length, Math.max(history.cityLetters, city.owned.length - 1));
+  history.cityDocuments ||= city.owned.includes('archive');
+}

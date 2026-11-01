@@ -143,6 +143,8 @@ export interface Recording {
 }
 
 export interface StoryState {
+  cityLetters: number;
+  cityDocuments: boolean;
   /** Story events whose recording has been watched: their cases are open. */
   cases: string[];
   /** Ignatyev's notes found so far. */
@@ -160,7 +162,7 @@ export interface StoryState {
   seq: number;
 }
 
-export const newStory = (): StoryState => ({ cases: [], notes: 0, voices: [], records: [], traces: [], nextIn: 20, boost: 0, seq: 0 });
+export const newStory = (): StoryState => ({ cityLetters: 0, cityDocuments: false, cases: [], notes: 0, voices: [], records: [], traces: [], nextIn: 20, boost: 0, seq: 0 });
 
 /** Every open case adds this much to all production, for good. */
 export const CASE_BONUS = 0.03;

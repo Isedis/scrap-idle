@@ -1822,3 +1822,20 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 @media (prefers-reduced-motion: reduce) {
   .away-receipt, .away-scene * { animation: none !important; }
 }
+
+/* Glukhovo: the plan leads, one selected district supplies the next action. */
+.city > .panel-head { margin-block: 4px; }
+.city > .panel-head .panel-meta { color: var(--amber); font-size: 18px; font-weight: 700; }
+.c-plan-hint { margin: 0; color: var(--mid); font-size: 11px; }
+.c-people { font-size: 10px; color: var(--mid); margin: 4px 0; }
+.c-neighbours { color: var(--amber); font-size: 11px; line-height: 1.5; }
+.c-reform-details, .c-effect-details, .c-camera-details { border-top: 1px solid var(--line); }
+.c-reform-details > summary, .c-effect-details > summary, .c-camera-details > summary { min-height: 44px; padding: 12px 0; cursor: pointer; font-size: 12px; }
+.c-reform-summary.ready { color: var(--amber); }
+.c-effect-details .c-effects { padding-bottom: 10px; }
+.c-archive-link { min-height: 44px; font-size: 12px; color: var(--mid); }
+.j-city-letter { border-bottom: 1px solid var(--line); }
+.j-city-letter > summary { min-height: 44px; padding: 12px 0; cursor: pointer; font-size: 12px; color: var(--glow); }
+
+.c-card { scroll-margin-bottom: 92px; }
+.c-camera-details:not([open]) > .feed { display: none; }

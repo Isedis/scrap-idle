@@ -176,6 +176,16 @@ export class TownPlan {
     // The pit goes over the fog: everyone in town knows where it is.
     this.abyss(shapes[pitIndex], S([DISTRICTS[pitIndex].x, DISTRICTS[pitIndex].y]), city.owned.includes('pit'));
 
+    // Owned neighbours contributing to the selected district's cluster.
+    const selected = DISTRICTS.find(d => d.id === this.selected)!;
+    if (visible(city, selected.id) && selected.type !== 'school' && selected.type !== 'dump' && selected.type !== 'pit') {
+      for (const id of plan().neighbours.get(selected.id) ?? []) {
+        const index = DISTRICTS.findIndex(d => d.id === id);
+        if (!city.owned.includes(id) || DISTRICTS[index].type !== selected.type) continue;
+        this.path(shapes[index]);ctx.strokeStyle = GLOW;ctx.lineWidth = 1.8;
+        ctx.setLineDash([3, 3]);ctx.stroke();ctx.setLineDash([]);
+      }
+    }
     // Prices and the picked district, crisp over everything.
     DISTRICTS.forEach((d, i) => {
       const cell = shapes[i];

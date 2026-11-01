@@ -42,7 +42,7 @@ import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
 import { CityPanel } from './cityPanel';
 import { BottomPanel } from './bottomPanel';
-import { LETTERS, REFORM_SORTS } from '../game/city';
+import { rememberCity, LETTERS, REFORM_SORTS } from '../game/city';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
 import { Sound } from './sound';
@@ -359,6 +359,7 @@ export class App {
       (id) => this.onAnnex(id),
       () => this.doReform(),
       () => this.doDescend(),
+      () => { this.show('journal'); this.journalPanel.openCityArchive(this.getState()); },
     );
     this.bottomPanel = new BottomPanel(this.getState, (message, loud) => {
       if (message) this.sound.click();
@@ -937,6 +938,7 @@ export class App {
   private onAnnex(id: string): void {
     const state = this.getState();
     this.sound.press();
+    rememberCity(state.story, state.city);
     const letter = LETTERS[state.city.owned.length - 2];
     if (letter) this.typeLine('ГОРСОВЕТ: НОВОЕ ПИСЬМО');
     if (id === 'pit') {

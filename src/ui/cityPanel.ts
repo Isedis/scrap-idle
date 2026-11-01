@@ -1,8 +1,6 @@
 import { ResetPreview } from './resetPreview';
 import {
-  ARCHIVE_PAGES,
   DISTRICTS,
-  LETTERS,
   CITY_OPEN_SORTS,
   REFORM_SORTS,
   STREETS,
@@ -19,15 +17,13 @@ import {
   streetsOwned,
   visible,
   strength,
+  cityArchive,
 } from '../game/city';
 import { format } from '../game/num';
 import { canReform, reformGainOf, type GameState } from '../game/state';
 import { el, textBar } from './dom';
 import { TownCam } from './townCam';
 import { TownPlan } from './townPlan';
-
-/** Letters shown before "show all". */
-const LETTERS_SHOWN = 3;
 
 /**
  * The Town view on the Layers tab: camera 08 over Glukhovo, the plan where districts are
@@ -46,16 +42,16 @@ export class CityPanel {
   private cardButton!: HTMLButtonElement;
   private card!: HTMLElement;
   private effects!: HTMLElement;
-  private letters!: HTMLElement;
-  private moreLetters!: HTMLButtonElement;
-  private allLetters = false;
+  private archiveLink!: HTMLButtonElement;
+  private reformSummary!: HTMLElement;
+  private neighbours!: HTMLElement;
+  private cameraDetails!: HTMLDetailsElement;
   private reformText!: HTMLElement;
   private reformButton!: HTMLButtonElement;
   private armed = 0;
   private descent!: HTMLElement;
   private descentButton!: HTMLButtonElement;
   private descendArmed = 0;
-  private shown = '';
   private locked!: HTMLElement;
   private lockedText!: HTMLElement;
   private lockedBar!: HTMLElement;
@@ -66,9 +62,13 @@ export class CityPanel {
     private onAnnex: (id: string) => void,
     private onReform: () => void,
     private onDescend: () => void,
+    private onArchive: () => void,
   ) {
     this.root = el('section', 'panel city');
-    this.plan = new TownPlan(() => this.render(this.getState()));
+    this.plan = new TownPlan(() => {
+      this.render(this.getState());
+      this.card.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+    });
     this.build();
   }
 
@@ -86,22 +86,18 @@ export class CityPanel {
       const id = this.plan.selected;
       if (annex(this.getState().city, id)) this.onAnnex(id);
     });
-    this.card.append(this.cardTitle, this.cardText, this.cardButton);
+    this.neighbours = el('div', 'c-neighbours');
+    this.card.append(this.cardTitle, this.cardText, this.neighbours, this.cardButton);
     this.effects = el('div', 'c-effects');
 
-    const lettersHead = el('div', 'panel-head');
-    lettersHead.append(el('h2', 'panel-title', 'Письма в горсовет'));
-    this.letters = el('div', 'j-list');
-    this.moreLetters = el('button', 'btn j-more');
-    this.moreLetters.type = 'button';
-    this.moreLetters.addEventListener('click', () => {
-      this.allLetters = !this.allLetters;
-      this.shown = '';
-      this.render(this.getState());
-    });
+    this.archiveLink = el('button', 'btn c-archive-link');
+    this.archiveLink.type = 'button';
+    this.archiveLink.id = 'city-archive';
+    this.archiveLink.addEventListener('click', this.onArchive);
 
-    const reformHead = el('div', 'panel-head');
-    reformHead.append(el('h2', 'panel-title', 'Реформа'));
+    const reformDetails = el('details', 'c-reform-details');
+    this.reformSummary = el('summary', 'c-reform-summary');
+    reformDetails.append(this.reformSummary);
     const reform = el('div', 'c-reform');
     this.reformText = el('div', 'c-card-text');
     this.reformButton = el('button', 'btn c-reform-go', 'Провести реформу');
@@ -134,11 +130,15 @@ export class CityPanel {
       this.descentButton,
     );
     this.descent.hidden = true;
-    this.openPart.append(this.card, this.effects, this.descent, lettersHead, this.letters, this.moreLetters, reformHead, reform);
+    reformDetails.append(reform);
+    const effectDetails = el('details', 'c-effect-details');
+    effectDetails.append(el('summary', '', 'Все бонусы города'), this.effects);
+    this.cameraDetails = el('details', 'c-camera-details');
+    this.cameraDetails.append(el('summary', '', 'КАМ-08 · посмотреть город'), this.camera.root);
+    this.openPart.append(this.card, this.descent, reformDetails, effectDetails, this.archiveLink, this.cameraDetails);
     this.root.append(
-      this.camera.root,
       head,
-      el('p', 's-why', 'Кварталы у края свалки; дальше туман. Свои рядом — сильнее. Яма — последней.'),
+      el('p', 'c-plan-hint', 'Выберите квартал на границе свалки'),
       this.locked,
       this.people,
       this.plan.root,
@@ -194,15 +194,17 @@ export class CityPanel {
       this.lockedText.textContent = `Горсовет покажет город после ${CITY_OPEN_SORTS} пересортировок. Сейчас: ${n} из ${CITY_OPEN_SORTS}.`;
       this.lockedBar.textContent = textBar(n / CITY_OPEN_SORTS, 18);
     }
-    this.meta.textContent = `кварталов ${streetsOwned(city)}/${STREETS} · ${format(city.points)} га`;
-    this.people.textContent = `жителей: ${peopleLeft(city).toLocaleString('ru-RU')}`;
+    this.meta.textContent = `${format(city.points)} га`;
+    this.people.textContent = `Под свалкой ${streetsOwned(city)}/${STREETS} кварталов · жителей ${peopleLeft(city).toLocaleString('ru-RU')}`;
 
     // The picked district.
     const d = districtById(this.plan.selected)!;
     const owned = city.owned.includes(d.id);
-    const cluster = owned && d.type !== 'dump' && d.type !== 'pit' ? strength(city, d.id) : 1;
+    const cluster = d.type !== 'dump' && d.type !== 'pit' && d.type !== 'school' ? strength(city, d.id) : 1;
     const seen = visible(city, d.id) || d.type === 'pit';
     const cost = annexCost(city, d.id);
+    this.neighbours.hidden = !seen || cluster <= 1;
+    this.neighbours.textContent = `${owned ? 'Сила квартала' : 'Сила после присоединения'} ×${cluster.toFixed(2)} · соседи своего типа`;
     this.cardButton.hidden = owned;
     this.cardButton.disabled = !canAnnex(city, d.id);
     if (!seen) {
@@ -213,11 +215,11 @@ export class CityPanel {
       this.cardButton.textContent = 'В тумане';
     } else {
       this.cardTitle.textContent = `${d.name} · ${TYPE_NAMES[d.type]}`;
-      this.cardText.textContent = `${TYPE_TEXT[d.type]}${cluster > 1 ? ` · соседи своего типа: сила ×${cluster.toFixed(2)}` : ''}${d.people ? ` · жителей ${d.people}` : ''}`;
+      this.cardText.textContent = `${TYPE_TEXT[d.type]}${d.people ? ` · жителей ${d.people}` : ''}`;
       this.card.dataset.state = owned ? 'owned' : visible(city, d.id) ? 'next' : 'far';
       if (d.type === 'pit' && !pitReady(city)) this.cardButton.textContent = `Нужен весь город · ${streetsOwned(city)}/${STREETS}`;
       else this.cardButton.textContent = visible(city, d.id) ? `Присоединить · ${format(cost)} га` : 'Не граничит со свалкой';
-      if (owned) this.cardText.textContent += d.type === 'dump' ? '' : d.type === 'pit' ? ' · Под ямой — следующий слой; дорога туда ещё строится.' : ' · уже под свалкой';
+      if (owned) this.cardText.textContent += d.type === 'dump' ? '' : d.type === 'pit' ? ' · спуск на дно ямы открыт' : ' · уже под свалкой';
     }
 
     const fx = cityEffects(city);
@@ -243,28 +245,19 @@ export class CityPanel {
     this.reformText.textContent = ready
       ? `За этот цикл: +${format(gain)} га.`
       : `Нужно ${REFORM_SORTS} пересортировок, сейчас ${state.sorting.sorts}.`;
+    this.reformSummary.textContent = ready ? `Реформа: +${format(gain)} га · условия` : `До реформы: ${state.sorting.sorts}/${REFORM_SORTS} пересортировок`;
+    this.reformSummary.classList.toggle('ready', ready);
+    const archive = cityArchive(city, state.story);
+    this.archiveLink.textContent = `Письма Глухово → архив (${archive.letters.length})`;
     this.reformButton.disabled = !ready;
     this.descent.hidden = !city.owned.includes('pit');
 
-    // Letters and the archive change only when a district is taken.
-    const sig = JSON.stringify([city.owned.length, city.owned.includes('archive'), this.allLetters]);
-    if (sig === this.shown) return;
-    this.shown = sig;
-    const got = LETTERS.slice(0, Math.max(0, city.owned.length - 1)).reverse();
-    const pages = city.owned.includes('archive') ? ARCHIVE_PAGES.map((p) => el('div', 'j-note', p)) : [];
-    const shownLetters = this.allLetters ? got : got.slice(0, LETTERS_SHOWN);
-    this.letters.replaceChildren(
-      ...(got.length === 0 ? [el('p', 'empty', 'Пока город молчит.')] : shownLetters.map((l) => el('div', 'c-letter', l))),
-      ...pages,
-    );
-    this.moreLetters.hidden = got.length <= LETTERS_SHOWN;
-    this.moreLetters.textContent = this.allLetters ? 'Свернуть' : `Все письма (${got.length})`;
   }
 
   /** Every frame while the view is on screen: the camera and the plan. */
   frame(dt: number, state: GameState): void {
     const city = state.city;
-    this.camera.update(dt, { owned: city.owned, selected: this.plan.selected, people: peopleLeft(city) / TOWN_PEOPLE });
+    if (this.cameraDetails.open) this.camera.update(dt, { owned: city.owned, selected: this.plan.selected, people: peopleLeft(city) / TOWN_PEOPLE });
     this.plan.draw(dt, city);
   }
 
