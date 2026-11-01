@@ -25,7 +25,7 @@ export class AwayScreen {
     this.button.type = 'button';
     this.button.id = 'away-ok';
     this.button.addEventListener('click', () => { this.root.hidden = true; this.onClose(); });
-    box.append(el('div', 'away-eyebrow', 'УТИЛЬ-ОС / ОТЧЁТ СМЕНЫ'), this.title, this.rows, this.button);
+    box.append(this.title, this.rows, this.button);
     this.root.append(box);
   }
 
@@ -66,7 +66,7 @@ export class AwayScreen {
     if (goal && r.hearing === 'idle') now.append(el('p', 'away-goal', `Дальше: ${goal}`));
 
     const details = el('details', 'away-details');
-    details.append(el('summary', '', 'Расходы, остатки и записи'));
+    details.append(el('summary', '', 'Подробный отчёт'));
     const body = el('div', 'away-detail-body');
     body.append(row('Мусор на автопокупки', `${format(r.automation.spentTrash)} кг`),
       row('Вторсырьё на автопокупки', `${format(r.automation.spentRecycled)} ВС`),
@@ -76,8 +76,17 @@ export class AwayScreen {
     if (r.recordings) body.append(row('Записей камеры', String(r.recordings)));
     if (r.bales) body.append(row('Тюков со стола осмотра', String(r.bales)));
     if (r.finds.length) body.append(el('p', 'away-explain', r.finds.slice(0, 3).map(id => `«${uniqueById(id)?.name ?? id}»`).join(', ') + (r.finds.length > 3 ? ` и ещё ${r.finds.length - 3}.` : '.') + ' Подробности — в журнале.'));
-    details.append(body);
-    const lines: HTMLElement[] = [received, work, now, details];
+    details.append(received, work, now, body);
+    const summary = el('div', 'away-brief');
+    summary.append(el('p', 'away-brief-title', r.automation.purchases ? 'Автоматика развивала свалку.' : 'Свалка продолжала работать.'));
+    const resets: string[] = [];
+    if (r.automation.recycles) resets.push(`Переработок: ${r.automation.recycles}`);
+    if (r.automation.resorts) resets.push(`Пересортировок: ${r.automation.resorts}`);
+    if (resets.length) summary.append(el('p', 'away-brief-note', resets.join(' · ')));
+    if (r.finds.length) summary.append(el('p', 'away-brief-note', `На столе новые находки: ${r.finds.length}.`));
+    const lines: HTMLElement[] = [summary];
+    if (r.threat >= 0.7 || r.hearing !== 'idle') lines.push(el('p', 'away-condition bad', danger));
+    lines.push(details);
     if (capped !== null) lines.unshift(el('p', 'away-limit', `Учтено ${Math.round(capped / 3600)} ч — достигнут офлайн-лимит.`));
     this.rows.replaceChildren(...lines);
     this.rows.parentElement!.scrollTop = 0;

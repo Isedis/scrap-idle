@@ -1791,3 +1791,8 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .away-details summary:focus-visible { outline: 1px solid var(--glow); }
 .away-detail-body { display: grid; gap: 8px; padding-bottom: 8px; }
 .away-limit { color: var(--amber); }
+
+.away-brief { display: grid; gap: 8px; padding: 8px 0 10px; }
+.away-brief-title { margin: 0; font-size: 15px; line-height: 1.5; color: var(--glow); }
+.away-brief-note { margin: 0; font-size: 12px; line-height: 1.5; color: var(--mid); }
+.away-details[open] { display: grid; gap: 12px; }
