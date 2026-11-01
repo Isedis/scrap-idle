@@ -1,3 +1,4 @@
+import { awayVignette } from './awayVignette';
 import { format } from '../game/num';
 import { uniqueById } from '../game/sorting';
 import type { AwayReport } from '../game/away';
@@ -84,7 +85,7 @@ export class AwayScreen {
     if (r.automation.resorts) resets.push(`Пересортировок: ${r.automation.resorts}`);
     if (resets.length) summary.append(el('p', 'away-brief-note', resets.join(' · ')));
     if (r.finds.length) summary.append(el('p', 'away-brief-note', `На столе новые находки: ${r.finds.length}.`));
-    const lines: HTMLElement[] = [summary];
+    const lines: HTMLElement[] = [awayVignette(r), summary];
     if (r.threat >= 0.7 || r.hearing !== 'idle') lines.push(el('p', 'away-condition bad', danger));
     lines.push(details);
     if (capped !== null) lines.unshift(el('p', 'away-limit', `Учтено ${Math.round(capped / 3600)} ч — достигнут офлайн-лимит.`));
