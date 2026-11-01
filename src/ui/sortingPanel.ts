@@ -303,13 +303,13 @@ export class SortingPanel {
 
   private buildReset(): HTMLElement {
     const box = el('div', 's-view');
-    box.append(this.why('Пересортировка — большой сброс. Сжигаешь всю переработку и получаешь силу, которая остаётся навсегда.'));
+    box.append(this.why('Пересортировка начинает новый цикл переработки: даёт фракции и удваивает доход до реформы.'));
     const deal = el('div', 's-deal classic-reset');
     const lose = el('div', 's-deal-col lose');
     lose.append(el('div', 's-deal-title', 'Сгорит'), ...['вторсырьё', 'дерево переработки', 'бесконечные узлы', 'скрипты автоматики', 'текущий заход'].map((t) => el('div', '', `✕ ${t}`)));
     const get = el('div', 's-deal-col get');
     this.resortGainEl = el('div', '');
-    get.append(el('div', 's-deal-title', 'Получишь'), this.resortGainEl, el('div', '', '+ весь доход ×2 навсегда'), el('div', '', '+ новый разряд'));
+    get.append(el('div', 's-deal-title', 'Получишь'), this.resortGainEl, el('div', '', '+ весь доход ×2 до реформы'), el('div', '', '+ новый разряд'));
     deal.append(lose, get);
     this.resortNeed = el('div', 'r-bar');
     this.resortButton = el('button', 'btn r-go', 'Пересортировать');

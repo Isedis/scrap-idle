@@ -13,6 +13,18 @@ function automated() {
 }
 
 describe('offline automation', () => {
+  it('runs permanent support scripts after descent without schools', () => {
+    const s = newGame(0);
+    s.bottom.open = true;
+    s.bottom.scripts = ['tree', 'line'];
+    s.recycle.points = D(1);
+    s.sorting.open = true;
+    s.sorting.line = [null, null];
+    simulateOffline(s, 4);
+    expect(s.recycle.nodes).toContain('s1');
+    expect(s.sorting.line.some((station) => station !== null)).toBe(true);
+    expect(offlineActivity(s).purchases).toBeGreaterThan(0);
+  });
   it('buys with owned scripts and respects the off switch', () => {
     const s = automated();
     simulateOffline(s, 5);

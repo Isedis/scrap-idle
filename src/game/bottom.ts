@@ -415,7 +415,7 @@ export function melt(b: BottomState, from: Rarity, times = 1): number {
 /**
  * Scripts of the world above, bought one by one with what comes up from the bottom; after
  * the descent the tree, the town and its schools start over, and this is how the world
- * above comes to run itself again. The town's own two are still to come.
+ * above comes to run itself again, including the caretaker and fitter.
  */
 export const ABOVE_SCRIPTS: readonly { id: string; cost: number; costIn: Rarity }[] = [
   { id: 'producers', cost: 40, costIn: 'dust' },

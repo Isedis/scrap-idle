@@ -23,16 +23,34 @@ describe('what to do next: Recycling', () => {
     expect(recycleAdvice(s)).toContain('«Подъёмные»');
   });
 
-  it('says when recycling pays off and when to wait', () => {
+  it('explains a manual reset without prescribing an unbounded reward target', () => {
     const s = newGame(0);
     s.recycle.resets = 3;
     s.recycle.nodes = NODES.map((n) => n.id);
     s.recycle.total = D(1e6);
     s.runTrash = RECYCLE_AT;
-    expect(recycleAdvice(s)).toMatch(/Подожди/);
-    s.recycle.total = D(5);
-    expect(recycleAdvice(s)).toMatch(/Пора перерабатывать/);
+    expect(recycleAdvice(s)).toContain('дерево останутся');
+    expect(recycleAdvice(s)).not.toMatch(/Подожди|так выгоднее|за всю игру/);
   });
+  it('explains the selected automation mode and reports when it is due', () => {
+    const s = newGame(0);
+    s.recycle.nodes = NODES.map((n) => n.id);
+    s.recycle.total = D(1e6);
+    s.runTrash = RECYCLE_AT;
+    s.autoRecycle.on = true;
+    s.scripts.recycleMode = 'gain';
+    expect(recycleAdvice(s)).toContain('100 тыс');
+    s.scripts.recycleMode = 'time';
+    expect(recycleAdvice(s)).toContain('5 мин');
+    s.scripts.recycleMode = 'peak';
+    expect(recycleAdvice(s)).toContain('снижения отдачи');
+    s.scripts.recycleMode = 'time';
+    s.runSeconds = 300;
+    expect(recycleAdvice(s)).toContain('готов сдать');
+    s.autoRecycle.on = false;
+    expect(recycleAdvice(s)).toContain('Начнётся новый заход');
+  });
+
 });
 
 describe('what to do next: Sorting', () => {

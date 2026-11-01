@@ -6,6 +6,9 @@ import {
   buyReliability,
   buySpeed,
   installScript,
+  instantBuyers,
+  descend,
+  reform,
   lightFailChance,
   newGame,
   runScripts,
@@ -302,5 +305,59 @@ describe('the audit fixes', () => {
     const layer = newLayer();
     layer.repeats.recipe = 10;
     expect(gainMult(layer)).toBeCloseTo(1.05 ** 10);
+  });
+});
+
+describe('permanent scripts from the bottom', () => {
+  it('opens automation for every permanently installed script', () => {
+    for (const id of ['producers', 'upgrades', 'endless', 'light', 'recycle', 'sort', 'tree', 'line']) {
+      const s = newGame(0);
+      s.bottom.open = true;
+      s.bottom.scripts = [id];
+      expect(automationOpen(s), id).toBe(true);
+    }
+  });
+
+  it('runs the caretaker and fitter on the normal tick without schools or a dispatcher', () => {
+    const s = newGame(0);
+    s.bottom.open = true;
+    s.bottom.scripts = ['tree', 'line'];
+    s.recycle.points = D(1);
+    s.sorting.open = true;
+    s.sorting.line = [null, null];
+    expect(instantBuyers(s)).toBe(false);
+    expect(runScripts(s, BASE_TICK / 2)).toEqual([]);
+    const notes = runScripts(s, BASE_TICK / 2);
+    expect(notes.some((n) => n.script === 'tree')).toBe(true);
+    expect(notes.some((n) => n.script === 'line')).toBe(true);
+    expect(s.recycle.nodes).toContain('s1');
+    expect(s.sorting.line.some((station) => station !== null)).toBe(true);
+  });
+
+  it('respects both support switches without spending resources', () => {
+    const s = newGame(0);
+    s.bottom.scripts = ['tree', 'line'];
+    s.recycle.points = D(1000);
+    s.sorting.open = true;
+    s.scripts.treeOn = s.scripts.lineOn = false;
+    const before = serialize(s);
+    expect(runScripts(s, BASE_TICK)).toEqual([]);
+    expect(serialize(s)).toBe(before);
+  });
+
+  it('keeps the scripts available through a reform and another descent', () => {
+    const s = newGame(0);
+    s.bottom.open = true;
+    s.bottom.scripts = ['tree', 'line'];
+    s.city.open = true;
+    s.sorting.sorts = 7;
+    expect(reform(s).gt(0)).toBe(true);
+    expect(automationOpen(s)).toBe(true);
+    expect(scriptOwned(s, 'line')).toBe(true);
+    s.city.owned.push('pit');
+    expect(descend(s)).toBe(true);
+    expect(scriptOwned(s, 'tree')).toBe(true);
+    s.recycle.points = D(1);
+    expect(runScripts(s, BASE_TICK).some((n) => n.script === 'tree')).toBe(true);
   });
 });

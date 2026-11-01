@@ -49,6 +49,7 @@ import {
   type SortingState,
 } from './sorting';
 import {
+  SCRIPTS,
   BASE_TICK,
   FAST_TICK,
   FOREMAN_TICK,
@@ -658,7 +659,7 @@ const recycleRate = (state: GameState) => recycleGainRaw(state.runTrash, recycle
 
 // ---- Automation tab -------------------------------------------------------------
 
-/** Whether a script is installed: through its tree node or bought for Recycled material. */
+/** Whether a script is installed, regardless of which layer granted it. */
 export function scriptOwned(state: GameState, id: ScriptId): boolean {
   const def = scriptById(id)!;
   // The town's schools set scripts up on their own after a reform.
@@ -698,7 +699,7 @@ export function installScript(state: GameState, id: ScriptId): boolean {
 
 /** Whether the Automation tab has anything on it yet. */
 export const automationOpen = (state: GameState) =>
-  hasNode(state.recycle, 'a1') || state.scripts.bought.length > 0 || cityEffects(state.city).schools > 0;
+  SCRIPTS.some((def) => scriptOwned(state, def.id));
 
 /**
  * Whether speed can still be bought and still does something: under the cap, and with no
@@ -777,7 +778,7 @@ export function runScripts(state: GameState, dt: number, rng: () => number = Mat
     sweep(state, notes);
     for (let i = 0; i < INSTANT_BUYS; i++) {
       const before = notes.length;
-      townScripts(state, notes);
+      supportScripts(state, notes);
       if (notes.length === before) break;
     }
     return notes;
@@ -792,6 +793,7 @@ export function runScripts(state: GameState, dt: number, rng: () => number = Mat
     for (let i = 0; i < TICK_BUYS; i++) {
       const before = notes.length;
       buyOnce(state, notes);
+      supportScripts(state, notes);
       if (notes.length === before) break;
     }
   }
@@ -801,8 +803,8 @@ export function runScripts(state: GameState, dt: number, rng: () => number = Mat
 /** Most purchases in one tick of the buying scripts. */
 const TICK_BUYS = 25;
 
-/** One purchase each by the caretaker and the fitter, once the schools have set them up. */
-function townScripts(state: GameState, notes: ScriptNote[]): void {
+/** One purchase each by the caretaker and fitter, from schools or permanent bottom scripts. */
+function supportScripts(state: GameState, notes: ScriptNote[]): void {
   const sc = state.scripts;
   if (sc.treeOn && scriptOwned(state, 'tree')) {
     const bought = autoTree(state);

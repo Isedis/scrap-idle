@@ -1099,7 +1099,7 @@ button { font: inherit; color: inherit; }
 /* ---- Sorting ---- */
 .s-switch { margin-bottom: 4px; }
 .s-switch .mode { flex: 1; min-height: 44px; }
-.s-body { display: grid; gap: 6px; }
+.s-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 
 .s-fracs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 @media (max-width: 420px) { .s-fracs { grid-template-columns: repeat(2, 1fr); } }
@@ -1159,7 +1159,7 @@ button { font: inherit; color: inherit; }
 .s-help { min-width: 44px; min-height: 44px; border: 1px solid var(--line); border-radius: 4px; font-size: 16px; }
 .s-tabs .mode { flex: 1; min-height: 44px; position: relative; }
 .s-tabs .mode.marked::after { content: '●'; position: absolute; top: 2px; right: 6px; color: var(--amber); font-size: 9px; }
-.s-view { display: grid; gap: 8px; }
+.s-view { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 
 /* The belt: letters ride between the station cards. */
 .s-line { display: grid; gap: 0; }
@@ -1674,6 +1674,11 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .reset-preview { margin: 12px 0; padding: 12px; border-left: 2px solid #c5a76a; background: #0a1810; color: #a4b5a5; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
 .reset-preview > div + div { margin-top: 6px; }
 .reset-gain { color: #d4c18b; }
+.reset-details { margin-top: 8px; }
+.reset-details summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--mid); }
+.reset-details summary::before { content: "▸"; margin-right: 6px; }
+.reset-details[open] summary::before { content: "▾"; }
+.reset-details > div > div { margin-top: 6px; white-space: normal; overflow-wrap: anywhere; }
 
 /* The previous interface is a per-device preference, independent of save data. */
 .classic-reset { display: none; }

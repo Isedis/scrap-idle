@@ -410,9 +410,9 @@ export class AutomationPanel {
 
   render(state: GameState): void {
     const sc = state.scripts;
-    // The sorting view appears with the line; until then there is nothing in it.
+    // Permanent scripts keep their controls available before the line reopens.
     const sortTab = this.viewButtons.get('sort')!;
-    sortTab.hidden = !state.sorting.open;
+    sortTab.hidden = !state.sorting.open && !scriptOwned(state, 'sort') && !scriptOwned(state, 'line');
     if (sortTab.hidden && this.view === 'sort') {
       this.view = 'dump';
       this.showView();
@@ -447,9 +447,9 @@ export class AutomationPanel {
     }
 
     for (const card of this.cards) {
-      // The sorter stays out of sight until the line opens.
-      card.root.hidden = (card.def.recipe !== undefined && !state.sorting.open) || (card.def.town !== undefined && !state.city.open);
+      // Hide locked offers until their layer opens; installed scripts stay visible.
       const owned = scriptOwned(state, card.def.id);
+      card.root.hidden = !owned && ((card.def.recipe !== undefined && !state.sorting.open) || (card.def.town !== undefined && !state.city.open));
       card.root.classList.toggle('off', !owned);
       card.toggle.hidden = !owned;
       card.settings.hidden = !owned;

@@ -15,7 +15,7 @@ import {
   tailsOf,
   type Price,
 } from './sorting';
-import { canRecycle, canResort, currentGain, resortGain, type GameState } from './state';
+import { autoRecycleAt, autoRecycleDue, canRecycle, canResort, currentGain, resortGain, scriptOwned, type GameState } from './state';
 
 /**
  * One line per layer that says what to do next, in plain words. The layers have many
@@ -39,8 +39,15 @@ export function recycleAdvice(state: GameState): string {
   if (node) return `Купи в дереве «${node.name}»: ${node.text.toLowerCase()}.`;
   if (canRecycle(state)) {
     const gain = currentGain(state);
-    if (gain.gte(layer.total.max(10))) return `Пора перерабатывать: +${format(gain)} вторсырья, больше, чем у тебя было за всю игру.`;
-    return `Переработка даст +${format(gain)} вторсырья. Подожди, пока награда сравняется с тем, что уже есть (${format(layer.total)}), — так выгоднее.`;
+    if (state.autoRecycle.on && scriptOwned(state, 'recycle')) {
+      if (autoRecycleDue(state)) return 'Автопереработчик готов сдать этот заход.';
+      switch (state.scripts.recycleMode) {
+        case 'gain': return `Автоматика ждёт +${format(autoRecycleAt(state))} ВС или снижения отдачи за секунду.`;
+        case 'time': return `Автоматика сдаст заход, когда он продлится ${state.scripts.recycleMinutes} мин.`;
+        case 'peak': return 'Автоматика ждёт снижения отдачи вторсырья за секунду захода.';
+      }
+    }
+    return `Переработка даст +${format(gain)} вторсырья. Начнётся новый заход; вторсырьё и дерево останутся.`;
   }
   const next = NODES.filter((n) => !hasNode(layer, n.id) && isNodeOpen(layer, n)).sort((a, b) => a.cost.cmp(b.cost))[0];
   if (next) return `Копи вторсырьё на «${next.name}»: нужно ${format(next.cost)}, есть ${format(layer.points)}.`;
@@ -54,7 +61,7 @@ export function sortingAdvice(state: GameState): string {
   if (empty >= 0) return `На ленте пустое место №${empty + 1} — поставь туда станцию.`;
   const recipe = RECIPES.find((r) => canBuyRecipe(so, r));
   if (recipe) return `Хватает на рецепт «${recipe.name}»: ${recipe.text.toLowerCase()}.`;
-  if (canResort(state)) return `Можно пересортировать: +${format(resortGain(state))} фракций и весь доход ×2 навсегда.`;
+  if (canResort(state)) return `Можно пересортировать: +${format(resortGain(state))} фракций и доход ×2 до реформы.`;
   if (tailsOf(so) > 0.5) return `Больше половины мусора уходит обратно в кучу — прокачай станциям «Быстрее».`;
   const next = RECIPES.filter((r) => !hasRecipe(so, r.id) && (!r.requires || hasRecipe(so, r.requires)))
     .map((r) => ({ r, gap: missing(state, r.cost) }))

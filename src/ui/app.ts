@@ -635,7 +635,7 @@ export class App {
   }
 
   showAway(report: AwayReport, capped: number | null, then: () => void): void {
-    this.awayScreen.show(report, capped, then, this.getState().bottom.open ? 'Дно ямы: осмотрите контейнеры и улучшения Игнатьева.' : nextGoal(this.getState()).text);
+    this.awayScreen.show(report, capped, then, nextGoal(this.getState()).text);
   }
 
   /** The terminal types a line on its own, letter by letter. */
@@ -1466,8 +1466,9 @@ export class App {
     const state = this.getState();
     this.announce(state);
 
-    this.goalEl.textContent = `${this.root.classList.contains('classic-ui') ? 'ЦЕЛЬ ·' : '>'} ${nextGoal(state).text} →`;
-    this.goalEl.classList.toggle('ready', nextGoal(state).text.includes('доступна'));
+    const goal = nextGoal(state);
+    this.goalEl.textContent = `${this.root.classList.contains('classic-ui') ? 'ЦЕЛЬ ·' : '>'} ${goal.text} →`;
+    this.goalEl.classList.toggle('ready', !!goal.ready);
     this.goalEl.hidden = state.hearing.phase !== 'idle' || state.threat.level >= 0.7;
     this.trashEl.textContent = format(state.trash);
     this.rateEl.textContent = `+${format(ratePerSecond(state))} кг/с`;
