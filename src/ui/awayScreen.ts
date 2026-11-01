@@ -52,7 +52,10 @@ export class AwayScreen {
       if (note) line.append(el('span', 'away-note', note));
       return line;
     };
-    const lines: HTMLElement[] = [row('собрано', `+${format(r.trash)} кг`, `вне игры доход ×${r.efficiency}`)];
+    const lines: HTMLElement[] = [row('собрано', `+${format(r.trash)} кг`, r.automation.purchases || r.automation.recycles || r.automation.resorts ? 'включая потраченное на покупки и сбросы' : 'офлайн-бонусы учтены')];
+    if (r.automation.purchases > 0) lines.push(row('автопокупок', String(r.automation.purchases)));
+    if (r.automation.recycles > 0) lines.push(row('переработок', String(r.automation.recycles)));
+    if (r.automation.resorts > 0) lines.push(row('пересортировок', String(r.automation.resorts)));
     if (capped !== null) lines.push(row('копилось', `${Math.round(capped / 3600)} ч`, 'дольше не копится — дерево «Офлайн» продлит'));
     if (r.threatRose) {
       const pct = Math.round(r.threat * 100);
@@ -65,7 +68,7 @@ export class AwayScreen {
       lines.push(row('находки', String(r.finds.length), `${names}${more} — в журнале`));
     }
     if (r.bales > 0) lines.push(row('тюков с ленты', String(r.bales)));
-    if (r.fractions.gt(0)) lines.push(row('линия', `+${format(r.fractions.floor())} фракций`));
+    if (r.fractions.gt(0)) lines.push(row('получено фракций', `+${format(r.fractions.floor())} фракций`));
     this.rows.replaceChildren(...lines);
     this.root.hidden = false;
   }

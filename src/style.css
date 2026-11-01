@@ -1773,3 +1773,5 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 /* Price buttons in the tree keep one width, whatever the price: no row reflows as it changes. */
 .r-node-buy { width: 104px; min-width: 104px; flex: 0 0 104px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .r-views { margin: 8px 0; }
+
+.away .intro-box { max-height: calc(100dvh - 32px); overflow-y: auto; }

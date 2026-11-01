@@ -1,6 +1,7 @@
+import { simulateOffline } from './offline';
 import { parseNum } from './num';
 import { ABOVE_SCRIPTS, AUTO_OPEN, CONTAINERS, ITEMS, RARITIES, TOOLS, newBottom, type BottomState } from './bottom';
-import { AUTO_FACTORS, AUTO_FACTOR_DEFAULT, advance, newGame, type BuyMode, type GameState } from './state';
+import { AUTO_FACTORS, AUTO_FACTOR_DEFAULT, newGame, type BuyMode, type GameState } from './state';
 import { PRODUCERS } from './producers';
 import { upgradeById } from './upgrades';
 import { nodeById, newLayer, offlineCapSeconds, type LayerState } from './layers';
@@ -556,7 +557,7 @@ export function importSave(text: string): GameState | null {
 /** Applies the time since the last tick, capped. Returns the seconds simulated. */
 export function applyOffline(state: GameState, now = Date.now()): number {
   const seconds = Math.min(Math.max(0, (now - state.lastTick) / 1000), offlineCapSeconds(state.recycle));
-  advance(state, seconds, true);
+  simulateOffline(state, seconds);
   recordAway(state, seconds, now);
   state.lastTick = now;
   return seconds;

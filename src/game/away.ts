@@ -1,5 +1,6 @@
-import { D, Decimal } from './num';
-import { FRACS, type Inspection } from './sorting';
+import { offlineActivity, type OfflineActivity } from './offline';
+import { Decimal } from './num';
+import { type Inspection } from './sorting';
 import { offlineRate, type GameState } from './state';
 
 /**
@@ -9,6 +10,7 @@ import { offlineRate, type GameState } from './state';
 
 export interface AwaySnapshot {
   trash: Decimal;
+  totalTrash: Decimal;
   threat: number;
   fractions: Decimal;
   news: number;
@@ -28,20 +30,22 @@ export interface AwayReport {
   /** Unique finds and bales from the inspection table. */
   finds: string[];
   bales: number;
+  automation: OfflineActivity;
 }
 
-const sumFractions = (s: GameState) => FRACS.reduce((sum, f) => sum.add(s.sorting.fractions[f]), D(0));
+const sumFractions = (s: GameState) => s.sorting.total;
 
 export function awaySnapshot(s: GameState): AwaySnapshot {
-  return { trash: s.trash, threat: s.threat.level, fractions: sumFractions(s), news: s.sorting.news.length };
+  return { trash: s.trash, totalTrash: s.totalTrash, threat: s.threat.level, fractions: sumFractions(s), news: s.sorting.news.length };
 }
 
 export function awayReport(before: AwaySnapshot, s: GameState, seconds: number): AwayReport {
   const news: Inspection[] = s.sorting.news.slice(before.news);
   return {
     seconds,
+    automation: offlineActivity(s),
     efficiency: offlineRate(s),
-    trash: s.trash.sub(before.trash).max(0),
+    trash: s.totalTrash.sub(before.totalTrash).max(0),
     threat: s.threat.level,
     threatRose: s.threat.level > before.threat + 0.001,
     // The archive keeps at most twenty, so count what is new by the away mark instead of the length.
