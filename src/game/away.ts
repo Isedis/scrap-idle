@@ -1,7 +1,7 @@
 import { offlineActivity, type OfflineActivity } from './offline';
 import { Decimal } from './num';
-import { type Inspection } from './sorting';
-import { offlineRate, type GameState } from './state';
+import { FRACS, type Inspection } from './sorting';
+import { offlineRate, ratePerSecond, type GameState } from './state';
 
 /**
  * What changed while the game was closed, for the screen the player comes back to:
@@ -31,6 +31,9 @@ export interface AwayReport {
   finds: string[];
   bales: number;
   automation: OfflineActivity;
+  balance: { trash: Decimal; recycled: Decimal; fractions: Decimal };
+  income: Decimal;
+  hearing: 'idle' | 'walk' | 'check' | 'caught';
 }
 
 const sumFractions = (s: GameState) => s.sorting.total;
@@ -44,6 +47,9 @@ export function awayReport(before: AwaySnapshot, s: GameState, seconds: number):
   return {
     seconds,
     automation: offlineActivity(s),
+    balance: { trash: s.trash, recycled: s.recycle.points, fractions: FRACS.reduce((sum, f) => sum.add(s.sorting.fractions[f]), new Decimal(0)) },
+    income: ratePerSecond(s),
+    hearing: s.hearing.phase,
     efficiency: offlineRate(s),
     trash: s.totalTrash.sub(before.totalTrash).max(0),
     threat: s.threat.level,

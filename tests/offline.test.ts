@@ -84,6 +84,6 @@ describe('offline automation', () => {
     expect([0, 600, 3600, 86400].map(offlineStep)).toEqual([1, 5, 30, 300]);
     const s = automated(); simulateOffline(s, 5);
     simulateOffline(s, 0);
-    expect(offlineActivity(s)).toEqual({ purchases: 0, recycles: 0, resorts: 0 });
+    expect(offlineActivity(s)).toMatchObject({ purchases: 0, recycles: 0, resorts: 0 });
   });
 });

@@ -629,7 +629,7 @@ export class App {
   }
 
   showAway(report: AwayReport, capped: number | null, then: () => void): void {
-    this.awayScreen.show(report, capped, then);
+    this.awayScreen.show(report, capped, then, this.getState().bottom.open ? 'Дно ямы: осмотрите контейнеры и улучшения Игнатьева.' : nextGoal(this.getState()).text);
   }
 
   /** The terminal types a line on its own, letter by letter. */

@@ -1775,3 +1775,19 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .r-views { margin: 8px 0; }
 
 .away .intro-box { max-height: calc(100dvh - 32px); overflow-y: auto; }
+
+/* A compact shift receipt, with details kept below the three main sections. */
+.away-receipt { gap: 10px; }
+.away-eyebrow { color: var(--mid); font-size: 10px; letter-spacing: 0.12em; }
+.away-section { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 7px; }
+.away-section-title { margin: 0 0 2px; color: var(--mid); font-size: 10px; letter-spacing: 0.08em; }
+.away-primary .away-value { color: var(--amber); font-size: 16px; }
+.away-receipt .away-value { overflow-wrap: anywhere; }
+.away-explain, .away-goal, .away-condition, .away-limit { margin: 0; font-size: 11px; line-height: 1.5; color: var(--mid); }
+.away-condition.bad { color: var(--danger); }
+.away-goal { color: var(--glow); }
+.away-details { border-top: 1px solid var(--line); }
+.away-details summary { min-height: 44px; display: list-item; padding: 12px 0; cursor: pointer; font-size: 12px; color: var(--glow); }
+.away-details summary:focus-visible { outline: 1px solid var(--glow); }
+.away-detail-body { display: grid; gap: 8px; padding-bottom: 8px; }
+.away-limit { color: var(--amber); }

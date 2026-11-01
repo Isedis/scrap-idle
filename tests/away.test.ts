@@ -31,3 +31,20 @@ describe('coming back after a while', () => {
     expect(r.finds[0]).toBe('lantern');
   });
 });
+
+it('separates gross receipt, purchases and remaining balances through a reset', () => {
+  const s = newGame(0);
+  s.recycle.nodes = ['a1', 'a3'];
+  s.autoRecycle.on = true;
+  s.trash = D(1e6); s.runTrash = D(1e15); s.runSeconds = 60;
+  const before = awaySnapshot(s);
+  applyOffline(s, 60_000);
+  const r = awayReport(before, s, 60);
+  expect(r.automation.recycles).toBeGreaterThan(0);
+  expect(r.automation.recycled.gt(0)).toBe(true);
+  expect(r.automation.producers).toBeGreaterThan(0);
+  expect(r.automation.spentTrash.gt(0)).toBe(true);
+  expect(r.balance.trash.eq(s.trash)).toBe(true);
+  expect(r.balance.recycled.eq(s.recycle.points)).toBe(true);
+  expect(r.trash.eq(s.totalTrash.sub(before.totalTrash))).toBe(true);
+});
