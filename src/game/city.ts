@@ -126,7 +126,7 @@ export const TYPE_TEXT: Record<DistrictType, string> = {
   prom: 'Вторсырьё ×2',
   market: 'Фракции ×1.5',
   school: 'Автоматика после реформы. 1-я школа: закупщик, снабженец, уплотнитель, автопрожектор, и покупают они мгновенно. 2-я: автопереработчик и завхоз (дерево). 3-я: автосортировщик и наладчик (линия)',
-  boiler: 'Автоглушитель «Слуха»: у двери сам опускает шум цеха. Иногда отказывает',
+  boiler: 'Одна котельная глушит цех с шансом отказа. Обе — без отказов: 10 секунд тишины и возврат выбранной нагрузки',
   church: 'Колокол заглушает цех: шкала «Слуха» копится медленнее, ×0.7',
   cemetery: 'Пик бонуса тьмы +0.2',
   archive: '10% фракций переживают реформу',
@@ -289,6 +289,9 @@ export function strength(city: CityState, id: string): number {
   return 1 + CLUSTER_BONUS * same;
 }
 
+/** Both boilers finish noise automation: no failures and automatic load restoration. */
+export const AUTO_NOISE_BOILERS = 2;
+
 /** Summed strength of the owned districts of a type. */
 function power(city: CityState, type: DistrictType): number {
   return city.owned.filter((id) => districtById(id)!.type === type).reduce((s, id) => s + strength(city, id), 0);
@@ -341,7 +344,7 @@ function computeEffects(city: CityState): CityEffects {
     recycled: mul('prom', 1),
     fractions: mul('market', 0.5),
     schools: city.owned.filter((id) => districtById(id)!.type === 'school').length,
-    silencerFail: boilers > 0 ? 0.35 * 0.6 ** (boilers - 1) : 1,
+    silencerFail: boilers >= AUTO_NOISE_BOILERS ? 0 : boilers > 0 ? 0.35 * 0.6 ** (boilers - 1) : 1,
     hearingFill: 0.7 ** churches,
     threatSpeed: 0.85 ** power(city, 'hospital'),
     offline: 1.2 ** power(city, 'depot'),

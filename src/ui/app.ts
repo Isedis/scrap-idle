@@ -23,6 +23,7 @@ import {
   incomeBreakdown,
   milestoneUnits,
   automationOpen,
+  fullNoiseAutomation,
   resort,
   reform,
   descend,
@@ -42,7 +43,7 @@ import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
 import { CityPanel } from './cityPanel';
 import { BottomPanel } from './bottomPanel';
-import { rememberCity, LETTERS, REFORM_SORTS } from '../game/city';
+import { rememberCity, LETTERS, REFORM_SORTS, cityEffects } from '../game/city';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
 import { Sound } from './sound';
@@ -58,7 +59,7 @@ import { COMPACT_MILESTONE, type TrackDef } from '../game/infinite';
 import { Dread } from './dread';
 import { HearingBar } from './hearingBar';
 import { hunt } from './lurker';
-import { heardLine, nearness, setNoise, type HearingPhase } from '../game/hearing';
+import { heardLine, nearness, setNoise, setNoiseAutomation, type HearingPhase } from '../game/hearing';
 import { PHRASES, PLANT_KINDS, eventById, unwatched, watch, type EventDef, type EventKind, type Recording } from '../game/story';
 import { RECYCLE_AT, holdMs, milestoneBase, passiveBonus } from '../game/layers';
 import { STAGES, stageIndex, threatActive, threatMult } from '../game/threat';
@@ -307,6 +308,9 @@ export class App {
     this.consoleEl.addEventListener('click', () => this.catchLive('typing') || this.catchLive('voice'));
     this.hearingBar = new HearingBar((noise) => {
       setNoise(this.getState().hearing, noise);
+      this.render();
+    }, (on) => {
+      setNoiseAutomation(this.getState().hearing, on);
       this.render();
     });
     // The floodlight and the noise live on their own tabs, by their cameras: in the header
@@ -1469,7 +1473,7 @@ export class App {
     const goal = nextGoal(state);
     this.goalEl.textContent = `${this.root.classList.contains('classic-ui') ? 'ЦЕЛЬ ·' : '>'} ${goal.text} →`;
     this.goalEl.classList.toggle('ready', !!goal.ready);
-    this.goalEl.hidden = state.hearing.phase !== 'idle' || state.threat.level >= 0.7;
+    this.goalEl.hidden = (state.hearing.phase !== 'idle' && !fullNoiseAutomation(state)) || state.threat.level >= 0.7;
     this.trashEl.textContent = format(state.trash);
     this.rateEl.textContent = `+${format(ratePerSecond(state))} кг/с`;
     const now = new Date();
@@ -1600,7 +1604,8 @@ export class App {
       markNoiseTold();
       this.toast('Новое: шум цеха, во вкладке «Слои» под камерой цеха. Выше 100% — больше дохода. Но что-то слушает');
     }
-    this.hearingBar.render(h, open);
+    const managed = fullNoiseAutomation(state);
+    this.hearingBar.render(h, open, cityEffects(state.city).silencerFail);
     // The plant is heard only in the plant, on its own tab: elsewhere its din would never stop.
     this.sound.setPlant(open && !this.recyclePanel.root.hidden ? h.noise : 0);
     const was = this.knownPhase;
@@ -1612,18 +1617,22 @@ export class App {
       this.pop(this.hearingBar.root, 'alarm');
       this.typeLine('КАМ-03: ОНО УСЛЫШАЛО ЦЕХ');
       this.recyclePanel.corridor.say('СКРЕЖЕТ · ОНО УСЛЫШАЛО ЦЕХ', 3.5);
-      this.toast('ОНО УСЛЫШАЛО. Идёт к будке, остановить нельзя. Когда подойдёт: шум на 0 и ни звука 10 секунд');
-      navigator.vibrate?.([200, 80, 200]);
+      if (!managed) {
+        this.toast('ОНО УСЛЫШАЛО. Идёт к будке, остановить нельзя. Когда подойдёт: шум на 0 и ни звука 10 секунд');
+        navigator.vibrate?.([200, 80, 200]);
+      }
     } else if (h.phase === 'check') {
-      if (h.auto === 'ok') this.toast('Котельная заглушила цех. Не трогайте шум');
-      else if (h.auto === 'fail') this.toast('Автоглушитель: отказ! Шум на 0 вручную');
+      if (!managed && h.auto === 'ok') this.toast('Котельная заглушила цех. Не трогайте шум');
+      else if (!managed && h.auto === 'fail') this.toast('Автоглушитель: отказ! Шум на 0 вручную');
       this.sound.step(1);
       this.glitch(0.8);
       this.pop(this.hearingBar.root, 'alarm');
       this.typeLine('ОНО У ДВЕРИ');
       this.recyclePanel.corridor.say('ШАГИ СТИХЛИ · У ДВЕРИ БУДКИ', 3.5);
-      this.toast('ОНО У ДВЕРИ. Минута: опустите шум до 0 и не трогайте 10 секунд');
-      navigator.vibrate?.([300, 100, 300]);
+      if (!managed && h.auto !== 'ok') {
+        this.toast('ОНО У ДВЕРИ. Минута: опустите шум до 0 и не трогайте 10 секунд');
+        navigator.vibrate?.([300, 100, 300]);
+      }
     } else if (h.phase === 'caught') {
       this.loseToListener();
     } else if (h.phase === 'idle' && was === 'check') {
@@ -1642,9 +1651,9 @@ export class App {
     type Danger = { key: string; at: 'dump' | 'plant'; text: string };
     // Most urgent first.
     const dangers: (Danger | false)[] = [
-      h.phase === 'check' && { key: 'check', at: 'plant', text: `ОНО У ДВЕРИ · 0:${pad2(Math.max(0, Math.ceil(h.left)))} · шум на 0 → Цех` },
+      !fullNoiseAutomation(state) && h.phase === 'check' && { key: 'check', at: 'plant', text: `ОНО У ДВЕРИ · 0:${pad2(Math.max(0, Math.ceil(h.left)))} · шум на 0 → Цех` },
       level >= 0.9 && { key: 'edge', at: 'dump', text: `Угроза ${pct(level)}! Прожектор → Свалка` },
-      h.phase === 'walk' && {
+      !fullNoiseAutomation(state) && h.phase === 'walk' && {
         key: 'walk',
         at: 'plant',
         text: this.hearingBar.listening
@@ -1844,6 +1853,7 @@ export class App {
     this.sound.walkAway();
     this.recyclePanel.corridor.huntLeave();
     const line = heardLine(survived);
+    if (fullNoiseAutomation(this.getState())) { writeSave(this.getState()); return; }
     const box = el('div', 'lost left');
     box.setAttribute('role', 'status');
     box.append(el('div', 'lost-line l0', 'КАМ-03'), el('div', 'lost-line l1', 'ОНО УШЛО'), el('div', 'lost-line l2 heard-line', line));

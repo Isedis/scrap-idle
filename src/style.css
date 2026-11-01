@@ -1336,6 +1336,10 @@ button { font: inherit; color: inherit; }
   background: rgb(0 0 0 / 0.25);
 }
 
+.noise-automation { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; }
+.noise-automation .mode { min-height: 44px; }
+.noise[data-managed="true"][data-phase] .noise-heard, .noise[data-managed="true"][data-phase="check"] .noise-load { color: var(--mid); }
+.noise-slider:disabled { opacity: .6; }
 .noise-top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .noise-load { overflow: hidden; text-overflow: ellipsis; }
 .noise-heard { color: var(--mid); overflow: hidden; text-overflow: ellipsis; }
@@ -1389,6 +1393,9 @@ button { font: inherit; color: inherit; }
 .noise[data-phase='check'] { border-color: var(--danger); animation: urge 0.8s steps(2) infinite; }
 .noise[data-phase='check'] .noise-load { color: var(--danger); font-weight: 700; }
 .noise.alarm { animation: alarm 0.6s ease 3; }
+.noise[data-managed="true"][data-phase] { border-color: var(--line); animation: none; }
+.noise[data-managed="true"] .noise-slider::-webkit-slider-thumb { border-color: var(--mid); box-shadow: none; }
+.noise[data-managed="true"] .noise-slider::-moz-range-thumb { border-color: var(--mid); }
 
 /* While it walks the edges go red, more the nearer it is; each step jolts the screen. */
 #app[data-hunt]::after {

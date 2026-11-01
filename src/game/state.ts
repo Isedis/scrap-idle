@@ -76,7 +76,7 @@ import {
   type StationId,
 } from './sorting';
 import { REPEATS } from './layers';
-import { afterLoss, hearingTick, newHearing, noiseMult, type HearingState } from './hearing';
+import { HOLD_SECONDS, afterLoss, hearingTick, newHearing, noiseMult, type HearingState } from './hearing';
 import { rememberCity, CITY_OPEN_SORTS, REFORM_SORTS, cityEffects, schoolScripts, newCity, reformGain, type CityState } from './city';
 import { START_HEAP, aboveIncome, autoOpen, bottomTick, fallPerMinute, newBottom, type BottomState } from './bottom';
 import {
@@ -306,11 +306,13 @@ export function advance(state: GameState, seconds: number, offline = false, slic
   if (seconds <= 0) return;
   // Closed, the plant runs at normal load: louder is only for someone who is there to hear.
   const noise = state.hearing.noise;
-  if (offline) state.hearing.noise = Math.min(noise, 1);
+  if (offline) state.hearing.noise = Math.min(fullNoiseAutomation(state) ? state.hearing.resumeNoise ?? noise : noise, 1);
   const slice = offline ? Math.max(seconds / OFFLINE_SLICES, sliceSeconds) : sliceSeconds;
   for (let left = seconds; left > 0; left -= slice) {
     const dt = Math.min(slice, left);
     const town = cityEffects(state.city);
+    // A reload or enabling automation at the door must be safe too.
+    if (!offline && state.hearing.phase === 'check' && fullNoiseAutomation(state)) silence(state);
     const rate = ratePerSecond(state);
     let gained = rate.mul(dt);
     if (offline) gained = gained.mul(offlineRate(state));
@@ -335,7 +337,12 @@ export function advance(state: GameState, seconds: number, offline = false, slic
     if (!state.sorting.open && state.recycle.total.gte(SORT_AT)) state.sorting.open = true;
     // A player already past the resorts the town asks for finds it open too.
     if (!state.city.open && state.sorting.sorts >= CITY_OPEN_SORTS) state.city.open = true;
-    if (hearingTick(state.hearing, dt, state.sorting.open, offline, Math.random, town.hearingFill) === 'check') silence(state);
+    const hearingEvent = hearingTick(state.hearing, dt, state.sorting.open, offline, Math.random, town.hearingFill);
+    if (hearingEvent === 'check') silence(state);
+    if (hearingEvent === 'survived') {
+      if (fullNoiseAutomation(state) && state.hearing.resumeNoise !== null) state.hearing.noise = state.hearing.resumeNoise;
+      state.hearing.resumeNoise = null;
+    }
     // At the edge production stops; the game plays the loss and calls loseShift or loseToHearing.
     if (state.threat.level >= 1 || state.hearing.phase === 'caught') break;
   }
@@ -881,11 +888,19 @@ function sweep(state: GameState, notes: ScriptNote[]): void {
 
 // ---- The town ---------------------------------------------------------------------
 
+/** Both boilers can handle every check and return the load without player attention. */
+export const fullNoiseAutomation = (state: GameState) => state.hearing.noiseAuto && cityEffects(state.city).silencerFail === 0;
+
 /** The boilers' silencer: at the door it brings the plant down to nothing, unless it fails. */
 function silence(state: GameState, rand = Math.random): void {
   const fail = cityEffects(state.city).silencerFail;
-  if (fail >= 1) return;
-  if (rand() >= fail) {
+  if (!state.hearing.noiseAuto || fail >= 1) return;
+  if (fail === 0 || rand() >= fail) {
+    if (fail === 0) {
+      if (state.hearing.resumeNoise === null) state.hearing.resumeNoise = state.hearing.noise;
+      // A takeover or restored save still gets enough time to finish the quiet hold.
+      state.hearing.left = Math.max(state.hearing.left, HOLD_SECONDS - state.hearing.held);
+    }
     state.hearing.noise = 0;
     state.hearing.auto = 'ok';
   } else state.hearing.auto = 'fail';
@@ -929,7 +944,12 @@ export function reform(state: GameState): Decimal {
   state.upgrades = [];
   state.revealed = ['collector'];
   state.threat = { ...newThreat(), losses: state.threat.losses, lights: state.threat.lights, bravest: state.threat.bravest };
-  state.hearing = { ...newHearing(), survived: state.hearing.survived, losses: state.hearing.losses };
+  const hearing = state.hearing;
+  state.hearing = {
+    ...newHearing(), noiseAuto: hearing.noiseAuto,
+    noise: fullNoiseAutomation(state) ? hearing.resumeNoise ?? hearing.noise : 1,
+    survived: hearing.survived, losses: hearing.losses,
+  };
   // What the schools set up comes switched on.
   if (fx.schools >= 2) state.autoRecycle.on = true;
   if (fx.schools >= 3) state.scripts.sortOn = true;

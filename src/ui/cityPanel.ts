@@ -228,7 +228,7 @@ export class CityPanel {
       `вторсырьё ×${format(fx.recycled)}`,
       `фракции ×${format(fx.fractions)}`,
       fx.schools ? `скрипты сразу: ${Math.min(fx.schools * 2, 5)}` : '',
-      fx.silencerFail < 1 ? `глушитель: отказ ${Math.round(fx.silencerFail * 100)}%` : '',
+      fx.silencerFail === 0 ? 'шум: полная автоматика' : fx.silencerFail < 1 ? `глушитель: отказ ${Math.round(fx.silencerFail * 100)}%` : '',
       fx.hearingFill < 1 ? `слух копится ×${fx.hearingFill.toFixed(2)}` : '',
       fx.threatSpeed < 1 ? `угроза растёт ×${fx.threatSpeed.toFixed(2)}` : '',
       fx.offline > 1 ? `офлайн ×${fx.offline.toFixed(2)}` : '',

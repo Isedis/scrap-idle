@@ -18,12 +18,15 @@ export class HearingBar {
   private load: HTMLElement;
   private heard: HTMLElement;
   private effect: HTMLElement;
+  private autoRow: HTMLElement;
+  private autoButton: HTMLButtonElement;
+  private autoInfo: HTMLElement;
   /** A finger is on the slider. */
   private dragging = false;
   /** It stopped mid-walk to listen. */
   listening = false;
 
-  constructor(onNoise: (noise: number) => void) {
+  constructor(onNoise: (noise: number) => void, onAuto: (on: boolean) => void) {
     this.root = el('div', 'noise');
     this.root.hidden = true;
     const top = el('div', 'noise-top');
@@ -41,13 +44,29 @@ export class HearingBar {
     this.slider.addEventListener('pointerdown', () => (this.dragging = true));
     for (const ev of ['pointerup', 'pointercancel', 'change']) this.slider.addEventListener(ev, () => (this.dragging = false));
     this.effect = el('div', 'threat-effect');
-    this.root.append(top, this.slider, this.effect);
+    this.autoRow = el('div', 'noise-automation');
+    this.autoInfo = el('span', 'a-note');
+    this.autoButton = el('button', 'mode');
+    this.autoButton.type = 'button';
+    this.autoButton.id = 'noise-auto';
+    this.autoButton.addEventListener('click', () => onAuto(this.autoButton.getAttribute('aria-pressed') !== 'true'));
+    this.autoRow.append(this.autoInfo, this.autoButton);
+    this.root.append(top, this.slider, this.effect, this.autoRow);
   }
 
-  render(h: HearingState, open: boolean): void {
+  render(h: HearingState, open: boolean, silencerFail = 1): void {
     this.root.hidden = !open;
     if (!open) return;
-    this.effect.textContent = h.phase === 'check'
+    const managed = h.noiseAuto && silencerFail === 0;
+    this.root.dataset.managed = String(managed);
+    this.autoRow.hidden = silencerFail >= 1;
+    this.autoButton.textContent = `${silencerFail === 0 ? 'Автошум' : 'Глушитель'}: ${h.noiseAuto ? 'Вкл' : 'Выкл'}`;
+    this.autoButton.setAttribute('aria-pressed', String(h.noiseAuto));
+    this.autoInfo.textContent = silencerFail === 0 ? 'Обе котельные · без отказов' : `1/2 котельных · отказ ${Math.round(silencerFail * 100)}%`;
+    this.slider.disabled = managed && h.phase === 'check';
+    this.effect.textContent = managed ? (h.phase === 'check'
+      ? `Авто удерживает тишину, затем вернёт ${Math.round((h.resumeNoise ?? 1) * 100)}% нагрузки.`
+      : 'Авто заглушит цех у двери и вернёт выбранную нагрузку.') : h.phase === 'check'
       ? (h.held > 0 ? 'Держите тишину. Любой шум прервёт проверку.' : 'Шум на 0, затем 10 секунд тишины. Иначе потеря переработки.')
       : h.phase === 'walk' ? 'Идёт к будке. У двери потребуется 10 секунд тишины.'
       : h.phase === 'caught' ? 'Переработка потеряна. Сортировка останется.'
@@ -63,7 +82,7 @@ export class HearingBar {
     if (h.phase === 'check') {
       const left = Math.max(0, Math.ceil(h.left));
       this.load.textContent = h.held > 0 ? `ТИШИНА · ${Math.ceil(HOLD_SECONDS - h.held)}` : `ШУМ НА 0! · 0:${String(left).padStart(2, '0')}`;
-      this.heard.textContent = h.held > 0 ? 'не трогайте' : `${pct}% · ${HOLD_SECONDS} с тишины`;
+      this.heard.textContent = managed ? 'автоматически' : h.held > 0 ? 'не трогайте' : `${pct}% · ${HOLD_SECONDS} с тишины`;
     } else if (h.phase === 'walk') {
       this.load.textContent = `шум ${pct}% · ×${h.noise.toFixed(2)}`;
       this.heard.textContent = this.listening ? 'ОНО ОСТАНОВИЛОСЬ. СЛУШАЕТ' : `ОНО ИДЁТ ${textBar(nearness(h), 6)} ${mss(h.left)}`;

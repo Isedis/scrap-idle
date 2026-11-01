@@ -14,6 +14,10 @@ export type HearingPhase = 'idle' | 'walk' | 'check' | 'caught';
 export interface HearingState {
   /** Plant load the player set, 0..MAX_NOISE; 1 is normal. */
   noise: number;
+  /** Use the town silencer; two boilers also restore the chosen load after a check. */
+  noiseAuto: boolean;
+  /** Chosen load held across an automatic door check, including reloads. */
+  resumeNoise: number | null;
   /** How much it has heard, 0..1. */
   meter: number;
   phase: HearingPhase;
@@ -31,7 +35,7 @@ export interface HearingState {
   auto?: 'ok' | 'fail';
 }
 
-export const newHearing = (): HearingState => ({ noise: 1, meter: 0, phase: 'idle', left: 0, walk: 0, held: 0, survived: 0, losses: 0 });
+export const newHearing = (): HearingState => ({ noise: 1, noiseAuto: true, resumeNoise: null, meter: 0, phase: 'idle', left: 0, walk: 0, held: 0, survived: 0, losses: 0 });
 
 /** Double load at most: double income. */
 export const MAX_NOISE = 2;
@@ -55,10 +59,17 @@ export const noiseMult = (h: HearingState, open: boolean, offline = false) => ef
 
 export const setNoise = (h: HearingState, noise: number) => {
   const next = Math.min(Math.max(Number.isFinite(noise) ? noise : 1, 0), MAX_NOISE);
+  // An automatic check stays quiet while the chosen load can be changed safely.
+  if (h.phase === 'check' && h.noiseAuto && h.resumeNoise !== null) { h.resumeNoise = next; return; }
   // Any sound once the silence has started is heard.
   if (h.phase === 'check' && h.held > 0 && next > 0) h.phase = 'caught';
   h.noise = next;
 };
+
+export function setNoiseAutomation(h: HearingState, on: boolean): void {
+  h.noiseAuto = on;
+  if (!on) h.resumeNoise = null;
+}
 
 /** How near it is during the walk, 0..1; 1 from the check on. */
 export function nearness(h: HearingState): number {
@@ -125,6 +136,8 @@ export function hearingTick(
 
 function startCheck(h: HearingState): 'check' {
   h.phase = 'check';
+  h.resumeNoise = null;
+  delete h.auto;
   h.left = CHECK_SECONDS;
   h.held = 0;
   return 'check';
@@ -142,6 +155,8 @@ export function afterLoss(h: HearingState): void {
   h.left = 0;
   h.held = 0;
   h.noise = 1;
+  h.resumeNoise = null;
+  delete h.auto;
   h.losses += 1;
 }
 
