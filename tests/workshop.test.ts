@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { workshopInventory } from '../src/ui/workshopCam';
+import { workshopInventory, workshopAnomalies } from '../src/ui/workshopCam';
 import { UPGRADES } from '../src/game/upgrades';
 
 describe('workshop equipment inventory', () => {
@@ -19,5 +19,18 @@ describe('workshop equipment inventory', () => {
   });
   it('does not count duplicate or unknown ids as installed equipment', () => {
     expect(workshopInventory([UPGRADES[0].id, UPGRADES[0].id, 'unknown']).bought).toBe(1);
+  });
+});
+
+
+describe('workshop horror gates', () => {
+  const view = { upgrades: [], compact: 1, bulk: 1, dark: 1, threat: 0.2 };
+  it('keeps a quiet workshop free of threat events', () => {
+    expect(workshopAnomalies(view)).toEqual([]);
+  });
+  it('limits anomalies to installed stations', () => {
+    expect(workshopAnomalies({ ...view, threat: 0.8, compact: 0, bulk: 0 })).toEqual(['contract']);
+    expect(workshopAnomalies({ ...view, threat: 0.8, compact: 0, bulk: 0, dark: 0 })).toEqual([]);
+    expect(workshopAnomalies({ ...view, threat: 0.8 })).toEqual(['press', 'stock', 'contract']);
   });
 });
