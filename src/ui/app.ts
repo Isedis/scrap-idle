@@ -100,6 +100,8 @@ interface ProducerRow {
   count: HTMLElement;
   rate: HTMLElement;
   milestone: HTMLElement;
+  milestoneBar: HTMLElement;
+  milestoneCount: HTMLElement;
   button: HTMLButtonElement;
   label: HTMLElement;
   price: HTMLElement;
@@ -150,6 +152,7 @@ export class App {
   private recycleBadge!: HTMLElement;
   /** Recycling was announced as ready for this run. */
   private knownRecycleReady = false;
+  private headerEl!: HTMLElement;
   private goalEl!: HTMLButtonElement;
   private threatEffect!: HTMLElement;
   private threatEl!: HTMLElement;
@@ -270,6 +273,8 @@ export class App {
 
   private build(): void {
     const header = el('header', 'top');
+    this.headerEl = header;
+    header.append(el('div', 'terminal-id', 'УТИЛЬ-ОС / ПОЛИГОН №7'));
     // The amount and its unit on one line, the flow and Recycled material on the next: the
     // header stays on every tab, so it is kept to what the player watches all the time.
     // The amount and the flow are one button: it opens where the income comes from.
@@ -740,7 +745,7 @@ export class App {
   }
 
   private buildDump(): HTMLElement {
-    const panel = el('section', 'panel');
+    const panel = el('section', 'panel dump-panel');
     this.panels.set('dump', panel);
     panel.append(this.buildFeed(), this.buildThreat());
 
@@ -804,6 +809,9 @@ export class App {
     head.append(el('span', 'p-name', def.name), count);
     const rate = el('div', 'p-rate');
     const milestone = el('div', 'p-milestone');
+    const milestoneBar = el('span', 'p-progress');
+    const milestoneCount = el('span', 'p-progress-count');
+    milestone.append(milestoneBar, document.createTextNode(' '), milestoneCount);
     body.append(head, el('div', 'p-flavor', def.flavor), rate, milestone);
 
     const button = el('button', 'buy');
@@ -831,7 +839,7 @@ export class App {
     icon.addEventListener('click', () => root.classList.toggle('open'));
 
     root.append(icon, body, button);
-    return { def, root, count, rate, milestone, button, label, price };
+    return { def, root, count, rate, milestone, milestoneBar, milestoneCount, button, label, price };
   }
 
   private buildUpgrades(): HTMLElement {
@@ -1135,10 +1143,12 @@ export class App {
     try { classic = localStorage.getItem('scrap-idle-classic-ui') === '1'; } catch { /* Storage may be unavailable. */ }
     const showInterface = () => {
       this.root.classList.toggle('classic-ui', classic);
+      if (classic) this.headerEl.append(this.goalEl);
+      else this.panels.get('dump')!.querySelector('.panel-head')!.before(this.goalEl);
       rollback.textContent = classic ? 'Вернуть новый интерфейс' : 'Вернуть прежний интерфейс';
       interfaceStatus.textContent = classic
-        ? 'Прежний вид: без строки цели и новых пояснений. Прогресс и обновления сохранены.'
-        : 'Новый вид: ближайшая цель, пояснения угроз и предпросмотр сброса. Можно вернуться к прежнему виду в любой момент.';
+        ? 'Исходное оформление и свет камеры. Прогресс и обновления сохранены.'
+        : 'Спокойный терминал и доработанный свет свалки. Прежний вид можно вернуть этой кнопкой.';
     };
     showInterface();
     rollback.addEventListener('click', () => {
@@ -1355,6 +1365,7 @@ export class App {
       recycles: state.recycle.resets,
       threat: state.threat.level,
       traces: state.story.traces,
+      refined: !this.root.classList.contains('classic-ui'),
     };
   }
 
@@ -1455,7 +1466,8 @@ export class App {
     const state = this.getState();
     this.announce(state);
 
-    this.goalEl.textContent = `ЦЕЛЬ · ${nextGoal(state).text} →`;
+    this.goalEl.textContent = `${this.root.classList.contains('classic-ui') ? 'ЦЕЛЬ ·' : '>'} ${nextGoal(state).text} →`;
+    this.goalEl.classList.toggle('ready', nextGoal(state).text.includes('доступна'));
     this.goalEl.hidden = state.hearing.phase !== 'idle' || state.threat.level >= 0.7;
     this.trashEl.textContent = format(state.trash);
     this.rateEl.textContent = `+${format(ratePerSecond(state))} кг/с`;
@@ -1479,13 +1491,14 @@ export class App {
       const owned = state.owned[row.def.id] ?? 0;
       const plan = purchasePlan(state, row.def.id);
       row.count.textContent = `×${owned}`;
-      row.rate.textContent = `даёт +${format(producerRate(state, row.def.id))}/с`;
+      row.rate.textContent = `${this.root.classList.contains('classic-ui') ? 'даёт ' : ''}+${format(producerRate(state, row.def.id))}/с`;
       // Bulk counts extra units toward milestones: shown as owned + head start.
       const units = milestoneUnits(state, row.def.id);
       const head = units - owned;
       const from = prevMilestone(units);
       const to = nextMilestone(units);
-      row.milestone.textContent = `${textBar((units - from) / (to - from), 8)} ${owned}${head > 0 ? `+${head}` : ''}/${to} → ×${milestoneBase(state.recycle)}`;
+      row.milestoneBar.textContent = textBar((units - from) / (to - from), 8);
+      row.milestoneCount.textContent = `${owned}${head > 0 ? `+${head}` : ''}/${to} → ×${milestoneBase(state.recycle)}`;
       const amount = state.buyMode === 'one' ? '' : state.buyMode === 'ten' ? ' ×10' : plan.count > 1 ? ` ×${plan.count}` : '';
       row.label.textContent = `Купить${amount}`;
       row.price.textContent = `${format(plan.cost)} кг`;

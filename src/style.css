@@ -1839,3 +1839,52 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 
 .c-card { scroll-margin-bottom: 92px; }
 .c-camera-details:not([open]) > .feed { display: none; }
+
+/* Trial terminal treatment; the existing classic switch restores the original look. */
+#app:not(.classic-ui) { --bg: #080f0b; --panel: #0c1911; --line: #263d2f; --mid: #8fae98; --glow: #b1d9bb; --amber: #c5ac72; --glow-shadow: 0 0 5px rgb(140 190 153 / .15); background: var(--bg); }
+.terminal-id { color: var(--mid); font-size: 10px; letter-spacing: .06em; padding-bottom: 7px; }
+.classic-ui .terminal-id { display: none; }
+#app:not(.classic-ui) .trash { font-size: clamp(26px, 7.8vw, 34px); text-shadow: none; }
+#app:not(.classic-ui) .rate, #app:not(.classic-ui) .layer-line { color: var(--mid); font-size: 12px; }
+#app:not(.classic-ui) .top { box-shadow: 0 5px 9px var(--bg); }
+#app:not(.classic-ui) .dump-panel > .feed { border-radius: 2px 2px 0 0; margin-bottom: 0; }
+#app:not(.classic-ui) .dump-panel > .feed .feed-canvas { filter: none; }
+#app:not(.classic-ui) .dump-panel > .threat { margin-top: 0; border-top: 0; border-radius: 0 0 2px 2px; background: transparent; padding: 8px; }
+#app:not(.classic-ui) .dump-panel .threat-text { display: block; }
+#app:not(.classic-ui) .dump-panel .threat-effect { display: none; }
+#app:not(.classic-ui) .dump-panel .light { border-color: var(--line); border-radius: 2px; font-size: 11px; }
+#app:not(.classic-ui)[data-threat='3'] .dump-panel .threat-effect,
+#app:not(.classic-ui)[data-threat='4'] .dump-panel .threat-effect { display: block; color: var(--danger); }
+#app:not(.classic-ui) .operator-goal { border: 0; border-bottom: 1px solid var(--line); background: none; padding: 9px 0; color: var(--mid); font-size: 11px; }
+#app:not(.classic-ui) .operator-goal.ready { color: var(--amber); }
+#app:not(.classic-ui) .dump-panel > .panel-head { margin-block: 4px; }
+#app:not(.classic-ui) .dump-panel .panel-title { font-size: 13px; color: var(--mid); letter-spacing: .04em; }
+#app:not(.classic-ui) .dump-panel .panel-title::before { content: ''; }
+#app:not(.classic-ui) .dump-panel .modes { border: 0; border-radius: 0; }
+#app:not(.classic-ui) .dump-panel .mode { min-width: 44px; min-height: 44px; padding: 4px 6px; font-size: 11px; }
+#app:not(.classic-ui) .dump-panel .mode[aria-pressed='true'] { background: none; text-shadow: none; color: var(--glow); }
+#app:not(.classic-ui) .dump-panel .mode[aria-pressed='true']::before { content: '['; }
+#app:not(.classic-ui) .dump-panel .mode[aria-pressed='true']::after { content: ']'; }
+#app:not(.classic-ui) .dump-panel .producer { grid-template-columns: 26px minmax(0,1fr) 108px; gap: 8px; padding-block: 12px; border-bottom-style: solid; }
+#app:not(.classic-ui) .dump-panel .producer:first-child { border-top-style: solid; }
+#app:not(.classic-ui) .dump-panel .producer.teaser { grid-template-columns: 26px minmax(0,1fr); }
+#app:not(.classic-ui) .dump-panel .p-icon { width: 26px; color: var(--mid); }
+#app:not(.classic-ui) .dump-panel .p-name { font-size: 12px; letter-spacing: .01em; }
+#app:not(.classic-ui) .dump-panel .p-count { font-size: 11px; color: var(--mid); }
+#app:not(.classic-ui) .dump-panel .p-head { column-gap: 5px; }
+#app:not(.classic-ui) .dump-panel .p-milestone { letter-spacing: 0; font-variant-ligatures: none; font-size: 10px; }
+#app:not(.classic-ui) .dump-panel .buy { width: 108px; min-width: 0; min-height: 50px; padding: 6px 4px; border-radius: 2px; border-color: var(--line); box-shadow: none; }
+#app:not(.classic-ui) .dump-panel .buy-label { font-size: 11px; text-transform: none; letter-spacing: 0; }
+#app:not(.classic-ui) .dump-panel .buy-price { font-size: 11px; overflow-wrap: anywhere; }
+@media (max-width: 360px) {
+  #app:not(.classic-ui) .dump-panel .producer { grid-template-columns: 22px minmax(0,1fr) 94px; gap: 6px; }
+  #app:not(.classic-ui) .dump-panel .buy { width: 94px; }
+  #app:not(.classic-ui) .dump-panel .p-milestone { font-size: 9px; }
+}
+
+#app:not(.classic-ui) .dump-panel .p-milestone { display: flex; flex-wrap: wrap; gap: 0 5px; white-space: normal; }
+.p-progress { white-space: pre; letter-spacing: 0; }
+.p-progress-count { white-space: nowrap; }
+#app:not(.classic-ui) .dump-panel { gap: 0; }
+#app:not(.classic-ui) .dump-panel > .panel-head { margin-block: 8px; }
+#app:not(.classic-ui) .dump-panel .mode { border-left: 0; }

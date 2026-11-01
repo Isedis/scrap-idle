@@ -41,6 +41,8 @@ const J = {
 
 /** What the camera needs to know about the game. */
 export interface SceneView {
+  /** Optional, reversible lighting treatment for the main terminal. */
+  refined?: boolean;
   owned: Record<string, number>;
   rate: Decimal;
   /** Trash collected this run: the heap grows with it and shrinks on recycle. */
@@ -702,6 +704,17 @@ export class Scene {
     for (const wk of this.walkers) if (wk.lane === 1) this.actor(() => this.drawWalker(wk));
     for (const it of this.items) this.actor(() => this.drawItem(it));
     this.drawParticles();
+    if (this.view?.refined) {
+      // A faint pool of ground light and edge shadow separate the three depth planes.
+      const shade = ctx.createLinearGradient(0, 0, 0, h);
+      shade.addColorStop(0, 'rgba(0,6,4,0.22)');shade.addColorStop(.5, 'rgba(0,6,4,0)');shade.addColorStop(1, 'rgba(0,6,4,0.18)');
+      ctx.fillStyle = shade;ctx.fillRect(0,0,w,h);
+      if (!this.active('lampBlink') && !this.view.traces.includes('lamp')) {
+        const spill = ctx.createRadialGradient(w*.27,this.horizon+14,0,w*.27,this.horizon+14,w*.18);
+        spill.addColorStop(0,'rgba(189,175,111,0.12)');spill.addColorStop(1,'rgba(189,175,111,0)');
+        ctx.fillStyle=spill;ctx.fillRect(w*.08,this.horizon-30,w*.4,h-this.horizon+30);
+      }
+    }
 
     for (const p of this.playing) this.drawEvent(p);
     if (this.ghost) this.drawGhost(this.ghost.x, this.laneY(this.ghost.lane), this.ghost.lane === 0 ? 0.78 : 1);
@@ -1475,7 +1488,7 @@ export class Scene {
     }
     // Cone of light down onto the yard.
     ctx.globalAlpha = 0.09 * flicker;
-    ctx.fillStyle = C.amber;
+    ctx.fillStyle = this.view?.refined ? '#bcb281' : C.amber;
     ctx.beginPath();
     ctx.moveTo(lx + 8, top + 3);
     ctx.lineTo(lx - 22, this.h);
