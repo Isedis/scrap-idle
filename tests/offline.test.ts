@@ -49,6 +49,17 @@ describe('offline automation', () => {
     expect(s.runTrash.lt(1e15)).toBe(true);
     expect(awayReport(before, s, 10).trash.gt(0)).toBe(true);
   });
+  it('recycles offline before ten seconds when the reward condition is already met', () => {
+    const s = automated();
+    s.autobuy = false;
+    s.runTrash = D(1e15);
+    s.runSeconds = 0.1;
+    s.autoRecycle.on = true;
+    simulateOffline(s, 0.5);
+    expect(offlineActivity(s).recycles).toBe(1);
+    expect(s.recycle.points.gt(0)).toBe(true);
+    expect(s.runTrash.lt(1e15)).toBe(true);
+  });
   it('preserves paused hearing and its noise without losing an offline shift', () => {
     const s = automated();
     s.sorting.open = true; s.hearing.noise = 2;

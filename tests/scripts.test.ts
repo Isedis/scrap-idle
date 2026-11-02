@@ -214,6 +214,35 @@ describe('auto-recycle modes', () => {
     return s;
   };
 
+  it('gain: recycles as soon as the reward is ready, even within the first second', () => {
+    const s = ready();
+    s.recycle.total = D(100);
+    s.runSeconds = 0.1;
+    expect(autoRecycleDue(s)).toBe(true);
+    s.autoRecycle.on = false;
+    expect(autoRecycleDue(s)).toBe(false);
+    s.autoRecycle.on = true;
+    s.recycle.nodes = [];
+    expect(autoRecycleDue(s)).toBe(false);
+    s.recycle.nodes = ['a3'];
+    s.runTrash = D(0);
+    expect(autoRecycleDue(s)).toBe(false);
+  });
+
+  it('peak: follows a drop before ten seconds without an artificial delay', () => {
+    const s = ready();
+    s.scripts.recycleMode = 'peak';
+    s.runSeconds = 1;
+    s.autobuy = false;
+    runScripts(s, 0, never);
+    expect(autoRecycleDue(s)).toBe(false);
+    s.runSeconds = 2;
+    expect(autoRecycleDue(s)).toBe(true);
+    s.scripts.recycleMode = 'time';
+    s.scripts.recycleMinutes = 1;
+    expect(autoRecycleDue(s)).toBe(false);
+  });
+
   it('time: after the chosen run length', () => {
     const s = ready();
     s.scripts.recycleMode = 'time';

@@ -638,7 +638,7 @@ export const autoRecycleAt = (state: GameState) => state.recycle.total.mul(state
 
 /** Whether the auto-recycler should recycle now. */
 export function autoRecycleDue(state: GameState): boolean {
-  if (!state.autoRecycle.on || !scriptOwned(state, 'recycle') || state.runSeconds < 10) return false;
+  if (!state.autoRecycle.on || !scriptOwned(state, 'recycle')) return false;
   const gain = currentGain(state);
   if (gain.lte(0)) return false;
   const sc = state.scripts;
