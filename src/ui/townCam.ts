@@ -203,24 +203,25 @@ export class TownCam extends Camera<TownView> {
     for (const sp of this.spots) if (sp.type === 'river') this.water(sp);
 
     const growthTime = this.reducedMotion ? 0 : this.t;
-    drawTownGrowthLinks(ctx, this.spots, v.owned, v.development, growthTime);
     for (const sp of this.spots) if (sp.type === 'river' && v.owned.includes(sp.id)) drawDevelopedSpot(ctx, sp, v.development);
 
     // The districts, far to near; the pit's red light on everything around it.
     for (const sp of this.spots) {
       if (sp.type === 'river') continue;
       if (sp.type === 'pit') {
-        this.pit(sp, v.owned.includes('pit'), inhaling);
+        if (v.development === 0) this.pit(sp, v.owned.includes('pit'), inhaling);
         continue;
       }
       const owned = v.owned.includes(sp.id);
       const burial = this.burials.find((b) => b.id === sp.id);
-      if (!owned || burial) this.district(sp, dark, v.people, inhaling, pit);
+      this.district(sp, dark, v.people, inhaling, pit);
       if (owned) {
-        this.heap(sp, burial ? Math.min(1, burial.t / (BURY * 0.75)) : 1, burial?.t ?? BURY);
+        this.heap(sp, (burial ? Math.min(1, burial.t / (BURY * 0.75)) : 1) * (v.development > 0 ? .25 : .6), burial?.t ?? BURY);
         drawDevelopedSpot(ctx, sp, v.development);
       }
     }
+    drawTownGrowthLinks(ctx, this.spots, v.owned, v.development, growthTime);
+    if (v.development > 0) this.pit(pit, v.owned.includes('pit'), inhaling);
     drawTownGrowthIntake(ctx, this.spots, v.owned, v.development, growthTime);
     ctx.globalCompositeOperation = 'lighter';
     const rim = ctx.createRadialGradient(pit.x, pit.y, 0, pit.x, pit.y, w * 0.4);

@@ -1236,7 +1236,7 @@ button { font: inherit; color: inherit; }
 /* Cameras on the other tabs: a lower strip than camera 01. */
 .feed.cam { height: 160px; margin-bottom: 4px; }
 .feed.cam.plant { height: 210px; }
-.feed.cam.town { height: 230px; }
+.feed.cam.town { height: 260px; }
 .s-income { color: var(--mid); font-size: 12px; line-height: 1.4; }
 .s-level-gain { font-size: 10px; color: var(--glow); text-transform: none; }
 
@@ -1842,8 +1842,8 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .c-plan-hint { margin: 0; color: var(--mid); font-size: 11px; }
 .c-people { font-size: 10px; color: var(--mid); margin: 4px 0; }
 .c-neighbours { color: var(--amber); font-size: 11px; line-height: 1.5; }
-.c-reform-details, .c-effect-details, .c-camera-details { border-top: 1px solid var(--line); }
-.c-reform-details > summary, .c-effect-details > summary, .c-camera-details > summary { min-height: 44px; padding: 12px 0; cursor: pointer; font-size: 12px; }
+.c-reform-details, .c-effect-details { border-top: 1px solid var(--line); }
+.c-reform-details > summary, .c-effect-details > summary { min-height: 44px; padding: 12px 0; cursor: pointer; font-size: 12px; }
 .c-reform-summary.ready { color: var(--amber); }
 .c-effect-details .c-effects { padding-bottom: 10px; }
 .c-archive-link { min-height: 44px; font-size: 12px; color: var(--mid); }
@@ -1851,7 +1851,6 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .j-city-letter > summary { min-height: 44px; padding: 12px 0; cursor: pointer; font-size: 12px; color: var(--glow); }
 
 .c-card { scroll-margin-bottom: 92px; }
-.c-camera-details:not([open]) > .feed { display: none; }
 
 /* Trial terminal treatment; the existing classic switch restores the original look. */
 #app:not(.classic-ui) { --bg: #080f0b; --panel: #0c1911; --line: #263d2f; --mid: #8fae98; --glow: #b1d9bb; --amber: #c5ac72; --glow-shadow: 0 0 5px rgb(140 190 153 / .15); background: var(--bg); }

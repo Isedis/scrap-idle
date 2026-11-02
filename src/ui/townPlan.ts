@@ -168,6 +168,7 @@ export class TownPlan {
         ctx.globalAlpha = development > 0 ? .55 : 1;
         this.heap(cell, i, d.type === 'dump', development);
         ctx.globalAlpha = 1;
+        if (development === 0) this.glyph(d.type, cx, cy, w * .045, .7);
       }
       else this.glyph(d.type, cx, cy, w * 0.05, 1);
       ctx.restore();
@@ -179,7 +180,7 @@ export class TownPlan {
       ctx.globalAlpha = 1;
     });
 
-    drawCityGrowth(ctx, w, shapes, city, development, this.t);
+    drawCityGrowth(ctx, w, shapes, city, development, this.t, (type,x,y,size)=>this.glyph(type,x,y,size,1));
     this.drawFog(shapes, seen, pitIndex);
     // The pit goes over the fog: everyone in town knows where it is.
     this.abyss(shapes[pitIndex], S([DISTRICTS[pitIndex].x, DISTRICTS[pitIndex].y]), city.owned.includes('pit'));

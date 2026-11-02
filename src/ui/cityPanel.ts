@@ -46,7 +46,6 @@ export class CityPanel {
   private archiveLink!: HTMLButtonElement;
   private reformSummary!: HTMLElement;
   private neighbours!: HTMLElement;
-  private cameraDetails!: HTMLDetailsElement;
   private reformText!: HTMLElement;
   private reformButton!: HTMLButtonElement;
   private armed = 0;
@@ -152,10 +151,9 @@ export class CityPanel {
     reformDetails.append(reform);
     const effectDetails = el('details', 'c-effect-details');
     effectDetails.append(el('summary', '', 'Все бонусы города'), this.effects);
-    this.cameraDetails = el('details', 'c-camera-details');
-    this.cameraDetails.append(el('summary', '', 'КАМ-08 · посмотреть город'), this.camera.root);
-    this.openPart.append(this.card, this.descent, reformDetails, effectDetails, this.archiveLink, this.cameraDetails);
+    this.openPart.append(this.card, this.descent, reformDetails, effectDetails, this.archiveLink);
     this.root.append(
+      this.camera.root,
       head,
       el('p', 'c-plan-hint', 'Выберите квартал на границе свалки'),
       this.locked,
@@ -288,7 +286,7 @@ export class CityPanel {
   /** Every frame while the view is on screen: the camera and the plan. */
   frame(dt: number, state: GameState): void {
     const city = state.city;
-    if (this.cameraDetails.open) this.camera.update(dt, { owned: city.owned, selected: this.plan.selected, people: peopleLeft(city) / TOWN_PEOPLE, development: city.development });
+    this.camera.update(dt, { owned: city.owned, selected: this.plan.selected, people: peopleLeft(city) / TOWN_PEOPLE, development: city.development });
     this.plan.draw(dt, city);
   }
 
