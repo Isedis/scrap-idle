@@ -198,6 +198,7 @@ describe('reform', () => {
     s.city.owned.push('prom1', 'zavod');
     s.city.points = D(7);
     s.city.total = D(30);
+    s.city.development = 1;
     s.city.reforms = 2;
     const back = deserialize(serialize(s))!;
     expect(back.city).toEqual(s.city);

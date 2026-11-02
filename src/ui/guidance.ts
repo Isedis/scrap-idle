@@ -3,7 +3,7 @@ import { D, format } from '../game/num';
 import { PRODUCERS } from '../game/producers';
 import { RECYCLE_AT } from '../game/layers';
 import { SORT_AT, sortNeed } from '../game/sorting';
-import { CITY_OPEN_SORTS, REFORM_SORTS, DISTRICTS, canAnnex, canDevelop } from '../game/city';
+import { CITY_OPEN_SORTS, REFORM_SORTS, DISTRICTS, canAnnex } from '../game/city';
 import { ABOVE_SCRIPTS, AUTO_OPEN, CONTAINERS, EPOCHS, TOOLS, autoOpens, canOpen, meltCost, toolCost, umeOpen, EQUIPMENT, borerCost, depthTarget, objectReady } from '../game/bottom';
 import { scriptById } from '../game/scripts';
 import { canDescend, canRecycle, canResort, canReform, currentGain, resortGain, reformGainOf, type GameState } from '../game/state';
@@ -19,7 +19,6 @@ export function nextGoal(s: GameState): Goal {
   if (s.city.open && DISTRICTS.some((d) => canAnnex(s.city, d.id))) {
     return { ...goal('Город: хватает гектаров на новый квартал', 'city'), ready: true };
   }
-  if (canDevelop(s.city)) return { ...goal('Город: доступен новый уровень развития', 'city'), ready: true };
   if (canReform(s)) return { ...goal(`Реформа доступна: +${format(reformGainOf(s))} га`, 'city'), ready: true };
   if (canResort(s)) return { ...goal(`Пересортировка доступна: +${format(resortGain(s))} фракций`, 'sorting'), ready: true };
   if (s.sorting.open) {

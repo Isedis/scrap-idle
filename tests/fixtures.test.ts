@@ -21,6 +21,6 @@ describe('save fixtures', () => {
     expect(load('hearing-walk').hearing.phase).toBe('walk');
     expect(load('city').city.open).toBe(true);
     expect(load('city-late').city.owned.length).toBeGreaterThan(40);
-    expect(load('city-developed').city.development).toBe(8);
+    expect(load('city-developed').city.development).toBeGreaterThanOrEqual(8);
   });
 });

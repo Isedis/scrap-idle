@@ -80,7 +80,7 @@ import {
 } from './sorting';
 import { REPEATS } from './layers';
 import { HOLD_SECONDS, afterLoss, hearingTick, newHearing, noiseMult, type HearingState } from './hearing';
-import { rememberCity, CITY_OPEN_SORTS, REFORM_SORTS, cityEffects, schoolScripts, newCity, reformGain, type CityState } from './city';
+import { rememberCity, syncDevelopment, CITY_OPEN_SORTS, REFORM_SORTS, cityEffects, schoolScripts, newCity, reformGain, type CityState } from './city';
 import { startHeap, aboveIncome, autoOpen, bottomTick, fallPerMinute, newBottom, type BottomState } from './bottom';
 import {
   FIRST_EVENT_SECONDS,
@@ -930,6 +930,7 @@ export function reform(state: GameState): Decimal {
   const city = state.city;
   city.points = city.points.add(gain);
   city.total = city.total.add(gain);
+  syncDevelopment(city);
   city.reforms += 1;
   const fx = cityEffects(city);
 
@@ -984,7 +985,7 @@ export function descend(state: GameState): boolean {
   state.sorting = sorting;
   state.recycle = newLayer();
   rememberCity(state.story, state.city);
-  state.city = { ...newCity(), development: state.city.development, pitOpened: true };
+  state.city = { ...newCity(), development: state.city.development, total: state.city.total, pitOpened: true };
   state.scripts = resetScripts(state.scripts);
   state.tracks = {};
   state.compacted = 0;

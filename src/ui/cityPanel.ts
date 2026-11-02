@@ -18,7 +18,7 @@ import {
   visible,
   strength,
   cityArchive,
-  canDevelop, developCity, developmentCost, developmentIncome, developmentOpen, developmentStage,
+  developmentThreshold, developmentIncome, developmentStage,
 } from '../game/city';
 import { D, format } from '../game/num';
 import { canReform, reformGainOf, type GameState } from '../game/state';
@@ -59,7 +59,8 @@ export class CityPanel {
   private growth!: HTMLElement;
   private growthTitle!: HTMLElement;
   private growthText!: HTMLElement;
-  private growthButton!: HTMLButtonElement;
+  private growthProgress!: HTMLProgressElement;
+  private growthTotal!: HTMLElement;
 
   constructor(
     private getState: () => GameState,
@@ -67,7 +68,6 @@ export class CityPanel {
     private onReform: () => void,
     private onDescend: () => void,
     private onArchive: () => void,
-    private onDevelopment: () => void,
   ) {
     this.root = el('section', 'panel city');
     this.plan = new TownPlan(() => {
@@ -103,15 +103,11 @@ export class CityPanel {
     this.growth = el('div', 'c-development');
     this.growthTitle = el('div', 'c-card-title');
     this.growthText = el('div', 'c-card-text');
-    this.growthButton = el('button', 'btn c-development-buy');
-    this.growthButton.type = 'button';
-    this.growthButton.id = 'city-develop';
-    this.growthButton.addEventListener('click', () => {
-      if (!developCity(this.getState().city)) return;
-      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) this.growth.animate([{ opacity: .6 }, { opacity: 1 }], { duration: 250 });
-      this.onDevelopment();
-    });
-    this.growth.append(this.growthTitle, this.growthText, this.growthButton);
+    this.growthProgress = el('progress', 'c-development-progress');
+    this.growthProgress.max = 1;
+    this.growthProgress.setAttribute('aria-label', 'До следующего уровня развития города');
+    this.growthTotal = el('div', 'c-card-text');
+    this.growth.append(this.growthTitle, this.growthText, this.growthProgress, this.growthTotal);
 
     const reformDetails = el('details', 'c-reform-details');
     this.reformSummary = el('summary', 'c-reform-summary');
@@ -215,15 +211,12 @@ export class CityPanel {
     this.meta.textContent = `${format(city.points)} га`;
     this.growth.hidden = !city.open && city.development === 0;
     this.growthTitle.textContent = `Развитие · ур.${format(D(city.development))} · ${developmentStage(city.development)}`;
-    this.growthText.textContent = !city.open
-      ? 'Развитие сохранено. Откройте город снова для новых покупок.'
-      : !developmentOpen(city)
-        ? 'Для развития сначала присоедините три квартала.'
-        : `Доход ×${format(developmentIncome(city))}. Каждый уровень — ещё ×1.10 и новые сооружения. Сохраняется после спуска.`;
-    const developmentPrice = developmentCost(city);
-    this.growthButton.textContent = `Развить город · ${format(developmentPrice)} га`;
-    this.growthButton.disabled = !canDevelop(city);
-    this.growthButton.style.setProperty('--p', String(progress(city.points, developmentPrice)));
+    this.growthText.textContent = `Доход ×${format(developmentIncome(city))}. Уровни растут от всех заработанных гектаров — они не тратятся. Прогресс сохраняется после спуска.`;
+    const next = developmentThreshold(city.development + 1);
+    const start = developmentThreshold(city.development);
+    this.growthProgress.value = progress(city.total.sub(start).max(0), next.sub(start));
+    this.growthProgress.setAttribute('aria-valuetext', `До следующего уровня ещё ${format(next.sub(city.total).max(0))} га`);
+    this.growthTotal.textContent = `Заработано за игру: ${format(city.total)} га · до ур.${city.development + 1}: ещё ${format(next.sub(city.total).max(0))} га`;
     this.people.textContent = `Под свалкой ${streetsOwned(city)}/${STREETS} кварталов · жителей ${peopleLeft(city).toLocaleString('ru-RU')}`;
 
     // The picked district.

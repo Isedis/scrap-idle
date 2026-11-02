@@ -233,7 +233,7 @@ export interface CityState {
   /** Hectares over the whole game. */
   total: Decimal;
   reforms: number;
-  /** Permanent development bought for hectares, retained when the town resets. */
+  /** Permanent development earned from lifetime hectares; retained when the town resets. */
   development: number;
   pitOpened: boolean;
   /** Districts the landfill holds, in the order taken; the landfill itself first. */
@@ -247,19 +247,17 @@ export const CITY_OPEN_SORTS = 5;
 /** Resorts the reform itself needs. */
 export const REFORM_SORTS = 7;
 
-/** Development is optional: it never gates district annexation or the descent. */
-export const DEVELOPMENT_BASE_COST = 25;
-export const DEVELOPMENT_COST_STEP = 1.7;
+/** Lifetime thresholds: 25, 62.5, 118.75... Hectares are never spent here. */
 export const DEVELOPMENT_INCOME_STEP = 1.1;
-export const developmentCost = (city: CityState) => D(DEVELOPMENT_BASE_COST).mul(Decimal.pow(DEVELOPMENT_COST_STEP, city.development)).ceil();
+export const developmentThreshold = (level: number) => D(50).mul(Decimal.pow(1.5, level).sub(1));
 export const developmentIncome = (city: CityState) => Decimal.pow(DEVELOPMENT_INCOME_STEP, city.development);
-export const developmentOpen = (city: CityState) => city.open && (city.owned.length >= 4 || city.development > 0);
-export const canDevelop = (city: CityState) => developmentOpen(city) && Number.isSafeInteger(city.development + 1) && city.points.gte(developmentCost(city));
-export function developCity(city: CityState): boolean {
-  if (!canDevelop(city)) return false;
-  city.points = city.points.sub(developmentCost(city));
-  city.development += 1;
-  return true;
+export function syncDevelopment(city: CityState): void {
+  let earned = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER,
+    Math.floor(city.total.div(50).add(1).log(1.5).toNumber())));
+  // Correct logarithm rounding against the actual Decimal threshold.
+  if (earned > 0 && city.total.lt(developmentThreshold(earned))) earned--;
+  if (earned < Number.MAX_SAFE_INTEGER && city.total.gte(developmentThreshold(earned + 1))) earned++;
+  city.development = Math.max(city.development, earned);
 }
 
 export function developmentStage(level: number): string {

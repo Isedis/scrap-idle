@@ -391,7 +391,6 @@ export class App {
       () => this.doReform(),
       () => this.doDescend(),
       () => { this.show('journal'); this.journalPanel.openCityArchive(this.getState()); },
-      () => { this.sound.click(); this.render(); },
     );
     this.bottomPanel = new BottomPanel(this.getState, (message, loud) => {
       if (message) this.sound.click();
