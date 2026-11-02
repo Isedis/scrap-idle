@@ -1,6 +1,6 @@
 import { coveredNodes, coveredRecipes } from './capabilities';
 import { D, Decimal } from './num';
-import { affordableLineRecipes, assembleLine, lineRecipe } from './linePlanner';
+import { affordableLineRecipes, assembleLine, lineRecipe, lineReserves } from './linePlanner';
 import { PRODUCERS, affordableCount, costOf, costOfMany, milestonesReached, producerById } from './producers';
 import { UPGRADES, upgradeById, type UpgradeDef } from './upgrades';
 import {
@@ -1018,10 +1018,10 @@ export function autoLine(state: GameState): string | null {
   const so = state.sorting;
   if (!so.open) return null;
   const covered = coveredRecipes(state);
-  const recipe = affordableLineRecipes(so, covered)[0];
+  const recipe = state.scripts.lineBuild ? lineRecipe(so, covered) : affordableLineRecipes(so, covered)[0];
   if (recipe && buyRecipe(so, recipe.id, covered)) return recipe.name;
   if (state.scripts.lineBuild && assembleLine(so, covered)) return 'лента: автосборка';
-  const reserve = state.scripts.lineBuild ? lineRecipe(so, covered)?.cost : undefined;
+  const reserve = state.scripts.lineBuild ? lineReserves(so, covered) : undefined;
   const slots = slotCount(so);
   const onLine = so.line.slice(0, slots);
   const levels = onLine

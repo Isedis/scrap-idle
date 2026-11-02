@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assembleLine, lineRecipe, planLine } from '../src/game/linePlanner';
+import { assembleLine, lineRecipe, planLine, stockTargets, lineReserves } from '../src/game/linePlanner';
 import { FRACS, RECIPES, STATIONS, newSorting, runLine, slotCount, stationById, stationOpen } from '../src/game/sorting';
 import { D } from '../src/game/num';
 import { autoLine, newGame, runScripts } from '../src/game/state';
@@ -28,7 +28,64 @@ describe('automatic belt construction', () => {
     const r = runLine(line, s.levels);
     expect(r.caught.metal).toBeGreaterThan(0);
     expect(r.caught.paper).toBeGreaterThan(0);
-    expect(line.indexOf('briquetter')).toBe(line.length - 1);
+    expect(line).not.toContain('briquetter');
+    expect(line.filter(id => stationById(id)!.frac)).toHaveLength(3);
+  });
+
+  it('rotates two collectors until all four fractions have a working stock', () => {
+    const s = automatic();
+    s.sorting.line = ['optic', 'blower'];
+    const seen = new Set<string>();
+    for (let tick = 0; tick < 250; tick++) {
+      autoLine(s);
+      const caught = runLine(s.sorting.line, s.sorting.levels).caught;
+      for (const f of FRACS) {
+        if (caught[f] > 0) seen.add(f);
+        s.sorting.fractions[f] = s.sorting.fractions[f].add(caught[f] * 10);
+      }
+      if (seen.size === 4) break;
+    }
+    expect([...seen].sort()).toEqual([...FRACS].sort());
+  });
+
+  it('holds an unfinished batch instead of switching collectors every tick', () => {
+    const s = newSorting();
+    s.open = true;
+    const first = planLine(s);
+    for (let tick = 0; tick < 20; tick++) {
+      const caught = runLine(first, s.levels).caught;
+      for (const f of FRACS) s.fractions[f] = s.fractions[f].add(caught[f] * 0.01);
+      expect(planLine(s)).toEqual(first);
+    }
+  });
+
+  it('keeps all material collectors at four slots, then adds supports without displacing them', () => {
+    const s = newSorting();
+    s.recipes = ['l1', 'l2', 'l3', 'l4'];
+    s.fractions.plastic = D('1e9');
+    s.fractions.paper = D('1e9');
+    for (const recipe of [null, 'l5', 'l6']) {
+      if (recipe) s.recipes.push(recipe);
+      const line = planLine(s), result = runLine(line, s.levels);
+      for (const f of FRACS) expect(result.caught[f], f).toBeGreaterThan(0);
+      expect(line).toHaveLength(slotCount(s));
+    }
+  });
+
+  it('protects working stocks as well as the priority recipe budget', () => {
+    const s = newSorting();
+    const stock = stockTargets(s), reserve = lineReserves(s);
+    for (const f of FRACS) expect(reserve[f]).toBeGreaterThanOrEqual(stock[f]);
+    expect(reserve.plastic).toBe(150);
+    expect(stock.glass).toBeGreaterThan(0);
+    const state = automatic();
+    state.sorting.recipes = RECIPES.filter(r => r.id !== 'i4').map(r => r.id);
+    state.sorting.line = ['magnet', 'sieve', 'optic', 'blower'];
+    state.sorting.fractions.metal = D(lineReserves(state.sorting).metal + 9);
+    autoLine(state);
+    autoLine(state);
+    expect(state.sorting.levels.magnet?.speed ?? 0).toBe(0);
+    expect(state.sorting.fractions.metal.toNumber()).toBe(lineReserves(state.sorting).metal + 9);
   });
 
   it('only uses unlocked, unique stations within the available slots at every stage', () => {
@@ -73,14 +130,14 @@ describe('automatic belt construction', () => {
 
   it('reserves recipe ingredients instead of buying levels that prevent the unlock', () => {
     const s = automatic();
-    s.sorting.fractions.paper = D(119);
-    expect(lineRecipe(s.sorting)?.id).toBe('i1');
+    s.sorting.fractions.plastic = D(149);
+    expect(lineRecipe(s.sorting)?.id).toBe('l1');
     autoLine(s);
     autoLine(s);
-    expect(s.sorting.fractions.paper.eq(119)).toBe(true);
-    s.sorting.fractions.paper = D(120);
-    expect(autoLine(s)).toBe('Лупа');
-    expect(s.sorting.recipes).toContain('i1');
+    expect(s.sorting.fractions.plastic.eq(149)).toBe(true);
+    s.sorting.fractions.plastic = D(150);
+    expect(autoLine(s)).toBe('Третий слот');
+    expect(s.sorting.recipes).toContain('l1');
   });
 
   it('rebuilds after a new slot opens without a manual placement', () => {
@@ -132,7 +189,7 @@ describe('automatic belt construction', () => {
     expect(s.sorting.recipes).toContain('i1');
     expect(s.sorting.recipes).toContain('l1');
     expect(s.sorting.line).not.toContain(null);
-    expect(FRACS.some((f) => s.sorting.fractions[f].gt(0))).toBe(true);
+    expect(FRACS.every((f) => s.sorting.fractions[f].gt(0))).toBe(true);
   });
 });
 

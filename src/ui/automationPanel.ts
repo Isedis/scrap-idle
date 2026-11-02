@@ -357,10 +357,10 @@ export class AutomationPanel {
         break;
       }
       case 'line': {
-        box.append(this.choice('Сборка ленты', [[false, 'Ручная'], [true, 'Авто']] as [boolean, string][],
+        box.append(this.choice('Сборка ленты', [[false, 'Только закупки'], [true, 'Полное авто']] as [boolean, string][],
           (s) => s.scripts.lineBuild,
           (s, on) => { s.scripts.lineBuild = on; if (on) s.scripts.lineOn = true; }));
-        box.append(el('div', 'a-note', 'Авто подбирает станции и порядок под следующий рецепт. Ручная перестановка отключает автосборку.'));
+        box.append(el('div', 'a-note', 'Полное авто поддерживает запас всех фракций, само меняет станции и копит на рецепты. После ручной перестановки остаются только закупки; автосборку можно включить снова.'));
         break;
       }
       case 'light': {

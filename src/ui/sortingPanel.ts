@@ -47,7 +47,7 @@ import {
   type LevelKind,
   type RecipeDef,
   type StationId, ECHO_EVERY } from '../game/sorting';
-import { lineRecipe } from '../game/linePlanner';
+import { linePlanText } from '../game/linePlanner';
 import { sortingAdvice } from '../game/advice';
 import { BeltCam } from './beltCam';
 import { canResort, ratePerSecond, scriptOwned, resortGain, resortShares, type GameState } from '../game/state';
@@ -241,7 +241,7 @@ export class SortingPanel {
     const modes = el('div', 'modes s-tabs');
     modes.setAttribute('role', 'group');
     modes.setAttribute('aria-label', 'Сборка ленты');
-    for (const [auto, label] of [[false, 'Ручная'], [true, 'Авто']] as const) {
+    for (const [auto, label] of [[false, 'Только закупки'], [true, 'Полное авто']] as const) {
       const button = el('button', 'mode', label);
       button.type = 'button';
       button.id = auto ? 'line-build-auto' : 'line-build-manual';
@@ -577,6 +577,7 @@ export class SortingPanel {
       this.closedBar.textContent = `${textBar(p)} ${format(state.recycle.total)} / ${format(SORT_AT)}`;
       return;
     }
+    this.now.classList.toggle('s-now-auto', state.scripts.lineOn && state.scripts.lineBuild && scriptOwned(state, 'line'));
     this.now.textContent = sortingAdvice(state);
     this.meta.textContent = `пересортировок ${so.sorts} · доход ×${format(sortingIncome(so))}`;
     const rates = lineRates(so, ratePerSecond(state));
@@ -609,11 +610,9 @@ export class SortingPanel {
     const so = state.sorting;
     this.lineBuildControls.hidden = !scriptOwned(state, 'line');
     for (const [auto, button] of this.lineBuildButtons) button.setAttribute('aria-pressed', String(state.scripts.lineBuild === auto));
-    const target = state.scripts.lineBuild ? lineRecipe(so, coveredRecipes(state)) : undefined;
     this.lineBuildNote.textContent = !state.scripts.lineOn ? 'Наладчик выключен. Автосборка приостановлена.'
-      : !state.scripts.lineBuild ? 'Ручная схема. Наладчик покупает улучшения, не меняя станции.'
-      : target ? `Наладчик подбирает станции и копит фракции на «${target.name}».`
-      : 'Наладчик подбирает порядок для общего выхода фракций.';
+      : !state.scripts.lineBuild ? 'Ручная схема: только закупки. Включите «Полное авто», чтобы Наладчик сам менял станции.'
+      : linePlanText(so, coveredRecipes(state));
     const n = slotCount(so);
     const sig = `${n}|${so.line.slice(0, n).join()}|${so.recipes.join()}|${JSON.stringify(so.levels)}`;
     // The list is rebuilt under the finger that just bought a level: the page must not move.

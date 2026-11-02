@@ -1,6 +1,6 @@
 import { coveredNodes, coveredRecipes } from './capabilities';
 import { D, format } from './num';
-import { lineRecipe } from './linePlanner';
+import { linePlanText } from './linePlanner';
 import { NODES, RECYCLE_AT, canBuyNode, hasNode, isNodeOpen } from './layers';
 import {
   FRACS,
@@ -60,9 +60,7 @@ export function sortingAdvice(state: GameState): string {
   const so = state.sorting;
   if (!so.open) return `Заработай ${format(SORT_AT)} вторсырья за один цикл переработки — и линия запустится.`;
   if (state.scripts.lineOn && state.scripts.lineBuild && scriptOwned(state, 'line')) {
-    const target = lineRecipe(so, coveredRecipes(state));
-    return target ? `Наладчик подбирает ленту и копит фракции на «${target.name}».`
-      : 'Наладчик улучшает линию. Ручная перестановка отключит автосборку.';
+    return linePlanText(so, coveredRecipes(state));
   }
   const empty = Array.from({ length: slotCount(so) }, (_, i) => so.line[i] ?? null).indexOf(null);
   if (empty >= 0) return `На ленте пустое место №${empty + 1} — поставь туда станцию.`;

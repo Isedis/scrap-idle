@@ -1959,3 +1959,7 @@ html, body { overflow: hidden; }
 .track .buy-price { width: 100%; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
 .track .p-rate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .p-track-status { height: 2.9em; font-size: 10px; color: var(--mid); overflow: hidden; }
+
+.s-line-build .a-note { height: 64px; overflow-y: auto; font-size: 11px; line-height: 1.45; }
+
+.sorting .s-now-auto { height: 96px; overflow-y: auto; }
