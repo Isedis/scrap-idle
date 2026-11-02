@@ -333,34 +333,45 @@ export class BottomPanel {
 
     this.collection = el('div', 'b-collection');
 
-    const section = (title: string) => {
-      const h = el('div', 'panel-head');
-      h.append(el('h2', 'panel-title', title));
-      return h;
+    const section = (title: string, className: string, open: boolean, ...children: HTMLElement[]) => {
+      const group = el('details', `b-section ${className}`);group.open=open;
+      group.append(el('summary', '', title),...children);return group;
     };
+    const containers = section('Запас контейнеров','b-containers',false,crates,this.finds);
+    const machines = section('Оборудование','b-machinery',true,equipment);
+    const instruments = section('Инструменты Игнатьева','b-tools',true,tools);
+    const melting = section('Переплавка','b-melting',false,ladder);
+    const scripts = section('Постоянные скрипты наверху','b-above',false,el('p','s-why','Скрипты для заново начатой игры наверху.'),above);
+    const collection = section('Коллекция','b-archive',false,this.collection);
+    this.updaters.push(s=>{
+      const count=CONTAINERS.reduce((sum,c)=>sum+s.bottom.stock[c.id],0);
+      containers.querySelector('summary')!.textContent=`Запас контейнеров · ${format(D(count))} ждут`;
+      collection.querySelector('summary')!.textContent=`Коллекция · ${Object.keys(s.bottom.found).filter(id=>s.bottom.found[id]>0).length}/${ITEMS.length}`;
+    });
+    const shortcuts=el('nav','b-shortcuts');shortcuts.setAttribute('aria-label','Разделы шахты');
+    for(const [label,group] of [['Вскрытие',containers],['Переплавка',melting],['Коллекция',collection]] as const){
+      const button=el('button','btn',label);button.type='button';button.addEventListener('click',()=>{
+        group.open=true;const summary=group.querySelector('summary')!;summary.focus({preventScroll:true});
+        (group===containers?openingHead:summary).scrollIntoView({block:'start'});
+      });shortcuts.append(button);
+    }
     this.root.append(
       this.camera.root,
       head,
       this.operation,
+      shortcuts,
       supplyDetails,
       wallet,
+      saving,
+      machines,
+      instruments,
       openingHead,
       this.stripWindow,
       this.result,
-      crates,
-      this.finds,
-      saving,
-      section('Оборудование'),
-      equipment,
-      section('Инструменты Игнатьева'),
-      tools,
-      section('Переплавка'),
-      ladder,
-      section('Наверху'),
-      el('p', 's-why', 'Скрипты для заново начатой игры наверху.'),
-      above,
-      section('Коллекция'),
-      this.collection,
+      containers,
+      melting,
+      scripts,
+      collection,
     );
   }
 

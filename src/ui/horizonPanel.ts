@@ -1,5 +1,5 @@
 import { format } from '../game/num';
-import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, buyMachine, connectHorizon, buildTargets, type Machine, type BuildMode } from '../game/horizon';
+import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, productionPlan, buyMachine, connectHorizon, buildTargets, type Machine, type BuildMode } from '../game/horizon';
 import type { GameState } from '../game/state';
 import { el } from './dom';
 import { HorizonCam } from './horizonCam';
@@ -26,6 +26,8 @@ export class HorizonPanel {
   private history = el('select', 'h-select');
   private lock = el('select', 'h-select');
   private production = el('div', 'h-machines');
+  private investment = el('p', 'h-note h-investment');
+  private investAuto = el('button', 'btn h-invest-auto');
   private machineRows = new Map<Machine, { text: HTMLElement; buy: HTMLButtonElement }>();
   private options: { input: HTMLInputElement; key: 'autoBuild' | 'autoBuy' | 'smart' | 'reserveUme' }[] = [];
   private connections = el('div', 'h-connections');
@@ -74,7 +76,9 @@ export class HorizonPanel {
       const row=el('div','h-machine');const text=el('div','');const buy=el('button','btn');buy.type='button';buy.setAttribute('aria-label',`Улучшить: ${name}`);
       buy.addEventListener('click',()=>{if(buyMachine(this.getState().horizon,id))this.onChange();});row.append(text,buy);this.production.append(row);this.machineRows.set(id,{text,buy});
     }
-    machines.append(this.production);
+    this.investAuto.type='button';this.investAuto.addEventListener('click',()=>{const h=this.getState().horizon;h.autoBuy=!h.autoBuy;this.onChange();});
+    const investing=el('details','h-invest-why');investing.append(el('summary','','Зачем вкладываться'),el('p','h-note','Выпуск равен меньшей мощности транспорта и переработки. При равенстве нужны оба улучшения: первое создаёт запас мощности, второе увеличивает выпуск. Улучшения сохраняются между залами. Автопокупка тратит КМ на развитие, поэтому текущий монтаж может идти медленнее.'));
+    machines.append(this.investment,this.investAuto,this.production,investing);
     const connections=el('details','h-connections-details');connections.append(el('summary','','Помощь прежних слоёв'));
     for(const [id,label] of [['frame','Усиленная рама · 100 лома · монтаж +10%'],['conductor','Проводник · 40 цветмета · линия +10%']] as const){
       const b=el('button','btn',label);b.type='button';b.addEventListener('click',()=>{const s=this.getState();if(connectHorizon(s.horizon,s.bottom,id))this.onChange();});this.connections.append(b);this.connectionRows.set(id,b);
@@ -116,9 +120,12 @@ export class HorizonPanel {
     this.modes.querySelectorAll('button').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.mode===h.mode));
     this.gate.hidden=!gateReady(h);this.gate.textContent=s.bottom.ume.lt(1)?'ЗА УМЕ В ШАХТУ →':'ОТКРЫТЬ · 1 УМЕ';
     const names={transport:'Транспорт',processing:'Переработка',assembly:'Монтаж'};
+    const plan=productionPlan(h,s.city);
+    this.investment.textContent=plan?`Следующий рост выпуска: ${plan.machines.map(id=>names[id].toLowerCase()).join(' + ')} · ${format(plan.cost)} КМ → +${format(plan.gain)} КМ/мин.${plan.machines.length>1?' Цена за оба звена.':''}`:'Следующий прирост выпуска недоступен при текущих уровнях.';
+    this.investAuto.textContent=`АВТОПОКУПКА: ${h.autoBuy?'ВКЛ':'ВЫКЛ'}`;this.investAuto.setAttribute('aria-pressed',String(h.autoBuy));
     for(const [id,row] of this.machineRows){
       const old=r.production;const next=horizonRates({...h, levels:{...h.levels,[id]:h.levels[id]+1}},s.city);
-      const gain=id==='assembly'?`монтаж +${format(next.assembly.sub(r.assembly))} КМ/мин`:`выпуск +${format(next.production.sub(old))} КМ/мин`;
+      const gain=id==='assembly'?`монтаж +${format(next.assembly.sub(r.assembly))} КМ/мин`:next.production.gt(old)?`выпуск +${format(next.production.sub(old))} КМ/мин`:`запас мощности · выпуск ограничивает ${id==='transport'?'переработка':'транспорт'}`;
       row.text.textContent=`${names[id]} · ур.${h.levels[id]} · ${format(r[id])} КМ/мин · ${gain}`;
       row.buy.textContent=`${format(machineCost(h,id))} КМ`;row.buy.disabled=h.points.lt(machineCost(h,id));
     }
@@ -132,5 +139,12 @@ export class HorizonPanel {
   frame(dt:number,s:GameState):void {
     if(!s.horizon.open)return;
     this.camera.update(dt,{state:s.horizon,hall:this.viewedHall>=0?this.viewedHall:s.horizon.opened,selected:this.inspected??buildTargets(s.horizon)[0]??s.horizon.selected});
+  }
+  focusAssemblyControls(): void {
+    const h=this.getState().horizon;
+    const target=h.autoBuild?this.modes:this.root.querySelector<HTMLElement>('.h-settings')!;
+    if(target instanceof HTMLDetailsElement)target.open=true;
+    const control=target.querySelector<HTMLElement>('button, input');
+    control?.focus({preventScroll:true});target.scrollIntoView({block:'center'});
   }
 }

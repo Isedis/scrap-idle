@@ -3,10 +3,31 @@ import { D } from '../src/game/num';
 import { newGame, advance, reform } from '../src/game/state';
 import { serialize, deserialize } from '../src/game/save';
 import { melt, pressure, supplyRate } from '../src/game/bottom';
-import { HALLS, newHorizon, enterHorizon, canEnterHorizon, openGate, nodeCost, horizonRates, horizonTick, buyMachine, gateReady, buildTargets, nodeDone } from '../src/game/horizon';
+import { HALLS, newHorizon, enterHorizon, canEnterHorizon, openGate, nodeCost, horizonRates, horizonTick, buyMachine, gateReady, buildTargets, nodeDone, productionPlan } from '../src/game/horizon';
 
 const readyState=()=>{const s=newGame(0);s.bottom.open=true;s.bottom.dug=22000;s.bottom.equipment.borer=1;s.bottom.umeMade=D(1);s.bottom.ume=D(5);return s;};
 describe('lower horizon',()=>{
+  it('prices both production links when one purchase alone cannot increase output',()=>{
+    const s=readyState(),h=s.horizon;enterHorizon(h,s.bottom);
+    const before=serialize(s),plan=productionPlan(h,s.city)!;
+    expect(plan.machines).toEqual(['transport','processing']);
+    expect(plan.cost.eq(50)).toBe(true);expect(plan.gain.eq(2)).toBe(true);
+    expect(serialize(s)).toBe(before);
+    h.points=plan.cost;const output=horizonRates(h,s.city).production;
+    for(const machine of plan.machines)expect(buyMachine(h,machine)).toBe(true);
+    expect(h.points.eq(0)).toBe(true);expect(horizonRates(h,s.city).production.sub(output).eq(plan.gain)).toBe(true);
+    h.levels.transport++;
+    const next=productionPlan(h,s.city)!;expect(next.machines).toEqual(['processing']);
+    h.points=next.cost;const old=horizonRates(h,s.city).production;
+    expect(buyMachine(h,'processing')).toBe(true);expect(horizonRates(h,s.city).production.sub(old).eq(next.gain)).toBe(true);
+  });
+  it('accounts for external link bonuses and numerical level limits in investment advice',()=>{
+    const s=readyState(),h=s.horizon;h.connections.conductor=true;
+    const plan=productionPlan(h,s.city)!;
+    expect(plan.machines).toEqual(['transport']);expect(plan.gain.toNumber()).toBeCloseTo(.4);
+    h.levels.transport=h.levels.processing=Number.MAX_SAFE_INTEGER;
+    expect(productionPlan(h,s.city)).toBeNull();
+  });
   it('returns from manual work to the queue inside a long tick',()=>{
     const s=readyState(),h=s.horizon;enterHorizon(h,s.bottom);
     h.pinned=true;h.selected=0;h.mode='assembly';

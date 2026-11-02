@@ -676,7 +676,12 @@ export class App {
   }
 
   showAway(report: AwayReport, capped: number | null, then: () => void): void {
-    this.awayScreen.show(report, capped, then, nextGoal(this.getState()).text);
+    this.awayScreen.show(report, capped, then, nextGoal(this.getState()).text, action=>{
+      this.layerView=action==='ume'?'bottom':'horizon';this.show('recycle');this.render();
+      if(action==='ume')this.bottomPanel.focusUmeGoal();
+      else if(action==='assembly')this.horizonPanel.focusAssemblyControls();
+      else {const gate=this.horizonPanel.root.querySelector<HTMLButtonElement>('.h-gate');gate?.focus({preventScroll:true});gate?.scrollIntoView({block:'center'});}
+    });
   }
 
   /** The terminal types a line on its own, letter by letter. */

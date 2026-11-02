@@ -62,6 +62,16 @@ export function horizonRates(h: HorizonState, city: CityState) {
   return { transport, processing, assembly, production: transport.min(processing) };
 }
 export const machineCost = (h: HorizonState, id: Machine) => D(id === 'transport' ? 20 : id === 'processing' ? 30 : 25).mul(Decimal.pow(1.8, h.levels[id])).ceil();
+/** The cheapest next investment that actually increases the bottleneck output. */
+export function productionPlan(h: HorizonState, city: CityState): { machines: Machine[]; cost: Decimal; gain: Decimal } | null {
+  const before = horizonRates(h, city).production;
+  const choices: Machine[][] = [['transport'], ['processing'], ['transport', 'processing']];
+  return choices.filter(machines=>machines.every(id=>Number.isSafeInteger(h.levels[id]+1))).map(machines => {
+    const levels = { ...h.levels };
+    for (const id of machines) levels[id]++;
+    return { machines, cost: machines.reduce((sum, id) => sum.add(machineCost(h, id)), D(0)), gain: horizonRates({ ...h, levels }, city).production.sub(before) };
+  }).filter(plan => plan.gain.gt(0)).sort((a,b) => a.cost.cmp(b.cost))[0] ?? null;
+}
 const canAfford = (balance: Decimal, cost: Decimal) => balance.gte(cost.mul(1 - 1e-12));
 export function buyMachine(h: HorizonState, id: Machine): boolean {
   const cost = machineCost(h, id);

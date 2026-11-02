@@ -30,7 +30,7 @@ export class AwayScreen {
     this.root.append(box);
   }
 
-  show(r: AwayReport, capped: number | null, onClose: () => void, goal = ''): void {
+  show(r: AwayReport, capped: number | null, onClose: () => void, goal = '', resolve?: (action: 'ume' | 'assembly' | 'gate') => void): void {
     this.onClose = onClose;
     const h = Math.floor(r.seconds / 3600), m = Math.floor((r.seconds % 3600) / 60);
     this.title.textContent = `> ВАС НЕ БЫЛО ${h ? `${h} Ч ` : ''}${m} МИН`;
@@ -88,7 +88,15 @@ export class AwayScreen {
     if (r.automation.resorts) resets.push(`Пересортировок: ${r.automation.resorts}`);
     if (resets.length) summary.append(el('p', 'away-brief-note', resets.join(' · ')));
     if (r.finds.length) summary.append(el('p', 'away-brief-note', `На столе новые находки: ${r.finds.length}.`));
-    if (r.horizon.note) summary.append(el('p','away-brief-note',r.horizon.note));
+    if (r.horizon.note&&!r.horizon.attention) summary.append(el('p','away-brief-note',r.horizon.note));
+    if(r.horizon.attention){
+      const attention=r.horizon.attention;
+      summary.append(el('p','away-brief-note away-attention',attention.text));
+      if(resolve){
+        const action=el('button','btn away-resolve',attention.label);action.type='button';
+        action.addEventListener('click',()=>{this.root.hidden=true;this.onClose();resolve(attention.action);});summary.append(action);
+      }
+    }
     if (r.bottom.firstUme) summary.append(el('p', 'away-brief-note', 'В шахте открыта первая УМЕ ×1.'));
     if (r.bottom.site) summary.append(el('p', 'away-brief-note', r.bottom.site));
     if (r.bottom.seamFound) summary.append(el('p', 'away-brief-note', `Жила: +${r.bottom.seamFound} аномалий.`));

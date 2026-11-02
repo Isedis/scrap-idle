@@ -37,11 +37,23 @@ export interface AwayReport {
   balance: { trash: Decimal; recycled: Decimal; fractions: Decimal };
   income: Decimal;
   hearing: 'idle' | 'walk' | 'check' | 'caught';
-  horizon: { gained: Decimal; note: string };
+  horizon: { gained: Decimal; note: string; attention: { text: string; action: 'ume' | 'assembly' | 'gate'; label: string } | null };
   bottom: { firstUme: boolean; site: string; seamFound: number };
 }
 
 const sumFractions = (s: GameState) => s.sorting.total;
+
+/** A single actionable explanation of the current manual stop, not an extra ledger. */
+function horizonAttention(s: GameState): AwayReport['horizon']['attention'] {
+  const h=s.horizon;
+  if(!h.open||h.opened>=HALLS.length)return null;
+  if(gateReady(h))return s.bottom.ume.lt(1)
+    ? {text:'Затвор собран, но ждёт 1 УМЕ из шахты.',action:'ume',label:'ЗА УМЕ В ШАХТУ →'}
+    : {text:'Монтаж завершён. Затвор ждёт ручного открытия.',action:'gate',label:'К ЗАТВОРУ →'};
+  if(!h.autoBuild)return {text:'Монтаж выключен. КМ продолжают копиться.',action:'assembly',label:'К НАСТРОЙКАМ МОНТАЖА →'};
+  if(h.mode==='growth')return {text:'Монтаж на паузе: режим «Рост» копит КМ без сборки.',action:'assembly',label:'К РЕЖИМАМ МОНТАЖА →'};
+  return null;
+}
 
 export function awaySnapshot(s: GameState): AwaySnapshot {
   return { trash: s.trash, totalTrash: s.totalTrash, threat: s.threat.level, fractions: sumFractions(s), news: s.sorting.news.length,
@@ -59,7 +71,7 @@ export function awayReport(before: AwaySnapshot, s: GameState, seconds: number):
     balance: { trash: s.trash, recycled: s.recycle.points, fractions: FRACS.reduce((sum, f) => sum.add(s.sorting.fractions[f]), new Decimal(0)) },
     income: ratePerSecond(s),
     hearing: s.hearing.phase,
-    horizon: { gained: s.horizon.total.sub(before.horizon.total).max(0), note: s.horizon.open && s.horizon.opened < 5 ? gateReady(s.horizon) ? 'Горизонт: затвор готов к открытию' : s.horizon.work.reduce((sum,w)=>sum+w.toNumber(),0) > before.horizon.work ? 'Продолжался монтаж: '+HALLS[s.horizon.opened].name : '' : '' },
+    horizon: { gained: s.horizon.total.sub(before.horizon.total).max(0), note: s.horizon.open && s.horizon.opened < 5 ? gateReady(s.horizon) ? 'Горизонт: затвор готов к открытию' : s.horizon.work.reduce((sum,w)=>sum+w.toNumber(),0) > before.horizon.work ? 'Продолжался монтаж: '+HALLS[s.horizon.opened].name : '' : '', attention: horizonAttention(s) },
     bottom: { firstUme: !before.bottom.firstUme && s.bottom.firstUmeGranted,
       site: site ? `${siteName[site]}: ${Math.floor(s.bottom.objectWork[site])} / ${site === 'hoist' ? 120 : site === 'bench' ? 300 : 600} т${s.bottom.objectWork[site] >= (site === 'hoist' ? 120 : site === 'bench' ? 300 : 600) ? ' · можно запустить' : ''}` : '',
       seamFound: Math.max(0, s.bottom.seamFound - before.bottom.seamFound) },
