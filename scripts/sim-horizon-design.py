@@ -11,7 +11,7 @@ def simulate(label, auto=True, mode="balance", growth_minutes=0):
         transport = 4 * 1.5 ** levels["transport"] * 2 ** hall
         processing = 4 * 1.5 ** levels["processing"] * 2 ** hall
         production = min(transport, processing)
-        assembly = 12 * 1.5 ** levels["assembly"]
+        assembly = 12 * 1.5 ** levels["assembly"] * (1.25 if hall >= 4 else 1)
         target = 280 * 8 ** hall
         current_mode = "growth" if minute <= growth_minutes else mode
         budget = 0 if current_mode == "growth" else production * .5 if current_mode == "balance" else wallet + production
@@ -36,7 +36,7 @@ def simulate(label, auto=True, mode="balance", growth_minutes=0):
             print(f"{label}: gate {hall + 1}, minute {minute}, output {production:.2f}, levels {levels}")
             hall += 1
             built = 0
-            if hall == 3:
+            if hall == 5:
                 return
     print(f"{label}: chapter unfinished after 72 model hours")
 
