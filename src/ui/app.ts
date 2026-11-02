@@ -43,7 +43,7 @@ import { TracksPanel } from './tracksPanel';
 import { AutomationPanel } from './automationPanel';
 import { CityPanel } from './cityPanel';
 import { BottomPanel } from './bottomPanel';
-import { rememberCity, LETTERS, REFORM_SORTS, cityEffects } from '../game/city';
+import { rememberCity, LETTERS, CITY_OPEN_SORTS, REFORM_SORTS, cityEffects } from '../game/city';
 import { SortingPanel } from './sortingPanel';
 import { Intro, SORTING_INTRO } from './intro';
 import { Sound } from './sound';
@@ -269,15 +269,21 @@ export class App {
     this.knownStage = stageIndex(state.threat.level);
     this.knownSortOpen = markSeen ? state.sorting.open : this.announced.unlocks.includes('sorting');
     this.knownCityOpen = markSeen ? state.city.open : this.announced.unlocks.includes('city');
-    if (markSeen && state.sorting.open && !this.announced.unlocks.includes('sorting')) this.announced.unlocks.push('sorting');
-    if (markSeen && state.city.open && !this.announced.unlocks.includes('city')) this.announced.unlocks.push('city');
     if (markSeen) {
+      // Older devices did not store unlock/rank history. Deeper progress proves earlier visits.
+      const descended = state.bottom.open;
+      const townSeen = state.city.open || state.city.reforms > 0 || descended;
+      const sortingSeen = state.sorting.open || state.sorting.sorts > 0 || townSeen;
       const seen = [
-        ...(state.recycle.resets > 0 || state.runTrash.gte(RECYCLE_AT.div(100)) || state.bottom.open ? ['recycle'] : []),
-        ...(automationOpen(state) ? ['automation'] : []),
-        ...(canRecycle(state) || state.recycle.resets > 0 || state.sorting.open || state.city.open || state.bottom.open ? ['recycle-ready'] : []),
+        ...(sortingSeen ? ['sorting'] : []),
+        ...(townSeen ? ['city'] : []),
+        ...(state.recycle.resets > 0 || state.runTrash.gte(RECYCLE_AT.div(100)) || sortingSeen ? ['recycle'] : []),
+        ...(automationOpen(state) || townSeen ? ['automation'] : []),
+        ...(canRecycle(state) || state.recycle.resets > 0 || sortingSeen ? ['recycle-ready'] : []),
       ];
       for (const id of seen) if (!this.announced.unlocks.includes(id)) this.announced.unlocks.push(id);
+      this.announced.rank = Math.max(this.announced.rank,
+        descended || state.city.reforms > 0 ? REFORM_SORTS : townSeen ? CITY_OPEN_SORTS : 0);
     }
     this.announced.rank = Math.max(this.announced.rank, state.sorting.sorts);
     saveAnnounced(this.announced);
