@@ -1,6 +1,5 @@
 import type { BottomState } from '../game/bottom';
 import { Camera } from './camera';
-import { C } from './scene';
 
 /** What camera 09 needs to know about the bottom. */
 export interface PitView {
@@ -20,25 +19,10 @@ export interface PitView {
   object: { id: 'hoist' | 'bench' | 'borer'; progress: number } | null;
 }
 
-interface Bit {
-  x: number;
-  y: number;
-  vy: number;
-  s: number;
-  c: string;
-}
-
 const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
-/**
- * Camera 09 at the bottom of the pit: far up, the mouth of the pit, a pale ring with the
- * world above in it; down its shaft the trash keeps falling onto the heap. On the heap a
- * man in a padded jacket with a headlamp swings a pick: Ignatyev, here since 1987. Beside
- * him, what he has dug out: sacks, crates, a suitcase, a safe, now and then a coffin. Now
- * and then he stops, straightens and looks up into the camera.
- */
+/** A fixed cross-section of the working cavern: intake, platform, shaft and excavation face. */
 export class PitCam extends Camera<PitView> {
-  private bits: Bit[] = [];
   private swing = 0;
   private lookUp = 0;
   private lookIn = 30;
@@ -60,17 +44,6 @@ export class PitCam extends Camera<PitView> {
 
   protected simulate(dt: number): void {
     const v = this.view!;
-    // Trash down the shaft: more of it the more falls.
-    if (Math.random() < dt * Math.min(30, 2 + v.fall * 0.8)) {
-      this.bits.push({ x: this.w * rnd(0.18, 0.27), y: this.h * 0.12, vy: rnd(40, 80), s: rnd(1.5, 3.5), c: C.items[Math.floor(Math.random() * C.items.length)] });
-    }
-    for (const b of this.bits) {
-      b.vy += 160 * dt;
-      b.y += b.vy * dt;
-      b.x += Math.sin(b.y * 0.05) * 0.3;
-    }
-    const ground = this.heapTop(this.w * 0.23);
-    this.bits = this.bits.filter((b) => b.y < ground);
     if (v.dig > 0 && this.lookUp <= 0) this.swing += dt * (2.4 + Math.min(4, v.dig * 0.15));
     this.lookIn -= dt;
     if (this.lookIn <= 0) {
@@ -81,235 +54,144 @@ export class PitCam extends Camera<PitView> {
     this.flashLeft = Math.max(0, this.flashLeft - dt);
   }
 
-  /** The heap's height at x: a wide mound, higher the more lies on it. */
-  private heapTop(x: number): number {
-    const { w, h } = this;
-    const v = this.view!;
-    const tall = Math.min(0.42, 0.12 + Math.log10(1 + v.heap) * 0.08);
-    const u = (x - w * 0.23) / (w * 0.42);
-    return h - h * tall * Math.max(0, 1 - u * u) - h * 0.06;
-  }
-
   protected draw(): void {
     const { ctx, w, h } = this;
     const v = this.view!;
-    // The cavern: black, the walls catching a little of the light from above.
-    ctx.fillStyle = '#020604';
-    ctx.fillRect(0, 0, w, h);
-    const shaft = ctx.createRadialGradient(w * 0.5, h * 0.08, 0, w * 0.5, h * 0.5, h * 1.1);
-    shaft.addColorStop(0, 'rgb(130 200 150 / 0.22)');
-    shaft.addColorStop(0.35, 'rgb(60 110 80 / 0.08)');
-    shaft.addColorStop(1, 'rgb(0 0 0 / 0)');
-    ctx.fillStyle = shaft;
-    ctx.fillRect(0, 0, w, h);
-    // The mouth of the pit, far up: a pale ring, the world above in it.
-    ctx.strokeStyle = 'rgb(170 230 190 / 0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(w * 0.23, h * 0.08, w * 0.07, h * 0.025, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.fillStyle = 'rgb(170 230 190 / 0.12)';
-    ctx.fill();
-    // The walls of the shaft narrowing down into the dark.
-    ctx.strokeStyle = 'rgb(60 110 80 / 0.25)';
-    ctx.beginPath();
-    ctx.moveTo(w * 0.16, h * 0.09);
-    ctx.lineTo(w * 0.05, h * 0.75);
-    ctx.moveTo(w * 0.30, h * 0.09);
-    ctx.lineTo(w * 0.39, h * 0.75);
-    ctx.stroke();
-
-    // Exposed layers belong to the excavation, independently of the supply heap.
-    const strata = Math.min(4, Math.floor(v.depth / 1000));
-    for (let i = 0; i < 4; i++) {
-      const y = h * (0.37 + i * 0.12);
-      this.line(w * 0.44, y, w * 0.96, y + 3, i <= strata ? '#356b49' : '#193724', 1, 0.55);
+    ctx.save();
+    ctx.scale(w / 360, h / 230);
+    const fill = (x: number, y: number, a: number, b: number, c: string) => { ctx.fillStyle = c; ctx.fillRect(x, y, a, b); };
+    const line = (x: number, y: number, a: number, b: number, c: string, width = 1) => {
+      ctx.strokeStyle = c; ctx.lineWidth = width; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(a, b); ctx.stroke();
+    };
+    const poly = (points: number[][], c: string) => {
+      ctx.fillStyle = c; ctx.beginPath(); points.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.fill();
+    };
+    fill(0, 0, 360, 230, '#030a07');
+    // Continuous sedimentary walls, with a deterministic texture rather than swimming noise.
+    poly([[0,0],[360,0],[360,213],[330,207],[319,176],[335,147],[322,113],[339,80],[322,42],[44,36],[28,68],[38,109],[20,145],[28,209],[0,220]], '#12251c');
+    let seed = 71;
+    const rand = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+    for (let i = 0; i < 90; i++) {
+      const x = rand() * 360, y = 30 + rand() * 180;
+      const face = x < 35 || x > 325;
+      line(x, y, x + 5 + rand() * 18, y + 2, face ? '#294535' : '#10271c');
     }
-    this.label('ПОТОК СВЕРХУ', w * 0.22, h * 0.30, '#79aa88');
-
-    // Falling trash.
-    for (const b of this.bits) {
-      ctx.fillStyle = b.c;
-      ctx.globalAlpha = 0.8;
-      ctx.fillRect(b.x, b.y, b.s, b.s);
+    for (let i = 0; i < 5; i++) {
+      const y = 46 + i * 32;
+      line(32, y, 326, y + 4, '#193326');
+      line(33, y + 3, 326, y + 7, '#0b1d14');
     }
-    ctx.globalAlpha = 1;
-
-    // The heap, with junk on its slope.
-    ctx.beginPath();
-    ctx.moveTo(0, h);
-    for (let x = 0; x <= w; x += 6) ctx.lineTo(x, this.heapTop(x) + Math.sin(x * 0.27) * 2);
-    ctx.lineTo(w, h);
-    ctx.closePath();
-    this.paint(C.heapBack, 1.2);
-    let seed = 5;
-    const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    for (let i = 0; i < 40; i++) {
-      const x = r() * w;
-      const y = this.heapTop(x) + 4 + r() * (h - this.heapTop(x));
-      this.box(x, y, 2 + r() * 5, 1.5 + r() * 3, C.heapFront, 0.6);
+    // Timber supports define an actual cavern and carry the lamps and cables.
+    for (const x of [28, 322]) {
+      fill(x, 36, 7, 158, '#294233'); fill(x + 1, 36, 2, 158, '#45634a');
+      line(x, 69, x + (x < 100 ? 25 : -23), 40, '#42634a', 4);
     }
-
-    // What he has dug out, stacked by his side.
-    const baseX = w * 0.68;
-    let x = baseX;
-    const shapes: [number, number, string][] = [
-      [9, 7, '#2f6b45'],
-      [11, 9, '#3f7a52'],
-      [13, 9, '#4f8a60'],
-      [11, 11, '#6a9f74'],
-      [20, 7, '#1a2a20'],
-    ];
-    v.stock.forEach((n, i) => {
-      const [bw, bh, c] = shapes[i];
-      for (let k = 0; k < Math.min(n, 2) && x + bw < w - 8; k++) {
-        const y = this.heapTop(x) - bh;
-        this.box(x, y - (k % 2) * 2, bw, bh, c, 1);
-        if (i === 4) {
-          // A coffin: a cross scratched on the lid.
-          ctx.strokeStyle = 'rgb(255 107 87 / 0.6)';
-          ctx.beginPath();
-          ctx.moveTo(x + bw / 2, y + 1);
-          ctx.lineTo(x + bw / 2, y + bh - 1);
-          ctx.moveTo(x + bw / 2 - 3, y + 3);
-          ctx.lineTo(x + bw / 2 + 3, y + 3);
-          ctx.stroke();
-        }
-        x += bw + 2;
-      }
-    });
-
-    this.machines();
-    this.buriedObject();
-    this.workflow();
-    const minerX = w * (v.work === 'site' ? 0.65 : v.work === 'seam' ? 0.80 : 0.55);
-    this.miner(minerX, this.heapTop(minerX));
-
-    if (this.flashLeft > 0) {
-      ctx.fillStyle = this.flashColor;
-      ctx.globalAlpha = 0.25 * this.flashLeft;
-      ctx.fillRect(0, 0, w, h);
-      ctx.globalAlpha = 1;
+    fill(24, 32, 310, 8, '#334e3c'); fill(24, 32, 310, 2, '#65806a');
+    line(36, 46, 310, 52, '#4c6250');
+    const light = ctx.createRadialGradient(173, 61, 0, 173, 100, 140);
+    light.addColorStop(0, 'rgba(143,181,125,.18)'); light.addColorStop(1, 'rgba(40,80,50,0)');
+    ctx.fillStyle = light; ctx.fillRect(32, 40, 290, 160);
+    fill(164, 49, 19, 5, '#5c7257'); fill(169, 54, 9, 3, '#c3c49a');
+    // Surface waste arrives in a chute, lands in a hopper, then feeds a short sorting belt.
+    fill(54, 0, 34, 98, '#101d17'); fill(54, 0, 3, 98, '#43614b'); fill(85, 0, 3, 98, '#334b3a');
+    for (let y = 30; y < 92; y += 19) fill(54, y, 34, 3, '#263d2e');
+    if (v.fall > 0) for (let i = 0; i < 7; i++) {
+      const phase = this.reducedMotion ? i / 7 : (i / 7 + this.t * 0.31) % 1;
+      fill(61 + (i % 3) * 7, 23 + phase * 76, 3 + i % 3, 3, i % 2 ? '#8e9875' : '#4f7352');
     }
-    this.vignette(0.5);
-  }
-
-  /** Routes show actual work allocation; animation only presents simulation state. */
-  private workflow(): void {
-    const { w, h, ctx } = this;
-    const v = this.view!;
-    const depthOn = v.work === 'depth' || (v.work === 'site' && v.equipment.hoist);
-    const green = '#91c49b', dim = '#284c35', amber = '#d0b56d';
-    // The excavation shaft is separate from the surface supply heap.
-    const x = w * 0.56, y = h * 0.73, bottom = h * 0.94;
-    this.box(x - 12, y, 25, bottom - y, '#030b06');
-    this.line(x - 13, y, x - 13, bottom, depthOn ? green : dim);
-    this.line(x + 14, y, x + 14, bottom, depthOn ? green : dim);
-    for (let i = 0; i < 4; i++) {
-      const phase = this.reducedMotion || !depthOn ? i / 4 : (i / 4 + this.t * 0.22) % 1;
-      const py = y + phase * (bottom - y - 7);
-      this.line(x - 4, py, x, py + 4, depthOn ? green : dim);
-      this.line(x, py + 4, x + 4, py, depthOn ? green : dim);
-    }
-    // Material leaving the surface heap has a visible destination.
-    const beltY = h * 0.93;
-    this.line(w * 0.06, beltY, w * 0.34, beltY, '#4b7855', 2);
-    for (let i = 0; i < (v.heap > 0 || v.fall > 0 ? 4 : 0); i++) {
-      const phase = this.reducedMotion ? i / 4 : (i / 4 + this.t * 0.12) % 1;
-      this.box(w * (0.06 + phase * 0.26), beltY - 5, 4, 3, '#8ca27d');
-    }
-    this.label(v.equipment.bench ? v.benchMode === 'scrap' ? '→ ЛОМ' : '→ ЦВЕТМЕТ' : '→ ТРУХА', w * 0.20, h * 0.98, '#91aa88');
-    // A distinct mineral face identifies the seam, even with motion disabled.
-    if (v.equipment.borer > 0) {
-      for (let i = 0; i < 5; i++) {
-        const sx = w * (0.86 + (i % 2) * 0.035), sy = h * (0.57 + i * 0.05);
-        this.poly([[sx, sy - 4], [sx + 4, sy], [sx, sy + 5], [sx - 3, sy]], v.work === 'seam' ? amber : '#46573d');
-      }
-    }
-    ctx.fillStyle = 'rgb(2 9 5 / 0.86)';
-    ctx.fillRect(w * 0.41, h * 0.14, w * 0.57, h * 0.14);
-    this.label(v.work === 'site' ? 'РАСКОПКА МАШИНЫ' : v.work === 'seam' ? 'ЖИЛА → АНОМАЛИИ' : 'ПРОХОД В ГЛУБИНУ', w * 0.70, h * 0.19, v.work === 'seam' ? amber : green);
-    this.label(v.work === 'site' ? v.equipment.hoist ? '75% ОБЪЕКТ · 25% ВНИЗ' : 'ГЛУБИНА СТОИТ' : v.work === 'seam' ? 'ГЛУБИНА СТОИТ' : 'ГЛУБИНА РАСТЁТ', w * 0.70, h * 0.25, '#7b9d82');
-  }
-
-  /** Purchased machinery has a distinct silhouette and keeps a static reduced-motion view. */
-  private buriedObject(): void {
-    const v = this.view!;
-    if (!v.object) return;
-    const { w, h } = this;
-    const x = w * 0.72, y = h * 0.49;
-    const p = Math.max(0, Math.min(1, v.object.progress));
-    const color = p >= 1 ? '#b2c587' : '#608c70';
-    if (v.object.id === 'hoist') {
-      this.box(x, y, 4, h * 0.22, color);
-      this.box(x + 38, y, 4, h * 0.22, color);
-      this.box(x, y, 42, 5, color);
-      this.box(x + 10, y + h * 0.14, 23, 10, color);
-    } else if (v.object.id === 'bench') {
-      this.box(x, y + 20, 49, 6, color);
-      this.box(x + 5, y + 25, 4, h * 0.17, color);
-      this.box(x + 41, y + 25, 4, h * 0.17, color);
-      this.box(x + 12, y + 7, 28, 12, color);
-    } else {
-      this.box(x + 2, y + 24, 47, 23, color);
-      this.poly([[x + 2, y + 23], [x - 14, y + 35], [x + 2, y + 46]], color);
-      for (let i = 0; i < 3; i++) this.circle(x + 12 + i * 13, y + 49, 4, color);
-    }
-    if (p < 1) {
-      const edge = y + Math.floor(p * 4) / 4 * h * 0.30;
-      const points: [number, number][] = [[x - 8, y + h * 0.31]];
-      for (let i = 0; i <= 8; i++) points.push([x - 8 + i * w * 0.032, edge + Math.sin(i * 4.7) * 4]);
-      points.push([x + w * 0.25, y + h * 0.31]);
-      this.poly(points, '#0c2116');
-      for (let i = 0; i < 9; i++) {
-        const sx = x - 4 + (i % 5) * 15, sy = edge + 7 + Math.floor(i / 5) * 11;
-        if (sy < y + h * 0.30) this.line(sx, sy, sx + 5, sy + 2, '#284b32');
-      }
-      if (v.work === 'site') for (let i = 0; i < 3; i++) {
-        const phase = this.reducedMotion ? i / 3 : (this.t * 0.6 + i / 3) % 1;
-        this.box(x - 6 - phase * 8, edge + phase * 14, 2, 2, '#84977c');
-      }
-    }
-    this.label(p >= 1 ? 'ГОТОВО' : `ОТКОПАНО ${Math.floor(p * 100)}%`, x + 10, y - 10, '#8bb997');
-  }
-
-  /** Purchased machinery has a distinct silhouette and keeps a static reduced-motion view. */
-  private machines(): void {
-    const { w, h } = this;
-    const v = this.view!;
-    if (v.equipment.hoist) {
-      const left = w * 0.42, right = w * 0.64, top = h * 0.38, floor = h * 0.91;
-      this.box(left, top, 4, floor - top, '#386747');
-      this.box(right, top, 4, floor - top, '#386747');
-      this.box(left - 3, top - 4, right - left + 10, 6, '#568568');
-      this.circle((left + right) / 2, top + 5, 5, '#759c7d');
-      const travel = this.reducedMotion ? 0.45 : (1 + Math.sin(this.t * 0.8)) / 2;
-      const y = top + 20 + travel * (floor - top - 40);
-      this.line((left + right) / 2, top + 5, (left + right) / 2, y, '#93b795');
-      this.box((left + right) / 2 - 9, y, 18, 11, '#467653');
+    const heapHeight = Math.min(25, Math.log10(1 + v.heap) * 6);
+    poly([[44,110],[95,110],[88,135],[53,135]], '#36503b');
+    poly([[48,109],[57,110-heapHeight],[68,115-heapHeight],[78,108-heapHeight],[93,110]], '#4b6045');
+    for (let i = 0; i < 12; i++) fill(51 + i * 3, 107 - (i % 3) * 3, 3, 2, '#79816a');
+    fill(57,135,24,9,'#182c20');
+    fill(40,151,94,7,'#4a6650'); fill(40,158,94,4,'#1d3525');
+    for (let x = 45; x < 133; x += 17) { fill(x,163,3,24,'#36543d'); fill(x-2,155,7,3,'#71816a'); }
+    if (v.heap > 0 || v.fall > 0) for (let i = 0; i < 5; i++) {
+      const phase = this.reducedMotion ? i / 5 : (i / 5 + this.t * 0.12) % 1;
+      fill(47 + phase * 76,147,5,3,'#8d9476');
     }
     if (v.equipment.bench || v.auto > 0) {
-      const x = w * 0.07, y = h * 0.83;
-      this.box(x, y, w * 0.23, 5, '#6c9472');
-      this.box(x + 4, y + 5, 3, h * 0.1, '#386747');
-      this.box(x + w * 0.20, y + 5, 3, h * 0.1, '#386747');
-      this.box(x + 7, y - 12, 12, 11, '#4f8059');
-      if (v.equipment.bench) {
-        this.box(x + w * 0.13, y - 17, 14, 16, '#527c62');
-        this.circle(x + w * 0.13 + 7, y - 9, 4, '#9fbea0');
-        const phase = this.reducedMotion ? 0.5 : (this.t * 0.5) % 1;
-        this.box(x + phase * w * 0.18, y - 4, 4, 3, '#a1b39a');
+      fill(99,123,26,28,'#34513c'); fill(102,126,20,13,'#152d20');
+      line(108,129,117,136,'#8ca184',2); fill(105,142,14,4,'#6b825f');
+      fill(125,162,14,15,'#3c5e45'); fill(128,158,8,4,v.benchMode === 'nonferrous' ? '#82a99b' : '#8b9170');
+    } else { fill(124,163,14,14,'#3b5039'); fill(124,163,14,2,'#6b7e5c'); }
+    // A real opening through the floor, bordered by a platform and a ladder into darkness.
+    fill(32,190,118,9,'#2b4232'); fill(32,190,118,2,'#638067');
+    fill(211,190,115,9,'#2b4232'); fill(211,190,115,2,'#638067');
+    poly([[149,191],[211,191],[202,222],[158,222]],'#010603');
+    line(149,192,158,222,'#43614a'); line(211,192,202,222,'#243e2b');
+    line(157,190,162,224,'#698266'); line(167,190,170,224,'#4a654c');
+    for (let y=194;y<224;y+=6) line(158+(y-194)*.15,y,168+(y-194)*.08,y,'#5d7759');
+    // Purchased hoist straddles the opening; its moving bucket shares the same shaft.
+    if (v.equipment.hoist) {
+      fill(143,91,5,100,'#3e5c45'); fill(211,91,5,100,'#3e5c45');
+      fill(140,87,79,7,'#617c5c'); line(146,94,163,109,'#405f46',3);
+      fill(172,92,12,9,'#809274');
+      const phase = this.reducedMotion ? .5 : (1+Math.sin(this.t*.65))/2;
+      const by=119+phase*72;
+      line(178,100,178,by,'#8e9d80');
+      poly([[168,by],[188,by],[185,by+12],[171,by+12]],'#4f6e50');
+      fill(168,by,20,2,'#9aa589');
+    }
+    // Active excavation occupies the right rock face, not a floating card.
+    const p = v.object?.progress ?? 0;
+    const site = v.object && p < 1;
+    poly([[264,103],[282,95],[303,104],[322,97],[332,125],[320,148],[331,168],[316,190],[263,190],[254,162]], '#203b2a');
+    for(let i=0;i<12;i++) line(264+(i%3)*18,113+Math.floor(i/3)*18,276+(i%3)*18,116+Math.floor(i/3)*18,'#3d5a3f');
+    if (v.object) {
+      ctx.save(); ctx.beginPath(); ctx.rect(258,98,71,94); ctx.clip();
+      const color = p >= 1 ? '#87946b' : '#6c8061';
+      if(v.object.id==='hoist') {
+        fill(270,109,4,75,color); fill(309,109,4,75,color); fill(268,107,48,6,color);
+        fill(284,122,14,9,'#4a6550'); line(291,130,291,162,color); fill(281,162,21,13,color);
+      } else if(v.object.id==='bench') {
+        fill(268,139,49,6,color); fill(272,145,4,40,color); fill(309,145,4,40,color); fill(280,120,23,19,color);
+      } else {
+        fill(276,143,43,22,color); poly([[276,146],[262,155],[276,163]],'#92a17a');
+        for(let x=283;x<318;x+=12) { fill(x,165,9,6,'#425f43'); fill(x+2,167,5,2,color); }
+      }
+      if(site) {
+        const edge=111+p*75;
+        poly([[253,edge+3],[267,edge-3],[279,edge+5],[292,edge-1],[307,edge+4],[331,edge-2],[335,194],[252,194]],'#233d29');
+        for(let i=0;i<10;i++) fill(259+i*7,edge+8+(i%3)*8,4,2,'#435b3c');
+      }
+      ctx.restore();
+    }
+    if(v.equipment.borer>0) {
+      fill(230,171,35,16,'#46664b'); fill(236,167,19,5,'#678164');
+      for(let x=234;x<263;x+=11) fill(x,187,8,4,'#71826a');
+      const drill = this.reducedMotion ? 0 : Math.sin(this.t*12)*2;
+      poly([[264,174],[279+drill,181],[264,187]],'#a2a57c');
+      for(let i=0;i<6;i++) {
+        const x=303+(i%2)*10,y=124+i*9;
+        poly([[x,y-4],[x+3,y],[x,y+4],[x-3,y]],v.work==='seam'?'#b4a36b':'#5e7151');
       }
     }
-    if (v.equipment.borer > 0) {
-      const x = w * 0.73, y = h * 0.91;
-      this.box(x, y - 19, w * 0.16, 16, '#56765e');
-      this.box(x - 12, y - 14, 12, 5, '#a4b8a1');
-      this.poly([[x - 12, y - 19], [x - 21, y - 12], [x - 12, y - 5]], '#6a9479');
-      for (let i = 0; i < 3; i++) this.circle(x + 6 + i * 12, y - 1, 5, '#35583e');
-      const phase = this.reducedMotion ? 0 : Math.sin(this.t * 8) * 2;
-      this.line(x - 18, y - 15 + phase, x - 12, y - 10 + phase, '#b7ccb5');
+    // Only a few containers wait on the platform; they never cover the working face.
+    const count = Math.min(3, v.stock.reduce((a,b)=>a+b,0));
+    for(let i=0;i<count;i++) { fill(216+i*12,180-(i%2)*3,10,9,'#34533c'); fill(217+i*12,181-(i%2)*3,8,1,'#70846b'); }
+    const activeX=v.work==='site'?247:v.work==='seam'?284:208;
+    if(!this.reducedMotion) for(let i=0;i<4;i++) {
+      const phase=(this.t*1.3+i/4)%1;
+      fill(activeX+phase*9,181+phase*8,2,1,'#94a181');
     }
+    // A single quiet CCTV caption leaves the scene itself to explain the machinery.
+    fill(0,216,360,14,'#051009');
+    ctx.font='8px monospace'; ctx.fillStyle='#92ad8e'; ctx.textAlign='left';
+    ctx.fillText(v.work==='site'?'РАСКОПКА ОБЪЕКТА':v.work==='seam'?'ЖИЛА · ДОБЫЧА АНОМАЛИЙ':'ЗАБОЙ · ПРОХОД ВНИЗ',12,226);
+    ctx.textAlign='right'; ctx.fillStyle='#657f66';
+    ctx.fillText(v.work==='site'&&v.equipment.hoist?'ВНИЗ 25%':v.work==='depth'?'ГЛУБИНА РАСТЁТ':'ГЛУБИНА СТОИТ',347,226);
+    ctx.restore();
+    const mx = v.work === 'site' ? 243 : v.work === 'seam' ? 224 : 217;
+    ctx.save();
+    if (v.work === 'depth') { ctx.translate(2 * w * mx / 360, 0); ctx.scale(-1, 1); }
+    this.miner(w * mx / 360, h * 190 / 230);
+    ctx.restore();
+    if (this.flashLeft > 0) {
+      ctx.fillStyle = this.flashColor; ctx.globalAlpha = .12*this.flashLeft;
+      ctx.fillRect(0,0,w,h); ctx.globalAlpha = 1;
+    }
+    this.vignette(.32);
   }
 
   /** Ignatyev: a padded jacket, a cap with a lamp, the pick going up and down. */
