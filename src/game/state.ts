@@ -1,3 +1,4 @@
+import { newHorizon, horizonTick, type HorizonState } from './horizon';
 import { coveredNodes, coveredRecipes } from './capabilities';
 import { D, Decimal } from './num';
 import { affordableLineRecipes, assembleLine, lineRecipe, lineReserves } from './linePlanner';
@@ -146,6 +147,7 @@ export interface GameState {
   city: CityState;
   /** Fourth: the bottom of the pit, where Ignatyev digs what falls in. */
   bottom: BottomState;
+  horizon: HorizonState;
   /** Epoch ms of the last simulated moment, used for offline progress. */
   lastTick: number;
 }
@@ -175,6 +177,7 @@ export function newGame(now = Date.now()): GameState {
     hearing: newHearing(),
     city: newCity(),
     bottom: newBottom(),
+    horizon: newHorizon(),
     lastTick: now,
   };
 }
@@ -328,6 +331,7 @@ export function advance(state: GameState, seconds: number, offline = false, slic
       bottomTick(b, dt, fallPerMinute(b.above, state.city.development), Math.random);
       autoOpen(b, Math.random);
     }
+    horizonTick(state.horizon, dt, state.city);
     state.runSeconds += dt;
     if (!offline) state.story.boost = Math.max(0, state.story.boost - dt);
     // Tails off the sorting line feed the thing: it climbs faster.

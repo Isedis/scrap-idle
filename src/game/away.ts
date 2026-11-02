@@ -1,5 +1,6 @@
 import { offlineActivity, type OfflineActivity } from './offline';
 import { Decimal } from './num';
+import { gateReady, HALLS } from './horizon';
 import { FRACS, type Inspection } from './sorting';
 import { offlineRate, ratePerSecond, type GameState } from './state';
 
@@ -14,6 +15,7 @@ export interface AwaySnapshot {
   threat: number;
   fractions: Decimal;
   news: number;
+  horizon: { total: Decimal; opened: number; work: number };
   bottom: { firstUme: boolean; work: { hoist: number; bench: number; borer: number }; seamFound: number };
 }
 
@@ -35,6 +37,7 @@ export interface AwayReport {
   balance: { trash: Decimal; recycled: Decimal; fractions: Decimal };
   income: Decimal;
   hearing: 'idle' | 'walk' | 'check' | 'caught';
+  horizon: { gained: Decimal; note: string };
   bottom: { firstUme: boolean; site: string; seamFound: number };
 }
 
@@ -42,6 +45,7 @@ const sumFractions = (s: GameState) => s.sorting.total;
 
 export function awaySnapshot(s: GameState): AwaySnapshot {
   return { trash: s.trash, totalTrash: s.totalTrash, threat: s.threat.level, fractions: sumFractions(s), news: s.sorting.news.length,
+    horizon: { total: s.horizon.total, opened: s.horizon.opened, work: s.horizon.work.reduce((sum,w)=>sum+w.toNumber(),0) },
     bottom: { firstUme: s.bottom.firstUmeGranted, work: { ...s.bottom.objectWork }, seamFound: s.bottom.seamFound } };
 }
 
@@ -55,6 +59,7 @@ export function awayReport(before: AwaySnapshot, s: GameState, seconds: number):
     balance: { trash: s.trash, recycled: s.recycle.points, fractions: FRACS.reduce((sum, f) => sum.add(s.sorting.fractions[f]), new Decimal(0)) },
     income: ratePerSecond(s),
     hearing: s.hearing.phase,
+    horizon: { gained: s.horizon.total.sub(before.horizon.total).max(0), note: s.horizon.open && s.horizon.opened < 5 ? gateReady(s.horizon) ? 'Горизонт: затвор готов к открытию' : s.horizon.work.reduce((sum,w)=>sum+w.toNumber(),0) > before.horizon.work ? 'Продолжался монтаж: '+HALLS[s.horizon.opened].name : '' : '' },
     bottom: { firstUme: !before.bottom.firstUme && s.bottom.firstUmeGranted,
       site: site ? `${siteName[site]}: ${Math.floor(s.bottom.objectWork[site])} / ${site === 'hoist' ? 120 : site === 'bench' ? 300 : 600} т${s.bottom.objectWork[site] >= (site === 'hoist' ? 120 : site === 'bench' ? 300 : 600) ? ' · можно запустить' : ''}` : '',
       seamFound: Math.max(0, s.bottom.seamFound - before.bottom.seamFound) },

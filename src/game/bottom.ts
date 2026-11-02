@@ -228,6 +228,8 @@ export interface BottomState {
   opened: number;
   /** Ultra-waste units, spent on permanent borer upgrades. */
   ume: Decimal;
+  umeMade: Decimal;
+  supplyExtension: boolean;
   /** Trash collected above since the descent: what keeps falling in. */
   above: Decimal;
   /** Scripts of the world above bought with currencies from here. */
@@ -264,6 +266,8 @@ export const newBottom = (): BottomState => ({
   found: {},
   opened: 0,
   ume: D(0),
+  umeMade: D(0),
+  supplyExtension: false,
   above: D(0),
   scripts: [],
   recent: [],
@@ -290,8 +294,8 @@ const digPower = (b: BottomState) => BASE_DIG * 1.3 ** b.tools.pick
   * (b.equipment.hoist ? 1.25 : 1) * 1.5 ** b.equipment.borer
   * (setPower(b, 'medieval') ? 1 + 0.25 * setPower(b, 'medieval') : 1);
 export const digRate = (b: BottomState, fall = 0) => digPower(b) * pressure(b, fall) / (1 + b.dug / STRATUM_DENSITY);
-export const supplyRate = (b: BottomState) => b.equipment.hoist ? 6 : 2;
-export const pressure = (b: BottomState, fall: number) => 1 + 0.05 * Math.min(5, Math.max(0, fall - supplyRate(b)));
+export const supplyRate = (b: BottomState) => b.equipment.hoist ? b.supplyExtension ? 9 : 6 : 2;
+export const pressure = (b: BottomState, fall: number) => 1 + 0.05 * Math.min(5, Math.max(0, fall - (b.equipment.hoist ? 6 : 2)));
 export const OBJECT_WORK = { hoist: 120, bench: 300, borer: 600 } as const;
 export const objectReady = (b: BottomState, id: EquipmentId | 'borer') => b.objectWork[id] >= OBJECT_WORK[id];
 export const objectUnlocked = (b: BottomState, id: EquipmentId | 'borer') => b.dug >= (id === 'borer' ? 11000 : EQUIPMENT.find((e) => e.id === id)!.depth);
@@ -555,7 +559,7 @@ export function melt(b: BottomState, from: Rarity, times = 1): number {
   if (can <= 0) return 0;
   b.money[from] = b.money[from].sub(per * can);
   const i = RARITIES.indexOf(from);
-  if (from === 'anomaly') b.ume = b.ume.add(can);
+  if (from === 'anomaly') { b.ume = b.ume.add(can); b.umeMade = b.umeMade.add(can); }
   else b.money[RARITIES[i + 1]] = b.money[RARITIES[i + 1]].add(can);
   return can;
 }

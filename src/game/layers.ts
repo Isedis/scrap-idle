@@ -41,6 +41,7 @@ export const LAYERS: readonly LayerDef[] = [
   { id: 'sorting', name: 'Сортировка', currency: 'Фракции', playable: true, teaser: 'Пластик, металл, стекло и бумага, у каждого свои рецепты' },
   { id: 'reform', name: 'Реформа города', currency: 'Гектары', playable: true, teaser: 'Город отдаёт кварталы под свалку' },
   { id: 'under', name: 'Под ямой', currency: 'УМЕ', playable: true, teaser: 'Под чёрной ямой есть ещё одна свалка' },
+  { id: 'horizon', name: 'Нижний горизонт', currency: 'КМ', playable: true, teaser: 'Восстановите затворы нижней системы' },
 ];
 
 // ---- Recycling -------------------------------------------------------------

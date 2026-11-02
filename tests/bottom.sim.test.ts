@@ -63,7 +63,7 @@ const digitsAt = (h: number) => {
 /** Scripts of the world above, bought with currencies from below, in the order a player would. */
 const SCRIPTS: [string, number, Rarity][] = ABOVE_SCRIPTS.map((sc) => [sc.id, sc.cost, sc.costIn]);
 
-export function simulateBottom(hours: number, log: (h: number, what: string) => void, seed = 12345) {
+export function simulateBottom(hours: number, log: (h: number, what: string) => void, seed = 12345, stopAtHorizon = false) {
   const b: BottomState = newBottom();
   b.open = true;
   b.heap = START_HEAP;
@@ -144,6 +144,7 @@ export function simulateBottom(hours: number, log: (h: number, what: string) => 
         if (b.ume.toNumber() > before) log(h, `УМЕ: ${b.ume.toString()}`);
       }
     }
+    if (stopAtHorizon && b.dug >= 22000 && b.equipment.borer > 0 && b.umeMade.gte(1)) return b;
     if (m % 60 === 59) {
       log(h, `час ${Math.round(h)}: гора ${Math.round(b.heap)} т, копает ${digRate(b).toFixed(1)} т/мин, сверху ${fallPerMinute(D(10).pow(digits)).toFixed(1)} т/мин, вскрыто ${b.opened}, коллекция ${Object.keys(b.found).length}/40, вглубь ${Math.round(b.dug)} т, автовскрытие ${b.auto}, УМЕ ${b.ume.toString()}, ` +
         RARITIES.map((r) => `${RARITY_NAMES[r]} ${b.money[r].floor().toString()}`).join(' · '));

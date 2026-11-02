@@ -1,3 +1,4 @@
+import { HorizonPanel } from './horizonPanel';
 import type { Release } from '../update';
 import { nextGoal } from './guidance';
 import { format } from '../game/num';
@@ -176,11 +177,12 @@ export class App {
   /** Camera 05 over the workshop, on the Upgrades tab. */
   private workshop = new WorkshopCam();
   /** Which layer the Layers tab shows. */
-  private layerView: 'recycle' | 'sorting' | 'city' | 'bottom' = 'recycle';
+  private layerView: 'recycle' | 'sorting' | 'city' | 'bottom' | 'horizon' = 'recycle';
   private layerSwitch!: HTMLElement;
-  private layerButtons = new Map<'recycle' | 'sorting' | 'city' | 'bottom', HTMLButtonElement>();
+  private layerButtons = new Map<'recycle' | 'sorting' | 'city' | 'bottom' | 'horizon', HTMLButtonElement>();
   private cityPanel!: CityPanel;
   private bottomPanel!: BottomPanel;
+  private horizonPanel!: HorizonPanel;
   private knownCityOpen = false;
   private knownSortOpen = false;
   /** Red marks on the tabs whose defence needs the player. */
@@ -397,7 +399,8 @@ export class App {
       if (message && loud) this.toast(message);
       this.render();
     });
-    for (const [view, label] of [['recycle', 'Переработка'], ['sorting', 'Сортировка'], ['city', 'Город'], ['bottom', 'Дно']] as const) {
+    this.horizonPanel = new HorizonPanel(this.getState, () => { writeSave(this.getState()); this.render(); });
+    for (const [view, label] of [['recycle', 'Переработка'], ['sorting', 'Сортировка'], ['city', 'Город'], ['bottom', 'Дно'], ['horizon', 'Горизонт']] as const) {
       const b = el('button', 'mode', label);
       b.type = 'button';
       b.id = `layer-${view}`;
@@ -408,7 +411,7 @@ export class App {
       });
       this.layerButtons.set(view, b);
       // The town shows on the switch once it has offered itself.
-      if (view === 'city' || view === 'bottom') b.hidden = true;
+      if (view === 'city' || view === 'bottom' || view === 'horizon') b.hidden = true;
       this.layerSwitch.append(b);
     }
 
@@ -432,6 +435,7 @@ export class App {
       this.sortingPanel.root,
       this.cityPanel.root,
       this.bottomPanel.root,
+      this.horizonPanel.root,
       this.automationPanel.root,
       this.journalPanel.root,
       this.buildSettings(),
@@ -764,11 +768,13 @@ export class App {
     const sorting = tab === 'recycle' && this.layerView === 'sorting';
     const city = tab === 'recycle' && this.layerView === 'city';
     const bottom = tab === 'recycle' && this.layerView === 'bottom';
+    const horizon = tab === 'recycle' && this.layerView === 'horizon';
     this.sortingPanel.root.hidden = !sorting;
     this.cityPanel.root.hidden = !city;
     this.bottomPanel.root.hidden = !bottom;
-    if (sorting || city || bottom) this.recyclePanel.root.hidden = true;
-    const visible = sorting ? this.sortingPanel.root : city ? this.cityPanel.root : bottom ? this.bottomPanel.root : this.recyclePanel.root;
+    this.horizonPanel.root.hidden = !horizon;
+    if (sorting || city || bottom || horizon) this.recyclePanel.root.hidden = true;
+    const visible = horizon ? this.horizonPanel.root : sorting ? this.sortingPanel.root : city ? this.cityPanel.root : bottom ? this.bottomPanel.root : this.recyclePanel.root;
     if (this.layerSwitch.parentElement !== visible) visible.prepend(this.layerSwitch);
     for (const [view, b] of this.layerButtons) b.setAttribute('aria-pressed', String(view === this.layerView));
     if (changedView) {
@@ -977,6 +983,8 @@ export class App {
     }
     if (!this.cityPanel.root.hidden) this.cityPanel.render(state);
     this.layerButtons.get('bottom')!.hidden = !state.bottom.open;
+    this.layerButtons.get('horizon')!.hidden = !state.horizon.open && (!state.bottom.open || state.bottom.dug < 22000);
+    if (!this.horizonPanel.root.hidden) this.horizonPanel.render(state);
     if (!this.bottomPanel.root.hidden) this.bottomPanel.render(state);
   }
 
@@ -1377,6 +1385,7 @@ export class App {
     // The town's plan is the view itself, not a camera: it draws folded or not.
     if (!this.cityPanel.root.hidden) this.cityPanel.frame(dt, state);
     if (!this.bottomPanel.root.hidden) this.bottomPanel.frame(dt, state);
+    if (!this.horizonPanel.root.hidden) this.horizonPanel.frame(dt, state);
     // The journal's monitor shows camera 01 live, or the recording it plays, folded or not.
     if (!this.journalPanel.root.hidden) this.journalPanel.monitor.frame(dt, this.yardView(state), plantView(state));
     // Folded cameras draw nothing, which also spares the battery.

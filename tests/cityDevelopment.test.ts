@@ -150,7 +150,7 @@ describe('v18 migration and city development saves', () => {
     expect(back.city.development).toBe(0);
     expect(back.city.owned).toEqual(s.city.owned);
     expect(back.city.points.eq(s.city.points)).toBe(true);
-    expect(JSON.parse(serialize(back)).v).toBe(21);
+    expect(JSON.parse(serialize(back)).v).toBe(22);
   });
 
   it('round-trips a developed city and normalises invalid levels', () => {

@@ -1981,3 +1981,28 @@ html, body { overflow: hidden; }
 .bottom .b-opening-head { height: 94px; min-height: 94px; overflow: hidden; }
 
 .b-coin-value { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Lower horizon: one scene and one selected construction, with production kept below it. */
+.horizon .h-content { display: grid; gap: 12px; min-width: 0; }
+.horizon [hidden] { display: none !important; }
+.h-wallet { font-size: 20px; color: var(--glow); font-weight: 700; overflow-wrap: anywhere; }
+.h-note, .h-node-text { color: var(--mid); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.h-node-text { min-height: 4.8em; }
+.h-modes { display: flex; gap: 6px; }
+.h-modes .btn { flex: 1; min-width: 0; min-height: 44px; font-size: 11px; padding-inline: 6px; }
+.h-nodes { display: flex; flex-direction: column; gap: 5px; }
+.h-node { text-align: left; min-height: 44px; font-size: 12px; white-space: normal; }
+.horizon .active { color: var(--glow); border-color: var(--glow); background: rgb(75 150 95 / .12); }
+.h-gate { min-height: 48px; color: var(--amber); border-color: var(--amber); white-space: normal; }
+.h-machine { display: flex; align-items: center; gap: 10px; padding-block: 10px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--mid); }
+.h-machine > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.h-machine > .btn { min-height: 44px; min-width: 88px; font-size: 11px; }
+.horizon summary { padding-block: 12px; cursor: pointer; min-height: 44px; font-size: 12px; color: var(--glow); }
+.h-toggle { display: flex; gap: 10px; align-items: center; min-height: 44px; font-size: 12px; color: var(--mid); }
+.h-toggle input { width: 20px; height: 20px; accent-color: var(--glow); }
+.h-select { min-height: 44px; width: 100%; min-width: 0; background: var(--bg); border: 1px solid var(--line); color: var(--glow); font: inherit; font-size: 12px; padding: 8px; }
+.h-connections { display: grid; gap: 8px; }
+.h-connections .btn { min-height: 44px; white-space: normal; font-size: 12px; }
+.h-entry .btn { min-height: 44px; width: 100%; }
+.s-switch { flex-wrap: wrap; }
+.s-switch .mode { flex: 1 1 100px; min-width: 0; padding-inline: 6px; font-size: 11px; }

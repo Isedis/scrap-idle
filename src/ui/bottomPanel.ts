@@ -1,3 +1,4 @@
+import { umeReserved } from '../game/horizon';
 import {
   ABOVE_SCRIPTS,
   AUTO_OPEN,
@@ -282,6 +283,7 @@ export class BottomPanel {
       borerTitle.textContent = `Проходчик · ур. ${b.equipment.borer}`;
       borer.hidden = !b.firstUmeGranted;
       borerSub.textContent = b.equipment.borer > 0 ? '×1,5 к раскопке за уровень · жила: 1 аномалия / 20 т' : objectReady(b, 'borer') ? 'Корпус освобождён · можно запустить' : `Откопать корпус: ${format(D(Math.floor(b.objectWork.borer)))} / 600 т`;
+      if (umeReserved(s.horizon) && b.ume.lt(borerCost(b).add(1))) borerSub.textContent += ' · покупка использует резерв затвора';
       borerButton.textContent = `${format(borerCost(b))} УМЕ`;
       borerButton.disabled = !umeOpen(b) || (b.equipment.borer === 0 && !objectReady(b, 'borer')) || b.ume.lt(borerCost(b));
     });
