@@ -493,52 +493,85 @@ export function rarityOdds(b: BottomState, id: ContainerId): number[] {
   return containerById(id)!.odds.map((w, i) => w * luck ** i);
 }
 
+interface OpeningBatch {
+  pools: Record<Rarity, ItemDef[]>;
+  amounts: Record<Rarity, Decimal>;
+  odds: Partial<Record<ContainerId, number[]>>;
+  ancientPower: number;
+}
+
+/** Depth is fixed during a batch; collection luck can change after each real find. */
+function openingBatch(b: BottomState): OpeningBatch {
+  const reached=EPOCHS.filter(e=>b.dug>=e.depth).map(e=>e.id);
+  const multiplier=findMultiplier(b);
+  return {
+    pools:Object.fromEntries(RARITIES.map(r=>[r,ITEMS.filter(i=>i.rarity===r&&reached.includes(i.epoch))])) as Record<Rarity,ItemDef[]>,
+    amounts:Object.fromEntries(RARITIES.map(r=>[r,D(YIELD[r]).mul(multiplier)])) as Record<Rarity,Decimal>,
+    odds:{},ancientPower:setPower(b,'ancient'),
+  };
+}
+
 /** Opens one container: pays, rolls a rarity (pity first), a find of it, and pays out. */
 export function openOne(b: BottomState, id: ContainerId, rand: () => number): Opening | null {
+  return rollOpening(b,id,rand);
+}
+
+function rollOpening(b: BottomState, id: ContainerId, rand: () => number, batch?: OpeningBatch): Opening | null {
   if (!canOpen(b, id)) return null;
   const c = containerById(id)!;
   b.money[c.costIn] = b.money[c.costIn].sub(c.cost);
   b.stock[id] -= 1;
   b.opened += 1;
-  let rarity = pick(RARITIES, rarityOdds(b, id), rand());
+  const odds=batch?(batch.odds[id]??=rarityOdds(b,id)):rarityOdds(b,id);
+  let rarity = pick(RARITIES, odds, rand());
   for (const [floor, every] of [...PITY].reverse()) {
     if ((b.dry[floor] ?? 0) + 1 >= every && RARITIES.indexOf(rarity) < RARITIES.indexOf(floor)) rarity = floor;
   }
   for (const [floor] of PITY) b.dry[floor] = RARITIES.indexOf(rarity) >= RARITIES.indexOf(floor) ? 0 : (b.dry[floor] ?? 0) + 1;
-  const reached = EPOCHS.filter((e) => b.dug >= e.depth).map((e) => e.id);
-  const pool = ITEMS.filter((i) => i.rarity === rarity && reached.includes(i.epoch));
+  const pool = batch?.pools[rarity] ?? ITEMS.filter(i=>i.rarity===rarity&&EPOCHS.some(e=>e.id===i.epoch&&b.dug>=e.depth));
   const found = pool[Math.floor(rand() * pool.length)];
   const fresh = !b.found[found.id];
   b.found[found.id] = (b.found[found.id] ?? 0) + 1;
-  const amount = D(YIELD[rarity]).mul(findMultiplier(b));
+  const amount = batch?.amounts[rarity] ?? D(YIELD[rarity]).mul(findMultiplier(b));
   b.money[rarity] = b.money[rarity].add(amount);
   const opening = { item: found, container: id, amount, fresh };
   b.recent.unshift(opening);
   if (b.recent.length > RECENT_KEPT) b.recent.length = RECENT_KEPT;
+  if(batch&&found.epoch==='ancient'&&batch.ancientPower<1+REPEAT_CAP){
+    const power=setPower(b,'ancient');
+    if(power!==batch.ancientPower){batch.ancientPower=power;batch.odds={};}
+  }
   return opening;
 }
 
 /** Openings kept for the screen. */
 const RECENT_KEPT = 12;
 
-/** Opens what the automatic opening takes care of, at most `limit` containers. Returns how many. */
 /** Prefer rare rewards, then first discoveries; ties keep the latest real opening. */
 export const showcaseScore = (o: Opening) => RARITIES.indexOf(o.item.rarity) * 2 + (o.fresh ? 1 : 0);
 
-export function autoOpen(b: BottomState, rand: () => number, limit = 500): number {
+/** Drain affordable stock independently of frame count; an explicit caller budget stays optional. */
+export function autoOpen(b: BottomState, rand: () => number, limit = Infinity): number {
   let n = 0;
   const goal = savingGoal(b);
-  for (const id of autoOpens(b)) {
-    while (n < limit) {
-      const c = containerById(id)!;
-      if (c.cost > 0 && goal?.costIn === c.costIn && b.money[c.costIn].sub(c.cost).lt(goal.cost)) break;
-      const opening = openOne(b, id, rand);
-      if (!opening) break;
-      n++;
-      b.autoFeed.count++;
-      if (!b.autoFeed.best || showcaseScore(opening) >= showcaseScore(b.autoFeed.best)) b.autoFeed.best = opening;
+  const ids=autoOpens(b);
+  let batch: OpeningBatch | undefined;
+  let previous: number;
+  do {
+    previous=n;
+    for (const id of ids) {
+      while (n < limit) {
+        const c = containerById(id)!;
+        if (!canOpen(b,id) || (c.cost > 0 && goal?.costIn === c.costIn && b.money[c.costIn].sub(c.cost).lt(goal.cost))) break;
+        batch??=openingBatch(b);
+        const opening = rollOpening(b,id,rand,batch)!;
+        n++;
+        b.autoFeed.count++;
+        if (!b.autoFeed.best || showcaseScore(opening) >= showcaseScore(b.autoFeed.best)) b.autoFeed.best = opening;
+      }
     }
-  }
+    // A later find may fund an earlier container. No pass can create new stock.
+  } while(n>previous&&n<limit);
   return n;
 }
 
