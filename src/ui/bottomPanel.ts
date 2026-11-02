@@ -405,10 +405,19 @@ export class BottomPanel {
   }
 
   /** One step of the ladder: this currency into the next, one at a time or all of it. */
+  focusUmeGoal(): void {
+    const b=this.getState().bottom;
+    const target=this.root.querySelector<HTMLElement>(b.money.anomaly.gte(meltCost(b,'anomaly'))?'[data-melt="anomaly"] .btn':'[data-route="seam"]');
+    if(!target)return;
+    for(let parent=target.parentElement;parent;parent=parent.parentElement)if(parent instanceof HTMLDetailsElement)parent.open=true;
+    target.focus({preventScroll:true});target.scrollIntoView({block:'center'});
+  }
+
   private meltRow(from: Rarity): HTMLElement {
     const i = RARITIES.indexOf(from);
     const to = i + 1 < RARITIES.length ? RARITY_NAMES[RARITIES[i + 1]] : 'УМЕ';
     const row = el('div', 'b-row');
+    row.dataset.melt=from;
     const body = el('div', 'b-row-text');
     const title = el('div', 'b-row-title');
     const sub = el('div', 'b-row-sub');

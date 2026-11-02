@@ -8,11 +8,17 @@ import { ABOVE_SCRIPTS, AUTO_OPEN, CONTAINERS, EPOCHS, TOOLS, autoOpens, canOpen
 import { scriptById } from '../game/scripts';
 import { canDescend, canRecycle, canResort, canReform, currentGain, resortGain, reformGainOf, type GameState } from '../game/state';
 
-export interface Goal { text: string; tab: 'dump' | 'recycle'; layer: 'recycle' | 'sorting' | 'city' | 'bottom' | 'horizon'; ready?: boolean }
+export interface Goal { text: string; tab: 'dump' | 'recycle'; layer: 'recycle' | 'sorting' | 'city' | 'bottom' | 'horizon'; ready?: boolean; focus?: 'ume' }
 /** A reachable next step, using the same thresholds as the simulation. */
 export function nextGoal(s: GameState): Goal {
   const goal = (text: string, layer: Goal['layer'] = 'recycle', tab: Goal['tab'] = 'recycle'): Goal => ({ text, layer, tab });
-  if (s.horizon.open && s.horizon.opened < 5) return goal(gateReady(s.horizon) ? s.bottom.ume.gte(1) ? 'Горизонт: затвор готов к открытию' : 'Горизонт: затвор готов, нужна 1 УМЕ из шахты' : 'Горизонт: сборка — '+HALLS[s.horizon.opened].name, 'horizon');
+  if (s.horizon.open && s.horizon.opened < 5) {
+    if (gateReady(s.horizon) && s.bottom.ume.lt(1)) {
+      const canMelt = s.bottom.money.anomaly.gte(meltCost(s.bottom, 'anomaly'));
+      return { ...goal(canMelt ? 'Для затвора: переплавьте аномалии в УМЕ в шахте' : 'Для затвора: добудьте аномалии на жиле в шахте, затем переплавьте в УМЕ', 'bottom'), ready: canMelt, focus: 'ume' };
+    }
+    return goal(gateReady(s.horizon) ? 'Горизонт: затвор готов к открытию' : 'Горизонт: сборка — '+HALLS[s.horizon.opened].name, 'horizon');
+  }
   if (!s.horizon.open && canEnterHorizon(s.bottom)) return goal('Под шахтой обнаружен металлический стык', 'horizon');
   if (s.bottom.open) return bottomGoal(s);
   if (canDescend(s)) return { ...goal('Яма открыта: можно спуститься', 'city'), ready: true };

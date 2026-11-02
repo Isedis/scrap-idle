@@ -28,6 +28,7 @@ import {
 
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
+export const MIGRATION_KEY = 'scrap-idle-save-before-migration';
 const VERSION = 23;
 
 /** Run length for a run whose start is not known; stays negative however long it is played. */
@@ -671,10 +672,26 @@ export function applyOffline(state: GameState, now = Date.now()): number {
   return seconds;
 }
 
+const saveHealth = { error: null as string | null, lastSaved: null as number | null, recovered: false };
+export const getSaveHealth = () => ({ ...saveHealth });
+let replacementBlocked = false;
+let skipBackupOnce = false;
+let pendingMigration: string | null = null;
+
+/** Explicit import/new game may replace damaged data; autosave never does so silently. */
+export function allowSaveReplacement(): void {
+  skipBackupOnce = replacementBlocked || saveHealth.recovered;
+  replacementBlocked = false;
+  pendingMigration = null;
+  saveHealth.error = null;
+  saveHealth.recovered = false;
+}
+
 function storage(): Storage | null {
   try {
     return window.localStorage;
   } catch {
+    saveHealth.error = 'Хранилище недоступно. Экспортируйте прогресс до закрытия игры.';
     return null;
   }
 }
@@ -684,40 +701,84 @@ let previewing = false;
 export const startPreview = () => void (previewing = true);
 export const isPreview = () => previewing;
 
-export function writeSave(state: GameState): void {
-  if (previewing) return;
+export function writeSave(state: GameState): boolean {
+  if (previewing || replacementBlocked) return false;
   const store = storage();
-  if (!store) return;
+  if (!store) return false;
   try {
+    // The untouched old format must survive ordinary backup rotation.
+    if (pendingMigration) {
+      store.setItem(MIGRATION_KEY, pendingMigration);
+      pendingMigration = null;
+    }
     const previous = store.getItem(SAVE_KEY);
-    if (previous) store.setItem(BACKUP_KEY, previous);
+    if (previous && !skipBackupOnce) store.setItem(BACKUP_KEY, previous);
     store.setItem(SAVE_KEY, serialize(state));
+    skipBackupOnce = false;
+    saveHealth.error = null;
+    saveHealth.lastSaved = Date.now();
+    return true;
   } catch {
-    // Storage full or blocked: the game keeps running, it just won't persist.
+    saveHealth.error = 'Не удалось сохранить. Экспортируйте прогресс до закрытия игры.';
+    return false;
   }
 }
 
 /** Loads the main save, falling back to the backup if the main one is damaged. */
 export function readSave(): GameState | null {
   const store = storage();
-  if (!store) return null;
+  if (!store) {
+    replacementBlocked = true;
+    saveHealth.error = 'Сохранение недоступно. Автозапись остановлена: загрузите копию после восстановления доступа.';
+    return null;
+  }
+  let foundData = false;
+  let readFailed = false;
   for (const key of [SAVE_KEY, BACKUP_KEY]) {
     try {
       const text = store.getItem(key);
+      if (text) foundData = true;
       const state = text ? deserialize(text) : null;
-      if (state) return state;
+      if (state) {
+        if (key === BACKUP_KEY) {
+          skipBackupOnce = true;
+          saveHealth.recovered = true;
+        }
+        if (JSON.parse(text!).v < VERSION) {
+          pendingMigration = text;
+          try {
+            store.setItem(MIGRATION_KEY, text!);
+            pendingMigration = null;
+          } catch {
+            saveHealth.error = 'Не удалось создать копию до обновления. Экспортируйте прогресс.';
+          }
+        }
+        return state;
+      }
     } catch {
-      // Try the next one.
+      readFailed = true;
     }
+  }
+  if (foundData || readFailed) {
+    replacementBlocked = true;
+    saveHealth.error = 'Сохранение не прочитано. Автозапись остановлена: загрузите свою копию или начните заново.';
   }
   return null;
 }
 
+/** Raw, unmigrated data, also accepted by the regular save importer. */
+export function migrationCheckpoint(): string | null {
+  try { return pendingMigration ?? storage()?.getItem(MIGRATION_KEY) ?? null; }
+  catch { return pendingMigration; }
+}
+
 export function wipeSave(): void {
+  allowSaveReplacement();
   const store = storage();
   try {
     store?.removeItem(SAVE_KEY);
     store?.removeItem(BACKUP_KEY);
+    store?.removeItem(MIGRATION_KEY);
   } catch {
     // Nothing to do.
   }

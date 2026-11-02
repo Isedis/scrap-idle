@@ -20,7 +20,7 @@ export function resetPreview(state: GameState, kind: Kind): string[] {
     sorting: 'Сбросится: текущий заход и вторсырьё. Разряды могут вернуть часть вторсырья и бесконечных узлов.',
     city: 'Сбросится: производство, переработка и сортировка. Город задаст стартовые бонусы.',
   }[kind];
-  const deeper = [state.city.open ? 'город' : '', state.bottom.open ? 'дно' : ''].filter(Boolean);
+  const deeper = [state.city.open ? 'город' : '', state.bottom.open ? 'дно' : '', state.horizon.open ? 'горизонт (КМ, монтаж и открытые залы)' : ''].filter(Boolean);
   const keep = {
     recycle: `Останутся: ${['вторсырьё', 'дерево', ...(state.sorting.open ? ['сортировка'] : []), ...deeper, 'достижения', 'история'].join(', ')}.`,
     sorting: `Останутся: ${['линия', 'фракции', 'рецепты', 'находки', ...deeper, 'достижения', 'история'].join(', ')}.`,

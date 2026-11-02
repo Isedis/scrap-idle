@@ -33,7 +33,7 @@ import {
   type BuyMode,
   type GameState,
 } from '../game/state';
-import { exportSave, importSave, wipeSave, writeSave } from '../game/save';
+import { exportSave, importSave, wipeSave, writeSave, getSaveHealth, allowSaveReplacement, migrationCheckpoint } from '../game/save';
 import { ICONS } from './icons';
 import { el, progress, syncChildren, textBar } from './dom';
 export { textBar } from './dom';
@@ -183,6 +183,8 @@ export class App {
   private cityPanel!: CityPanel;
   private bottomPanel!: BottomPanel;
   private horizonPanel!: HorizonPanel;
+  private saveWarning = el('button', 'save-warning');
+  private saveStatus = el('p', 'note save-status');
   private knownCityOpen = false;
   private knownSortOpen = false;
   /** Red marks on the tabs whose defence needs the player. */
@@ -228,7 +230,7 @@ export class App {
   private updateStatus!: HTMLElement;
   private updateButton!: HTMLButtonElement;
   /** Set by main: checks for a newer build and reloads into it. */
-  onUpdate: () => Promise<'reloading' | 'latest' | 'offline'> = async () => 'latest';
+  onUpdate: () => Promise<'reloading' | 'latest' | 'offline' | 'save-error'> = async () => 'latest';
   private scene!: Scene;
   /** What the player has already been told about, so each event is announced once. */
   private knownRevealed = 0;
@@ -251,6 +253,7 @@ export class App {
   loadState(state: GameState, note: string): void {
     state.lastTick = Date.now();
     this.setState(state);
+    allowSaveReplacement();
     writeSave(state);
     this.resetKnown(true);
     this.toast(note);
@@ -348,8 +351,16 @@ export class App {
       this.layerView = goal.layer;
       this.show(goal.tab);
       this.render();
+      if(goal.focus==='ume')this.bottomPanel.focusUmeGoal();
     });
-    header.append(figures, this.incomeEl, this.alertEl, this.consoleEl, this.goalEl);
+    this.saveWarning.type='button';this.saveWarning.hidden=true;
+    this.saveWarning.setAttribute('aria-live','polite');
+    this.saveWarning.addEventListener('click',()=>{
+      this.show('settings');
+      document.getElementById('export-save')?.click();
+      document.getElementById('save-text')?.scrollIntoView({block:'center'});
+    });
+    header.append(figures, this.incomeEl, this.alertEl, this.consoleEl, this.goalEl, this.saveWarning);
 
     this.recyclePanel = new RecyclePanel(
       this.getState,
@@ -398,7 +409,9 @@ export class App {
       if (message && loud) this.toast(message);
       this.render();
     });
-    this.horizonPanel = new HorizonPanel(this.getState, () => { writeSave(this.getState()); this.render(); });
+    this.horizonPanel = new HorizonPanel(this.getState, () => { writeSave(this.getState()); this.render(); }, () => {
+      this.layerView='bottom';this.show('recycle');this.render();this.bottomPanel.focusUmeGoal();
+    });
     for (const [view, label] of [['recycle', 'Переработка'], ['sorting', 'Сортировка'], ['city', 'Город'], ['bottom', 'Дно'], ['horizon', 'Горизонт']] as const) {
       const b = el('button', 'mode', label);
       b.type = 'button';
@@ -1156,7 +1169,7 @@ export class App {
       }
       this.updateButton.disabled = false;
       this.updateButton.textContent = 'Обновить';
-      this.updateStatus.textContent = result === 'latest' ? 'У вас последняя версия.' : 'Не удалось подготовить обновление. Текущая версия сохранена. Попробуйте позже.';
+      this.updateStatus.textContent = result === 'save-error' ? 'Обновление отложено: не удалось сохранить прогресс. Сначала сделайте экспорт.' : result === 'latest' ? 'У вас последняя версия.' : 'Не удалось подготовить обновление. Текущая версия сохранена. Попробуйте позже.';
       this.updateStatus.classList.remove('ready');
     });
     this.updateCredit = el('p', 'note release-credit', __RELEASE_AUTHOR__ === 'Codex' ? `От Codex · ${__RELEASE_SUMMARY__}` : '');
@@ -1255,6 +1268,7 @@ export class App {
 
     panel.append(el('h2', 'panel-title', 'Сохранение'));
     panel.append(el('p', 'note', 'Игра сохраняется сама каждые 10 секунд и при сворачивании.'));
+    this.saveStatus.setAttribute('role','status');panel.append(this.saveStatus);
 
     const area = el('textarea', 'save-text');
     area.id = 'save-text';
@@ -1263,6 +1277,7 @@ export class App {
     area.spellcheck = false;
 
     const exportBtn = el('button', 'btn', 'Экспорт');
+    exportBtn.id='export-save';
     exportBtn.type = 'button';
     exportBtn.addEventListener('click', () => {
       area.value = exportSave(this.getState());
@@ -1287,6 +1302,10 @@ export class App {
     const row = el('div', 'btn-row');
     row.append(exportBtn, importBtn);
     panel.append(area, row);
+    const checkpoint=el('button','btn','Экспорт копии до обновления');checkpoint.type='button';
+    checkpoint.hidden=!migrationCheckpoint();
+    checkpoint.addEventListener('click',()=>{const raw=migrationCheckpoint();if(raw){area.value=raw;area.focus();area.select();}});
+    panel.append(checkpoint);
 
     panel.append(el('h2', 'panel-title', 'Начать заново'));
     panel.append(el('p', 'note', 'Удаляет весь прогресс без возможности вернуть.'));
@@ -1516,6 +1535,13 @@ export class App {
 
   render(): void {
     const state = this.getState();
+    const health=getSaveHealth();
+    const warning=health.error ? `${health.error} → ЭКСПОРТ` : '';
+    this.saveWarning.hidden=!warning;
+    if(this.saveWarning.textContent!==warning)this.saveWarning.textContent=warning;
+    const saveMessage=health.error??(health.lastSaved?`Сохранено в ${new Date(health.lastSaved).toLocaleTimeString('ru-RU')}.`:'Ожидается автосохранение.');
+    const saveText=saveMessage+(health.recovered?' При запуске восстановлена резервная копия.':'');
+    if(this.saveStatus.textContent!==saveText)this.saveStatus.textContent=saveText;
     this.announce(state);
 
     const goal = nextGoal(state);

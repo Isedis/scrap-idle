@@ -3,10 +3,28 @@ import { D } from '../src/game/num';
 import { newGame, advance, reform } from '../src/game/state';
 import { serialize, deserialize } from '../src/game/save';
 import { melt, pressure, supplyRate } from '../src/game/bottom';
-import { HALLS, newHorizon, enterHorizon, canEnterHorizon, openGate, nodeCost, horizonRates, horizonTick, buyMachine, gateReady } from '../src/game/horizon';
+import { HALLS, newHorizon, enterHorizon, canEnterHorizon, openGate, nodeCost, horizonRates, horizonTick, buyMachine, gateReady, buildTargets, nodeDone } from '../src/game/horizon';
 
 const readyState=()=>{const s=newGame(0);s.bottom.open=true;s.bottom.dug=22000;s.bottom.equipment.borer=1;s.bottom.umeMade=D(1);s.bottom.ume=D(5);return s;};
 describe('lower horizon',()=>{
+  it('returns from manual work to the queue inside a long tick',()=>{
+    const s=readyState(),h=s.horizon;enterHorizon(h,s.bottom);
+    h.pinned=true;h.selected=0;h.mode='assembly';
+    horizonTick(h,600,s.city);
+    expect(h.pinned).toBe(false);expect(nodeDone(h,0)).toBe(true);
+    expect(h.work[1].gt(0)).toBe(true);expect(buildTargets(h)).toContain(1);
+  });
+  it('recovers a legacy pin on an unavailable or completed node without overriding a disabled queue',()=>{
+    const s=readyState(),h=s.horizon;enterHorizon(h,s.bottom);
+    h.pinned=true;h.selected=3;
+    expect(buildTargets(h)).toEqual([0]);
+    horizonTick(h,1,s.city);expect(h.pinned).toBe(false);
+    h.work[0]=nodeCost(h,0);h.pinned=true;h.selected=0;
+    expect(buildTargets(h)).toEqual([1]);
+    h.autoBuild=false;const before=h.work.map(w=>w.toString());
+    horizonTick(h,600,s.city);expect(buildTargets(h)).toEqual([]);
+    expect(h.work.map(w=>w.toString())).toEqual(before);
+  });
   it('requires earned UME and gives the starting installation only once without resetting the mine',()=>{
     const s=readyState();s.bottom.umeMade=D(0);expect(canEnterHorizon(s.bottom)).toBe(false);
     s.bottom.money.anomaly=D(150);expect(melt(s.bottom,'anomaly')).toBe(1);

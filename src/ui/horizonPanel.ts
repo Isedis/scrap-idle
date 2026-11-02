@@ -15,6 +15,10 @@ export class HorizonPanel {
   private ume = el('div', 'h-note');
   private title = el('h2', 'panel-title');
   private nodeText = el('div', 'h-node-text');
+  private inspection = el('div', 'h-inspection');
+  private inspectedText = el('p', 'h-note');
+  private assign = el('button', 'btn', 'НАЗНАЧИТЬ МОНТАЖ');
+  private inspected: number | null = null;
   private nodes = el('div', 'h-nodes');
   private modes = el('div', 'h-modes');
   private gate = el('button', 'btn h-gate', 'ОТКРЫТЬ · 1 УМЕ');
@@ -30,11 +34,11 @@ export class HorizonPanel {
   private viewedHall = -1;
   private identity: GameState['horizon'] | null = null;
   private currentButtons: HTMLButtonElement[] = [];
-  constructor(private getState: () => GameState, private onChange: () => void) {
+  constructor(private getState: () => GameState, private onChange: () => void, private visitMine: () => void) {
     this.camera = new HorizonCam(i => {
       const h = this.getState().horizon;
       if (this.viewedHall >= 0 && this.viewedHall !== h.opened) return;
-      h.selected = i; h.pinned = true; this.onChange();
+      this.inspected = i; this.onChange();
     });
     this.enter.type = 'button'; this.enter.addEventListener('click', () => { const s = this.getState(); if (enterHorizon(s.horizon, s.bottom)) this.onChange(); });
     this.entry.append(el('h2', 'panel-title', 'Металлический стык'), this.entryText, this.enter);
@@ -44,8 +48,17 @@ export class HorizonPanel {
     }
     this.gate.type='button';this.gate.addEventListener('click',()=>{
       const s=this.getState();const old=s.horizon.opened;
-      if(openGate(s.horizon,s.bottom)){this.viewedHall=-1;this.camera.opened(old);this.onChange();}
+      if(gateReady(s.horizon)&&s.bottom.ume.lt(1)){this.visitMine();return;}
+      if(openGate(s.horizon,s.bottom)){this.viewedHall=-1;this.inspected=null;this.camera.opened(old);this.onChange();}
     });
+    this.assign.type='button';this.assign.addEventListener('click',()=>{
+      const h=this.getState().horizon;
+      if(this.inspected===null||!nodeAvailable(h,this.inspected))return;
+      h.selected=this.inspected;h.pinned=true;h.autoBuild=true;
+      if(h.mode==='growth')h.mode='balance';
+      this.onChange();
+    });
+    this.inspection.append(this.inspectedText,this.assign);this.inspection.hidden=true;
     const settings=el('details','h-settings');settings.append(el('summary','','Автоматика и резерв'));
     for(const [key,label] of [['autoBuild','Автомонтаж'],['autoBuy','Автопокупка полезных улучшений'],['smart','Диспетчер зависимостей · после зала 3'],['reserveUme','Копить 1 УМЕ на текущий затвор']] as const){
       const row=el('label','h-toggle');const input=el('input','');input.type='checkbox';
@@ -68,34 +81,40 @@ export class HorizonPanel {
     }
     connections.append(this.connections,el('p','s-why','10 восстановленных улиц дают транспорту +10%, пока город сохраняет их. Подключения необязательны.'));
     this.history.setAttribute('aria-label','Камеры пройденных залов');this.history.addEventListener('change',()=>{this.viewedHall=Number(this.history.value);this.onChange();});
-    const targets=el('details','h-targets');targets.append(el('summary','','Цели монтажа'),this.nodes);
-    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.note,this.nodeText,this.modes,this.gate,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
+    const targets=el('details','h-targets');targets.append(el('summary','','Осмотреть узлы'),this.nodes);
+    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.note,this.nodeText,this.inspection,this.modes,this.gate,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
     this.root.append(this.entry,this.content);
   }
   render(s: GameState): void {
     const h=s.horizon;
-    if(this.identity!==h){this.identity=h;this.viewedHall=-1;this.renderedHall=-1;this.camera.reset();}
+    if(this.identity!==h){this.identity=h;this.viewedHall=-1;this.renderedHall=-1;this.inspected=null;this.camera.reset();}
     this.entry.hidden=h.open;this.content.hidden=!h.open;
     this.entryText.textContent=`За породой виден стык огромных створок. Глубина ${Math.floor(s.bottom.dug)}/22000 т · проходчик ${s.bottom.equipment.borer>0?'запущен':'не запущен'} · УМЕ переплавкой ${s.bottom.umeMade.gte(1)?'получена':'ещё не получена'}. Вход сохраняет всю шахту.`;
     this.enter.disabled=!canEnterHorizon(s.bottom);if(!h.open)return;
     const r=horizonRates(h,s.city), hall=HALLS[h.opened], targets=buildTargets(h);
     this.wallet.textContent=`${format(h.points)} КМ · +${format(r.production)} КМ/мин`;
-    this.ume.textContent=`УМЕ ${format(s.bottom.ume)}${h.reserveUme&&h.opened<5?' · 1 отложена на затвор':''}`;
+    this.ume.textContent=`УМЕ ${format(s.bottom.ume)}${h.reserveUme&&h.opened<5?` · на затвор ${format(s.bottom.ume.min(1))}/1`:''}`;
     this.title.textContent=hall?`${h.opened+1}/5 · ${hall.name}`:'Глава завершена · сопряжение';
     this.note.textContent=hall?`${hall.reward} · ${h.pinned?'ручная цель':h.autoBuild?'автомонтаж':'выбор цели вручную'}`:'За главным створом — неподключённая система. Следующая глава ещё не открыта. Производство и прежние залы сохранены.';
     if(this.renderedHall!==h.opened){
-      this.renderedHall=h.opened;this.nodes.replaceChildren();this.currentButtons=[];
-      hall?.nodes.forEach((n,i)=>{const b=el('button','btn h-node',n.name);b.type='button';b.addEventListener('click',()=>{const current=this.getState().horizon;current.selected=i;current.pinned=true;this.onChange();});this.nodes.append(b);this.currentButtons.push(b);});
+      this.renderedHall=h.opened;this.inspected=null;this.nodes.replaceChildren();this.currentButtons=[];
+      hall?.nodes.forEach((n,i)=>{const b=el('button','btn h-node',n.name);b.type='button';b.addEventListener('click',()=>{this.inspected=i;this.onChange();});this.nodes.append(b);this.currentButtons.push(b);});
     }
     this.currentButtons.forEach((b,i)=>{
       const done=nodeDone(h,i),active=nodeAvailable(h,i),percent=h.work[i].div(nodeCost(h,i)).mul(100).floor().toNumber();
       b.textContent=`${hall.nodes[i].name} · ${done?'ГОТОВО':active?`${percent}%`:'нужны предыдущие узлы'}`;
-      b.classList.toggle('active',targets.includes(i)&&h.mode!=='growth');b.setAttribute('aria-pressed',String(h.selected===i));
+      b.classList.toggle('active',targets.includes(i)&&h.mode!=='growth');b.setAttribute('aria-pressed',String(this.inspected===i));
     });
-    const selected=hall?.nodes[h.selected];
-    this.nodeText.textContent=selected?`${selected.purpose}. ${format(h.work[h.selected])} / ${format(nodeCost(h,h.selected))} КМ. ${!nodeAvailable(h,h.selected)&&!nodeDone(h,h.selected)?'Сначала: '+selected.needs.map(i=>hall.nodes[i].name).join(', '):h.mode==='growth'?'Монтаж на паузе — весь выпуск копится.':h.mode==='balance'?'До половины выпуска идёт на сборку.':'Сборка использует выпуск и накопленные КМ.'}`:'';
+    this.nodeText.textContent=!hall?'Все пять залов открыты.':gateReady(h)?'Монтаж завершён. Можно открыть затвор.':h.mode==='growth'?'Монтаж на паузе: режим «Рост» копит весь выпуск КМ.':!h.autoBuild?'Монтаж выключен. Назначьте узел или включите автомонтаж.':`Сейчас строится: ${targets.map(i=>`${hall.nodes[i].name} · ${format(h.work[i])}/${format(nodeCost(h,i))} КМ`).join('; ')}. ${h.mode==='balance'?'До половины выпуска идёт на сборку.':'Сборка использует выпуск и запас КМ.'}`;
+    const id=this.inspected,selected=id===null?null:hall?.nodes[id];
+    this.inspection.hidden=!selected;
+    if(selected&&id!==null){
+      this.inspectedText.textContent=`Осмотр: ${selected.name}. ${selected.purpose}. ${format(h.work[id])}/${format(nodeCost(h,id))} КМ.${!nodeAvailable(h,id)&&!nodeDone(h,id)?' Сначала: '+selected.needs.map(i=>hall.nodes[i].name).join(', '):nodeDone(h,id)?' Готово.':''}`;
+      this.assign.disabled=!nodeAvailable(h,id);
+      this.assign.textContent=h.pinned&&h.selected===id?'НАЗНАЧЕНО · ПОТОМ АВТООЧЕРЕДЬ':'СТРОИТЬ СЛЕДУЮЩИМ';
+    }
     this.modes.querySelectorAll('button').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.mode===h.mode));
-    this.gate.hidden=!gateReady(h);this.gate.disabled=s.bottom.ume.lt(1);this.gate.textContent=s.bottom.ume.lt(1)?'ГОТОВО · НУЖНА 1 УМЕ ИЗ ШАХТЫ':'ОТКРЫТЬ · 1 УМЕ';
+    this.gate.hidden=!gateReady(h);this.gate.textContent=s.bottom.ume.lt(1)?'ЗА УМЕ В ШАХТУ →':'ОТКРЫТЬ · 1 УМЕ';
     const names={transport:'Транспорт',processing:'Переработка',assembly:'Монтаж'};
     for(const [id,row] of this.machineRows){
       const old=r.production;const next=horizonRates({...h, levels:{...h.levels,[id]:h.levels[id]+1}},s.city);
@@ -112,6 +131,6 @@ export class HorizonPanel {
   }
   frame(dt:number,s:GameState):void {
     if(!s.horizon.open)return;
-    this.camera.update(dt,{state:s.horizon,hall:this.viewedHall>=0?this.viewedHall:s.horizon.opened,selected:s.horizon.selected});
+    this.camera.update(dt,{state:s.horizon,hall:this.viewedHall>=0?this.viewedHall:s.horizon.opened,selected:this.inspected??buildTargets(s.horizon)[0]??s.horizon.selected});
   }
 }

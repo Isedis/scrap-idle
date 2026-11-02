@@ -307,7 +307,7 @@ const OFFLINE_SLICES = 200;
  * passes, so long spans are simulated in slices. Offline, income is halved and the
  * threat climbs slowly and stops short of the edge.
  */
-export function advance(state: GameState, seconds: number, offline = false, sliceSeconds = SLICE_SECONDS): void {
+export function advance(state: GameState, seconds: number, offline = false, sliceSeconds = SLICE_SECONDS, controlsCovered = false): void {
   if (seconds <= 0) return;
   // Closed, the plant runs at normal load: louder is only for someone who is there to hear.
   const noise = state.hearing.noise;
@@ -317,7 +317,7 @@ export function advance(state: GameState, seconds: number, offline = false, slic
     const dt = Math.min(slice, left);
     const town = cityEffects(state.city);
     // A reload or enabling automation at the door must be safe too.
-    if (!offline && state.hearing.phase === 'check' && fullNoiseAutomation(state)) silence(state);
+    if (!controlsCovered && !offline && state.hearing.phase === 'check' && fullNoiseAutomation(state)) silence(state);
     const rate = ratePerSecond(state);
     let gained = rate.mul(dt);
     if (offline) gained = gained.mul(offlineRate(state));
@@ -335,15 +335,15 @@ export function advance(state: GameState, seconds: number, offline = false, slic
     state.runSeconds += dt;
     if (!offline) state.story.boost = Math.max(0, state.story.boost - dt);
     // Tails off the sorting line feed the thing: it climbs faster.
-    state.threat.level = climb(state.threat.level, state.runTrash, dt * threatSpeed(state.sorting) * treeThreatSpeed(state.recycle) * town.threatSpeed, offline);
+    if (!controlsCovered) state.threat.level = climb(state.threat.level, state.runTrash, dt * threatSpeed(state.sorting) * treeThreatSpeed(state.recycle) * town.threatSpeed, offline);
     state.sorting.boost = town.fractions;
     const pushed = sortingTick(state.sorting, rate, dt, offline);
     // What falls back into the heap pushes it up, but never over the edge by itself.
-    if (pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
+    if (!controlsCovered && pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
     if (!state.sorting.open && state.recycle.total.gte(SORT_AT)) state.sorting.open = true;
     // A player already past the resorts the town asks for finds it open too.
     if (!state.city.open && state.sorting.sorts >= CITY_OPEN_SORTS) state.city.open = true;
-    const hearingEvent = hearingTick(state.hearing, dt, state.sorting.open, offline, Math.random, town.hearingFill);
+    const hearingEvent = controlsCovered ? null : hearingTick(state.hearing, dt, state.sorting.open, offline, Math.random, town.hearingFill);
     if (hearingEvent === 'check') silence(state);
     if (hearingEvent === 'survived') {
       if (fullNoiseAutomation(state) && state.hearing.resumeNoise !== null) state.hearing.noise = state.hearing.resumeNoise;

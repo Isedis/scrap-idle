@@ -7,6 +7,19 @@ import { D } from '../src/game/num';
 const collector = PRODUCERS[0];
 
 describe('game state', () => {
+  for (const phase of ['idle', 'walk', 'check'] as const) {
+    it(`keeps production but freezes both dangers under mandatory screens (${phase})`, () => {
+      const s=newGame(0);
+      s.runTrash=D('1e50');s.threat.level=.99;s.sorting.open=true;
+      s.hearing.phase=phase;s.hearing.noise=2;s.hearing.meter=.99;s.hearing.left=1;
+      const hearing={...s.hearing},before=s.trash;
+      advance(s,600,false,undefined,true);
+      expect(s.trash.gt(before)).toBe(true);
+      expect(s.threat.level).toBe(.99);expect(s.hearing).toEqual(hearing);
+      advance(s,10);
+      expect(s.threat.level>.99 || s.hearing.phase!==phase || s.hearing.left<1).toBe(true);
+    });
+  }
   it('starts automatic with one free collector', () => {
     const s = newGame(0);
     expect(s.owned.collector).toBe(1);

@@ -75,7 +75,8 @@ export function connectHorizon(h: HorizonState, b: BottomState, id: 'frame' | 'c
   b.money[currency] = b.money[currency].sub(price); h.connections[id] = true; return true;
 }
 export function buildTargets(h: HorizonState): number[] {
-  if (h.pinned || !h.autoBuild) return nodeAvailable(h, h.selected) ? [h.selected] : [];
+  if (!h.autoBuild) return [];
+  if (h.pinned && nodeAvailable(h, h.selected)) return [h.selected];
   const ids = (HALLS[h.opened]?.nodes ?? []).map((_, i) => i).filter(i => nodeAvailable(h, i));
   if (h.smart && h.opened >= 3) ids.sort((a, b) => {
     const children = (id: number) => HALLS[h.opened].nodes.filter(n => n.needs.includes(id)).length;
@@ -99,6 +100,8 @@ export function horizonTick(h: HorizonState, seconds: number, city: CityState): 
   if (!h.open || !Number.isFinite(seconds) || seconds <= 0) return;
   let remaining = seconds;
   while (remaining > 1e-8) {
+    // A completed or obsolete manual assignment returns to the normal queue.
+    if (h.pinned && !nodeAvailable(h, h.selected)) h.pinned = false;
     const r = horizonRates(h, city); const targets = h.mode === 'growth' ? [] : buildTargets(h);
     let flow = h.mode === 'balance' ? r.production.mul(.5).min(r.assembly) : r.assembly;
     if (h.mode === 'assembly' && h.points.lte(1e-10)) flow = flow.min(r.production);
@@ -118,6 +121,7 @@ export function horizonTick(h: HorizonState, seconds: number, city: CityState): 
       if (nodeCost(h, id).sub(h.work[id]).lte(nodeCost(h, id).mul(1e-12))) h.work[id] = nodeCost(h, id);
     }
     h.points = h.points.add(gained).sub(spent).max(0); h.total = h.total.add(gained);
+    if (h.pinned && nodeDone(h, h.selected)) h.pinned = false;
     h.clock += dt; remaining -= dt;
     if (h.clock >= 60 - 1e-8) { h.clock = 0; autoPurchase(h, city); }
   }

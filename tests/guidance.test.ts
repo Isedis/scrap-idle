@@ -7,8 +7,19 @@ import { nextGoal } from '../src/ui/guidance';
 import { resetPreview } from '../src/ui/resetPreview';
 import { DISTRICTS, canAnnex } from '../src/game/city';
 import { EPOCHS, MELT, bottomTick } from '../src/game/bottom';
+import { HALLS, nodeCost } from '../src/game/horizon';
 
 describe('operator guidance', () => {
+  it('routes a finished gate to mining or melting, then back to the gate', () => {
+    const s=newGame(0),h=s.horizon;h.open=true;
+    h.work=HALLS[0].nodes.map((_,i)=>nodeCost(h,i));
+    s.bottom.open=true;s.bottom.equipment.borer=1;s.bottom.ume=D(0);
+    expect(nextGoal(s).layer).toBe('bottom');expect(nextGoal(s).text).toContain('жиле');expect(nextGoal(s).focus).toBe('ume');
+    s.bottom.money.anomaly=D(MELT.anomaly);
+    expect(nextGoal(s).layer).toBe('bottom');expect(nextGoal(s).text).toContain('переплавьте');
+    expect(nextGoal(s).ready).toBe(true);
+    s.bottom.ume=D(1);expect(nextGoal(s).layer).toBe('horizon');
+  });
   it('keeps the first goal on an available tab', () => {
     expect(nextGoal(newGame()).tab).toBe('dump');
   });
@@ -24,9 +35,11 @@ describe('operator guidance', () => {
       const s = deserialize(readFileSync(`tests/fixtures/${fixture}.json`, 'utf8'))!;
       if (kind === 'sorting') s.recycle.total = D('1e100');
       if (kind === 'city') { s.city.open = true; s.sorting.sorts = 9; }
+      s.horizon.open=true;s.horizon.points=D(123);s.horizon.work[0]=D(7);
       const before = serialize(s);
       const preview = resetPreview(s, kind);
       expect(preview.length).toBeGreaterThan(1);
+      expect(preview.join(' ')).toContain('горизонт (КМ, монтаж и открытые залы)');
       expect(preview.join(' ')).not.toMatch(/NaN|undefined|Infinity/);
       expect(serialize(s)).toBe(before);
     });

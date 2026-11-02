@@ -5,7 +5,6 @@ import { advance, autoRecycleDue, autoSortDue, newGame, revealProducers, runScri
 import { applyOffline, readSave, writeSave } from './game/save';
 import { AWAY_SCREEN_SECONDS, awayReport, awaySnapshot, type AwayReport } from './game/away';
 import { App } from './ui/app';
-import { holdCheck } from './game/hearing';
 import { CHECK_EVERY_MS, latestRelease, registerUpdates, selectRelease, reloadInto } from './update';
 import { debugOn, mountDebug } from './ui/debugPanel';
 
@@ -69,9 +68,8 @@ function frame(): void {
     welcomeBack(seconds, awayReport(snapshot, state, seconds), raw);
     dt = 0;
   } else {
-    // The minute at the door starts once the player can see it, not under the away screen.
-    if (app.covered()) holdCheck(state.hearing, dt);
-    advance(state, dt);
+    // Mandatory screens hide the controls: production continues, both dangers wait.
+    advance(state, dt, false, undefined, app.covered());
     state.lastTick = now;
   }
 
@@ -112,7 +110,7 @@ async function checkForUpdate(): Promise<void> {
 
 // The Settings button: save, then load the newest build if there is one.
 app.onUpdate = async () => {
-  writeSave(state);
+  if (!writeSave(state)) return 'save-error';
   const release = import.meta.env.PROD ? await fetchRelease() : { build: __BUILD_ID__ };
   if (release === null) return 'offline';
   if (release.build === __BUILD_ID__) return 'latest';
