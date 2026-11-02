@@ -15,6 +15,8 @@ export interface PitView {
   equipment: BottomState['equipment'];
   auto: number;
   depth: number;
+  work: 'depth' | 'site' | 'seam';
+  benchMode: BottomState['benchMode'];
   object: { id: 'hoist' | 'bench' | 'borer'; progress: number } | null;
 }
 
@@ -123,8 +125,7 @@ export class PitCam extends Camera<PitView> {
       const y = h * (0.37 + i * 0.12);
       this.line(w * 0.44, y, w * 0.96, y + 3, i <= strata ? '#356b49' : '#193724', 1, 0.55);
     }
-    this.label('СНАБЖЕНИЕ', w * 0.22, h * 0.40, '#558265');
-    this.label('ЗАБОЙ', w * 0.73, h * 0.29, '#79aa88');
+    this.label('ПОТОК СВЕРХУ', w * 0.22, h * 0.30, '#79aa88');
 
     // Falling trash.
     for (const b of this.bits) {
@@ -180,7 +181,9 @@ export class PitCam extends Camera<PitView> {
 
     this.machines();
     this.buriedObject();
-    this.miner(w * 0.57, this.heapTop(w * 0.57));
+    this.workflow();
+    const minerX = w * (v.work === 'site' ? 0.65 : v.work === 'seam' ? 0.80 : 0.55);
+    this.miner(minerX, this.heapTop(minerX));
 
     if (this.flashLeft > 0) {
       ctx.fillStyle = this.flashColor;
@@ -191,6 +194,44 @@ export class PitCam extends Camera<PitView> {
     this.vignette(0.5);
   }
 
+  /** Routes show actual work allocation; animation only presents simulation state. */
+  private workflow(): void {
+    const { w, h, ctx } = this;
+    const v = this.view!;
+    const depthOn = v.work === 'depth' || (v.work === 'site' && v.equipment.hoist);
+    const green = '#91c49b', dim = '#284c35', amber = '#d0b56d';
+    // The excavation shaft is separate from the surface supply heap.
+    const x = w * 0.56, y = h * 0.73, bottom = h * 0.94;
+    this.box(x - 12, y, 25, bottom - y, '#030b06');
+    this.line(x - 13, y, x - 13, bottom, depthOn ? green : dim);
+    this.line(x + 14, y, x + 14, bottom, depthOn ? green : dim);
+    for (let i = 0; i < 4; i++) {
+      const phase = this.reducedMotion || !depthOn ? i / 4 : (i / 4 + this.t * 0.22) % 1;
+      const py = y + phase * (bottom - y - 7);
+      this.line(x - 4, py, x, py + 4, depthOn ? green : dim);
+      this.line(x, py + 4, x + 4, py, depthOn ? green : dim);
+    }
+    // Material leaving the surface heap has a visible destination.
+    const beltY = h * 0.93;
+    this.line(w * 0.06, beltY, w * 0.34, beltY, '#4b7855', 2);
+    for (let i = 0; i < (v.heap > 0 || v.fall > 0 ? 4 : 0); i++) {
+      const phase = this.reducedMotion ? i / 4 : (i / 4 + this.t * 0.12) % 1;
+      this.box(w * (0.06 + phase * 0.26), beltY - 5, 4, 3, '#8ca27d');
+    }
+    this.label(v.equipment.bench ? v.benchMode === 'scrap' ? '→ ЛОМ' : '→ ЦВЕТМЕТ' : '→ ТРУХА', w * 0.20, h * 0.98, '#91aa88');
+    // A distinct mineral face identifies the seam, even with motion disabled.
+    if (v.equipment.borer > 0) {
+      for (let i = 0; i < 5; i++) {
+        const sx = w * (0.86 + (i % 2) * 0.035), sy = h * (0.57 + i * 0.05);
+        this.poly([[sx, sy - 4], [sx + 4, sy], [sx, sy + 5], [sx - 3, sy]], v.work === 'seam' ? amber : '#46573d');
+      }
+    }
+    ctx.fillStyle = 'rgb(2 9 5 / 0.86)';
+    ctx.fillRect(w * 0.41, h * 0.14, w * 0.57, h * 0.14);
+    this.label(v.work === 'site' ? 'РАСКОПКА МАШИНЫ' : v.work === 'seam' ? 'ЖИЛА → АНОМАЛИИ' : 'ПРОХОД В ГЛУБИНУ', w * 0.70, h * 0.19, v.work === 'seam' ? amber : green);
+    this.label(v.work === 'site' ? v.equipment.hoist ? '75% ОБЪЕКТ · 25% ВНИЗ' : 'ГЛУБИНА СТОИТ' : v.work === 'seam' ? 'ГЛУБИНА СТОИТ' : 'ГЛУБИНА РАСТЁТ', w * 0.70, h * 0.25, '#7b9d82');
+  }
+
   /** Purchased machinery has a distinct silhouette and keeps a static reduced-motion view. */
   private buriedObject(): void {
     const v = this.view!;
@@ -199,7 +240,6 @@ export class PitCam extends Camera<PitView> {
     const x = w * 0.72, y = h * 0.49;
     const p = Math.max(0, Math.min(1, v.object.progress));
     const color = p >= 1 ? '#b2c587' : '#608c70';
-    this.box(x - 5, y - 5, w * 0.24, h * 0.30, '#122a1c', 0.8);
     if (v.object.id === 'hoist') {
       this.box(x, y, 4, h * 0.22, color);
       this.box(x + 38, y, 4, h * 0.22, color);
@@ -215,9 +255,20 @@ export class PitCam extends Camera<PitView> {
       this.poly([[x + 2, y + 23], [x - 14, y + 35], [x + 2, y + 46]], color);
       for (let i = 0; i < 3; i++) this.circle(x + 12 + i * 13, y + 49, 4, color);
     }
-    for (let i = 0; i < 4; i++) {
-      const top = y + h * 0.30 - 1 - i * h * 0.075;
-      if (p < (i + 1) / 4) this.box(x - 5, top, w * 0.24, h * 0.075, '#0b2116', 0.85);
+    if (p < 1) {
+      const edge = y + Math.floor(p * 4) / 4 * h * 0.30;
+      const points: [number, number][] = [[x - 8, y + h * 0.31]];
+      for (let i = 0; i <= 8; i++) points.push([x - 8 + i * w * 0.032, edge + Math.sin(i * 4.7) * 4]);
+      points.push([x + w * 0.25, y + h * 0.31]);
+      this.poly(points, '#0c2116');
+      for (let i = 0; i < 9; i++) {
+        const sx = x - 4 + (i % 5) * 15, sy = edge + 7 + Math.floor(i / 5) * 11;
+        if (sy < y + h * 0.30) this.line(sx, sy, sx + 5, sy + 2, '#284b32');
+      }
+      if (v.work === 'site') for (let i = 0; i < 3; i++) {
+        const phase = this.reducedMotion ? i / 3 : (this.t * 0.6 + i / 3) % 1;
+        this.box(x - 6 - phase * 8, edge + phase * 14, 2, 2, '#84977c');
+      }
     }
     this.label(p >= 1 ? 'ГОТОВО' : `ОТКОПАНО ${Math.floor(p * 100)}%`, x + 10, y - 10, '#8bb997');
   }

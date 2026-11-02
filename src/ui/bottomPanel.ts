@@ -753,6 +753,8 @@ export class BottomPanel {
       equipment: b.equipment,
       auto: b.auto,
       depth: b.dug,
+      work: b.route === 'seam' && b.equipment.borer > 0 ? 'seam' : activeObject(b) ? 'site' : 'depth',
+      benchMode: b.benchMode,
       object: (() => {
         const id = activeObject(b)
           ?? (['hoist', 'bench', 'borer'] as const).find((key) => objectReady(b, key) && !(key === 'borer' ? b.equipment.borer > 0 : b.equipment[key]))
