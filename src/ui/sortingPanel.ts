@@ -618,17 +618,18 @@ export class SortingPanel {
     const sig = `${n}|${so.line.slice(0, n).join()}|${so.recipes.join()}|${JSON.stringify(so.levels)}`;
     // The list is rebuilt under the finger that just bought a level: the page must not move.
     // Its belts fill in a moment later, so the scroll goes back only once everything is in.
+    const scroller = this.root.closest<HTMLElement>('.panels');
     let keep: { y: number; focused?: string } | null = null;
     if (sig !== this.lineFor) {
       this.lineFor = sig;
-      keep = { y: window.scrollY, focused: document.activeElement?.id };
+      keep = { y: scroller?.scrollTop ?? 0, focused: document.activeElement?.id };
       this.buildLineList(state);
     }
     const rate = ratePerSecond(state);
     for (const update of this.slotUpdaters) update(state, rate);
     this.animate();
     if (keep) {
-      window.scrollTo(0, keep.y);
+      if (scroller) scroller.scrollTop = keep.y;
       if (keep.focused) document.getElementById(keep.focused)?.focus({ preventScroll: true });
     }
     const { tails } = runLine(so.line.slice(0, n), so.levels);

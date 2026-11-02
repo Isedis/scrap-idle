@@ -67,7 +67,7 @@ export class JournalMonitor {
     this.paper.hidden = true;
     this.idle.hidden = true;
     // The desk is the first thing in the journal: up to it, clear of the sticky header.
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    this.root.closest<HTMLElement>('.panels')?.scrollTo({ top: 0, behavior: 'smooth' });
     let seconds: number;
     if (PLANT_KINDS.includes(event.kind)) {
       this.setCam('plant');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { workshopInventory, workshopAnomalies } from '../src/ui/workshopCam';
+import { workshopInventory, workshopAnomalies, workshopScenery } from '../src/ui/workshopCam';
 import { UPGRADES } from '../src/game/upgrades';
 
 describe('workshop equipment inventory', () => {
@@ -32,5 +32,21 @@ describe('workshop horror gates', () => {
     expect(workshopAnomalies({ ...view, threat: 0.8, compact: 0, bulk: 0 })).toEqual(['contract']);
     expect(workshopAnomalies({ ...view, threat: 0.8, compact: 0, bulk: 0, dark: 0 })).toEqual([]);
     expect(workshopAnomalies({ ...view, threat: 0.8 })).toEqual(['press', 'stock', 'contract']);
+  });
+});
+
+
+describe('automatic-cycle workshop scenery', () => {
+  it('holds installed equipment through an automatic reset, without changing actual upgrades', () => {
+    const owner = {};
+    const full = { owner, steady: true, upgrades: UPGRADES.map(u => u.id), compact: 20, bulk: 12, dark: 8, threat: 0 };
+    const reset = { ...full, upgrades: [], compact: 0, bulk: 0, dark: 0 };
+    const shown = workshopScenery(full, reset);
+    expect(shown.upgrades).toEqual(full.upgrades);
+    expect(shown.compact).toBe(20);
+    expect(reset.upgrades).toEqual([]);
+    expect(reset.compact).toBe(0);
+    expect(workshopScenery(shown, { ...reset, steady: false }).upgrades).toEqual([]);
+    expect(workshopScenery(shown, { ...reset, owner: {} }).upgrades).toEqual([]);
   });
 });

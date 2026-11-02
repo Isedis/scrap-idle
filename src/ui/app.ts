@@ -233,6 +233,8 @@ export class App {
   private knownMilestones = new Map<string, number>();
   /** What was ever announced on this device: producers seen and the best milestone of each. */
   private announced = loadAnnounced();
+  private viewScroll = new Map<string, number>();
+  private shownView = 'dump';
 
   constructor(
     private root: HTMLElement,
@@ -752,6 +754,10 @@ export class App {
   }
 
   private show(tab: Tab): void {
+    const scroller = this.root.querySelector<HTMLElement>('.panels')!;
+    const view = tab === 'recycle' ? `${tab}:${this.layerView}` : tab;
+    const changedView = view !== this.shownView;
+    if (changedView) this.viewScroll.set(this.shownView, scroller.scrollTop);
     for (const [t, panel] of this.panels) panel.hidden = t !== tab;
     for (const [t, b] of this.tabs) b.setAttribute('aria-current', t === tab ? 'page' : 'false');
     // The Layers tab shows one layer at a time, with the switch on top.
@@ -765,6 +771,10 @@ export class App {
     const visible = sorting ? this.sortingPanel.root : city ? this.cityPanel.root : bottom ? this.bottomPanel.root : this.recyclePanel.root;
     if (this.layerSwitch.parentElement !== visible) visible.prepend(this.layerSwitch);
     for (const [view, b] of this.layerButtons) b.setAttribute('aria-pressed', String(view === this.layerView));
+    if (changedView) {
+      scroller.scrollTop = this.viewScroll.get(view) ?? 0;
+      this.shownView = view;
+    }
   }
 
   private buildDump(): HTMLElement {
@@ -1377,6 +1387,8 @@ export class App {
     if (!this.panels.get('upgrades')!.hidden) {
       this.workshop.update(dt, {
         upgrades: state.upgrades,
+        steady: (state.autoRecycle.on && scriptOwned(state, 'recycle')) || (state.scripts.sortOn && scriptOwned(state, 'sort')),
+        owner: state,
         compact: state.tracks.compact ?? 0,
         bulk: state.tracks.bulk ?? 0,
         dark: state.tracks.dark ?? 0,

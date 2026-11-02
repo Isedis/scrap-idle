@@ -10,6 +10,16 @@ export interface WorkshopView {
   bulk: number;
   dark: number;
   threat: number;
+  /** Hold installed scenery during rapid automatic cycles; no economic effects. */
+  steady?: boolean;
+  owner?: object;
+}
+
+/** Keep the physical workshop assembled during automatic reset/rebuy bursts. */
+export function workshopScenery(previous: WorkshopView | null, current: WorkshopView): WorkshopView {
+  if (!current.steady || !previous || current.owner !== previous.owner) return current;
+  return { ...current, upgrades: [...new Set([...previous.upgrades, ...current.upgrades])],
+    compact: Math.max(previous.compact, current.compact), bulk: Math.max(previous.bulk, current.bulk), dark: Math.max(previous.dark, current.dark) };
 }
 
 type WorkshopAnomaly = 'press' | 'stock' | 'contract';
@@ -57,6 +67,7 @@ export class WorkshopCam extends Camera<WorkshopView> {
   private previousAnomaly: WorkshopAnomaly | null = null;
   private inventory = workshopInventory([]);
   private inventoryKey = '';
+  private scenery: WorkshopView | null = null;
 
   constructor() {
     super('КАМ-05 · МАСТЕРСКАЯ', 'Мастерская: оборудование купленных улучшений');
@@ -107,14 +118,17 @@ export class WorkshopCam extends Camera<WorkshopView> {
 
   protected draw(): void {
     const { ctx, w, h } = this;
-    const v = this.view!;
+    const actual = this.view!;
+    const v = workshopScenery(this.scenery, actual);
+    this.scenery = v;
+    this.view = v;
     const key = v.upgrades.join('|');
     if (key !== this.inventoryKey) {
       this.inventoryKey = key;
       this.inventory = workshopInventory(v.upgrades);
     }
     const inv = this.inventory;
-    const aria = `Мастерская: улучшений ${inv.bought}/${UPGRADES.length}. ${inv.kits.map(k => `${k.label}: ${k.slots.filter(s => s.bought).length}/${k.slots.length}`).join('; ')}. Общие: ${inv.global.bought}/${inv.global.total}; связи: ${inv.synergy.bought}/${inv.synergy.total}. Уплотнение ${v.compact}; опт ${v.bulk}; договор ${v.dark}.`;
+    const aria = `Мастерская: оснащение ${inv.bought}/${UPGRADES.length}; усилений за заход ${actual.upgrades.length}/${UPGRADES.length}. ${inv.kits.map(k => `${k.label}: ${k.slots.filter(s => s.bought).length}/${k.slots.length}`).join('; ')}. Общие: ${inv.global.bought}/${inv.global.total}; связи: ${inv.synergy.bought}/${inv.synergy.total}. Уплотнение ${v.compact}; опт ${v.bulk}; договор ${v.dark}.`;
     if (this.canvas.getAttribute('aria-label') !== aria) this.canvas.setAttribute('aria-label', aria);
     ctx.save();
     ctx.scale(w / 360, h / 270);

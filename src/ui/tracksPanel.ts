@@ -10,6 +10,7 @@ interface Row {
   now: HTMLElement;
   button: HTMLButtonElement;
   price: HTMLElement;
+  status: HTMLElement;
 }
 
 /** What a track gives at a level, for the card. */
@@ -25,6 +26,10 @@ function current(def: TrackDef, level: number): string {
 }
 
 /** Endless upgrades at the bottom of the Upgrades tab. */
+/** Discovery stays visible across runs; purchase eligibility remains a game rule. */
+export const discoveredTracks = (state: GameState) => TRACKS.filter((t) =>
+  state.totalTrash.gte(t.unlockAt) || state.runTrash.gte(t.unlockAt) || trackLevel(state, t.id) > 0);
+
 export class TracksPanel {
   readonly root: HTMLElement;
   private list: HTMLElement;
@@ -47,7 +52,8 @@ export class TracksPanel {
     const level = el('span', 'p-count');
     head.append(el('span', 'p-name', def.name), level);
     const now = el('div', 'p-rate');
-    body.append(head, el('div', 'p-effect', def.text), now, el('div', 'p-flavor', def.flavor));
+    const status = el('div', 'p-track-status');
+    body.append(head, el('div', 'p-effect', def.text), now, el('div', 'p-flavor', def.flavor), status);
     const icon = el('div', 'p-icon', '∞');
     const button = el('button', 'buy');
     button.type = 'button';
@@ -58,11 +64,12 @@ export class TracksPanel {
       if (buyTrack(this.getState(), def.id)) this.onBuy(def);
     });
     root.append(icon, body, button);
-    return { def, root, level, now, button, price };
+    return { def, root, level, now, button, price, status };
   }
 
   render(state: GameState): void {
-    const shown = visibleTracks(state);
+    const shown = discoveredTracks(state);
+    const available = visibleTracks(state);
     this.root.hidden = shown.length === 0;
     if (this.root.hidden) return;
     const wanted = this.rows.filter((r) => shown.includes(r.def)).map((r) => r.root);
@@ -73,7 +80,9 @@ export class TracksPanel {
       row.level.textContent = `ур. ${level}`;
       row.now.textContent = current(row.def, level);
       row.price.textContent = `${format(cost)} кг`;
-      row.button.disabled = state.trash.lt(cost);
+      const unlocked = available.includes(row.def);
+      row.button.disabled = !unlocked || state.trash.lt(cost);
+      row.status.textContent = unlocked ? '\u00a0' : `За заход: ${format(state.runTrash)} / ${format(row.def.unlockAt)} кг`;
       row.button.style.setProperty('--p', String(progress(state.trash, cost)));
     }
   }
