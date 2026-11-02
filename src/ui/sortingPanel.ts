@@ -112,6 +112,7 @@ interface RecipeRow {
   def: RecipeDef;
   root: HTMLElement;
   button: HTMLButtonElement;
+  status: HTMLElement;
 }
 
 /** The Sorting view on the Layers tab, in four parts: the line, the table, recipes, the reset. */
@@ -298,7 +299,8 @@ export class SortingPanel {
         const root = el('div', 'r-node');
         root.append(el('span', 'r-twig', i === defs.length - 1 ? '└─' : '├─'));
         const body = el('div', 'r-node-body');
-        body.append(el('div', 'r-node-name', def.name), el('div', 'r-node-text', def.text));
+        const status = el('div', 's-recipe-status');
+        body.append(el('div', 'r-node-name', def.name), el('div', 'r-node-text', def.text), status);
         const button = el('button', 'buy r-node-buy s-price');
         button.type = 'button';
         button.id = `recipe-${def.id}`;
@@ -307,7 +309,7 @@ export class SortingPanel {
         });
         root.append(body, button);
         list.append(root);
-        this.recipeRows.push({ def, root, button });
+        this.recipeRows.push({ def, root, button, status });
       });
       box.append(list);
     }
@@ -661,6 +663,13 @@ export class SortingPanel {
       row.button.textContent = owned ? 'Есть' : source ? 'Действует' : priceText(row.def.cost, format, FRAC_LETTER);
       row.root.querySelector('.r-node-text')!.textContent = source && !owned ? `Обеспечено: ${source.toLowerCase()}` : row.def.text;
       row.button.disabled = !canBuyRecipe(so, row.def, covered);
+      const missing = FRACS.filter((f) => so.fractions[f].lt(row.def.cost[f] ?? 0))
+        .map((f) => `${format(D(row.def.cost[f]!).sub(so.fractions[f]).ceil())} ${FRAC_LETTER[f]}`);
+      row.status.textContent = owned || source ? '' : !open
+        ? `Сначала: ${RECIPES.find((r) => r.id === row.def.requires)!.name}`
+        : missing.length ? `Не хватает: ${missing.join(' · ')}` : 'Можно купить';
+      row.status.hidden = !row.status.textContent;
+      row.button.setAttribute('aria-label', `${row.def.name}. ${row.status.textContent || (owned ? 'Есть' : 'Действует')}`);
     }
     this.alloyBox.hidden = !alloysOpen(so, covered);
     if (alloysOpen(so, covered)) {

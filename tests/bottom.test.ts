@@ -5,6 +5,7 @@ import {
   MELT,
   RARITIES,
   START_HEAP,
+  autoOpen,
   EQUIPMENT,
   buyEquipment,
   buyBorer,
@@ -109,6 +110,25 @@ describe('the bottom of the pit', () => {
     expect(findMultiplier(b)).toBe(1.1);
     b.stock.sack = 1;
     expect(openOne(b, 'sack', () => 0)!.amount.toNumber()).toBeCloseTo(13.2);
+  });
+
+  it('keeps the best actual automatic reward beyond the recent list, without paying twice', () => {
+    const b = newBottom();
+    b.auto = 2;
+    b.stock.sack = 40;
+    b.dry.relic = 199;
+    expect(autoOpen(b, () => 0)).toBe(40);
+    expect(b.autoFeed.count).toBe(40);
+    expect(b.autoFeed.best!.item.rarity).toBe('relic');
+    expect(b.autoFeed.best!.container).toBe('sack');
+    expect(b.recent.some((o) => o.item.rarity === 'relic')).toBe(false);
+    expect(b.money.relic.toNumber()).toBe(1);
+    const best = b.autoFeed.best;
+    b.stock.sack = 1;
+    autoOpen(b, () => 0);
+    expect(b.autoFeed.count).toBe(41);
+    expect(b.autoFeed.best).toBe(best);
+    expect(b.money.relic.toNumber()).toBe(1);
   });
 
   it('a sack is free, a crate takes scrap, and the finds pay in their own currency', () => {

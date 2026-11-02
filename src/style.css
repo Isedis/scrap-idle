@@ -1925,3 +1925,23 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .a-reset-summary { font-size: 12px; color: var(--mid); overflow-wrap: anywhere; }
 
 .r-node.covered .r-node-text { display: block; font-size: 11px; color: var(--mid); }
+
+.s-recipe-status { color: var(--amber); font-size: 11px; margin-top: 4px; overflow-wrap: anywhere; }
+.s-recipes .r-node.closed { opacity: 1; }
+.s-recipes .r-node.closed .r-node-name, .s-recipes .r-node.closed .r-node-text { color: var(--dim); }
+.b-opening-head { display: flex; gap: 12px; align-items: center; min-height: 78px; padding: 8px 0; }
+.b-case-art { flex: 0 0 70px; margin: 0; font: 12px/1.2 var(--font); color: var(--mid); text-align: center; }
+.b-case-text { min-width: 0; }
+.b-case-mode { color: var(--mid); font-size: 10px; letter-spacing: .08em; }
+.b-case-name { color: var(--glow); font-weight: 700; }
+.b-case-note { color: var(--mid); font-size: 11px; }
+.bottom .b-result { height: 132px; min-height: 132px; margin: 8px 0 12px; padding: 8px; border: 1px solid var(--line); overflow: hidden; }
+.b-prize-label { font-size: 10px; letter-spacing: .05em; }
+.b-prize-name { color: var(--glow); font-size: 14px; font-weight: 700; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b-prize-amount { font-size: 20px; font-weight: 700; line-height: 1.4; }
+.b-prize-detail { color: var(--mid); font-size: 11px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.b-prize-rare { border-color: var(--rc) !important; background: color-mix(in srgb, var(--rc) 6%, transparent); }
+.b-reel-rare { border-color: var(--rc); box-shadow: inset 0 0 12px color-mix(in srgb, var(--rc) 12%, transparent); }
+
+@keyframes b-opening { 50% { opacity: .55; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: no-preference) { .b-case-art.is-opening { animation: b-opening .5s ease-in-out infinite; } }

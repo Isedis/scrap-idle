@@ -10,6 +10,7 @@ import {
   depthTarget,
   findMultiplier,
   supplyRate,
+  showcaseScore,
   ITEMS,
   RARITIES,
   RARITY_NAMES,
@@ -78,6 +79,14 @@ export class BottomPanel {
   private stripWindow!: HTMLElement;
   private result!: HTMLElement;
   private spinning = 0;
+  private playingAuto = false;
+  private nextAutoAt = 0;
+  private pendingAuto: { count: number; best: Opening | null } = { count: 0, best: null };
+  private bottomIdentity: GameState['bottom'] | null = null;
+  private caseArt!: HTMLElement;
+  private caseName!: HTMLElement;
+  private caseMode!: HTMLElement;
+  private caseNote!: HTMLElement;
   private crates = new Map<ContainerId, { row: HTMLElement; count: HTMLElement; one: HTMLButtonElement; all: HTMLButtonElement }>();
   private updaters: ((s: GameState) => void)[] = [];
   private finds!: HTMLElement;
@@ -122,6 +131,16 @@ export class BottomPanel {
     this.ume = el('span', 'b-coin-value', '0');
     ume.append(el('span', 'b-coin-name', 'УМЕ'), this.ume);
     wallet.append(ume);
+
+    const openingHead = el('div', 'b-opening-head');
+    this.caseArt = el('pre', 'b-case-art', '[ --- ]');
+    this.caseArt.setAttribute('aria-hidden', 'true');
+    const openingText = el('div', 'b-case-text');
+    this.caseMode = el('div', 'b-case-mode', 'ВСКРЫТИЕ');
+    this.caseName = el('div', 'b-case-name', 'Ожидаем контейнер');
+    this.caseNote = el('div', 'b-case-note', 'Награда появится здесь');
+    openingText.append(this.caseMode, this.caseName, this.caseNote);
+    openingHead.append(this.caseArt, openingText);
 
     // The strip: a window with a marker; the cards run under it and stop on the find.
     this.stripWindow = el('div', 'b-reel');
@@ -240,6 +259,7 @@ export class BottomPanel {
       this.operation,
       supplyDetails,
       wallet,
+      openingHead,
       this.stripWindow,
       this.result,
       crates,
@@ -332,57 +352,90 @@ export class BottomPanel {
     return row;
   }
 
-  /** Opens one container and runs the strip to what was inside. */
+  /** Manual openings take priority over the automatic presentation. */
   private openWithStrip(id: ContainerId): void {
-    if (this.spinning) return;
-    const s = this.getState();
-    const b = s.bottom;
-    // The strip shows what this container could hold, at its odds.
+    if (this.spinning && !this.playingAuto) return;
+    const opening = openOne(this.getState().bottom, id, Math.random);
+    if (opening) this.playOpening(opening, false, 1);
+  }
+
+  /** Present an actual paid opening; animation never opens or pays a container again. */
+  private playOpening(opening: Opening, automatic: boolean, count: number): void {
+    clearTimeout(this.spinning);
+    this.playingAuto = automatic;
+    const b = this.getState().bottom;
+    const id = opening.container;
     const odds = rarityOdds(b, id);
-    const opening = openOne(b, id, Math.random);
-    if (!opening) return;
+    const reached = EPOCHS.filter((e) => b.dug >= e.depth).map((e) => e.id);
     const filler = (): ItemDef => {
       const total = odds.reduce((x, y) => x + y, 0);
       let r = Math.random() * total;
       let rarity: Rarity = 'dust';
       for (let k = 0; k < RARITIES.length; k++) {
         r -= odds[k];
-        if (r < 0) {
-          rarity = RARITIES[k];
-          break;
-        }
+        if (r < 0) { rarity = RARITIES[k]; break; }
       }
-      const pool = ITEMS.filter((it) => it.rarity === rarity);
+      const pool = ITEMS.filter((it) => it.rarity === rarity && reached.includes(it.epoch));
       return pool[Math.floor(Math.random() * pool.length)];
     };
     const cards = [...Array.from({ length: LEAD }, filler), opening.item, ...Array.from({ length: 4 }, filler)];
     this.strip.replaceChildren(...cards.map((it) => this.card(it, b.found[it.id] ?? 0)));
+    this.stripWindow.className = 'b-reel';
     this.strip.style.transition = 'none';
     this.strip.style.transform = 'translateX(0)';
     const width = this.stripWindow.clientWidth || 358;
     const target = -(LEAD * CARD + CARD / 2 - width / 2) + (Math.random() - 0.5) * (CARD * 0.6);
-    this.result.textContent = `${containerById(id)!.name}: вскрываем…`;
-    this.result.className = 'b-result';
+    const art: Record<ContainerId, string> = {
+      sack: '  ___  \n /###\\ \n \\___/ ', crate: '+-----+\n| X X |\n+-----+',
+      suitcase: '  ___  \n[|___|]\n[=====]', safe: '+-----+\n| (x) |\n+-----+', coffin: ' /---\\ \n|  +  |\n \\___/ ',
+    };
+    this.caseArt.textContent = art[id];
+    this.caseArt.classList.add('is-opening');
+    this.caseName.textContent = containerById(id)!.name;
+    this.caseMode.textContent = automatic ? 'АВТОВСКРЫТИЕ' : 'РУЧНОЕ ВСКРЫТИЕ';
+    this.caseNote.textContent = count > 1 ? `Лучшее из партии: ${format(D(count))} вскрытий` : 'Вскрываем…';
+    this.result.classList.remove('b-prize-rare');
+    const previous = this.result.querySelector('.b-prize-label');
+    if (previous) previous.textContent = 'ПРЕДЫДУЩАЯ НАГРАДА';
     void this.strip.offsetWidth;
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    this.strip.style.transition = reduce ? 'none' : `transform ${SPIN_MS}ms cubic-bezier(0.12, 0.7, 0.1, 1)`;
+    const duration = automatic ? 1400 : SPIN_MS;
+    this.strip.style.transition = reduce ? 'none' : `transform ${duration}ms cubic-bezier(0.12, 0.7, 0.1, 1)`;
     this.strip.style.transform = `translateX(${target}px)`;
-    this.spinning = window.setTimeout(() => this.landed(opening), reduce ? 0 : SPIN_MS + 100);
-    this.render(s);
+    const identity = b;
+    this.spinning = window.setTimeout(() => {
+      this.spinning = 0;
+      if (this.getState().bottom !== identity) return;
+      this.landed(opening, automatic, count);
+    }, reduce ? 0 : duration + 100);
+    this.render(this.getState());
   }
 
-  private landed(o: Opening): void {
-    this.spinning = 0;
+  private landed(o: Opening, automatic: boolean, count: number): void {
+    this.playingAuto = false;
+    this.caseArt.classList.remove('is-opening');
     const r = o.item.rarity;
-    this.result.textContent = `${o.fresh ? 'НОВОЕ · ' : ''}${o.item.name} — ${o.item.text} +${format(o.amount)} · ${RARITY_NAMES[r].toLowerCase()}`;
-    this.result.className = `b-result r-${r}`;
-    if (RARITIES.indexOf(r) >= 3) this.camera.find(RARITY_COLOR[r]);
-    this.onChange(RARITIES.indexOf(r) >= 4 ? `${RARITY_NAMES[r]}: ${o.item.name}` : undefined, true);
+    const rare = RARITIES.indexOf(r) >= 3;
+    this.stripWindow.className = `b-reel r-${r}${rare ? ' b-reel-rare' : ''}`;
+    this.result.className = `b-result r-${r}${rare ? ' b-prize-rare' : ''}`;
+    const name = el('div', 'b-prize-name', o.item.name);
+    const label = el('div', 'b-prize-label', `${o.fresh ? 'НОВАЯ НАХОДКА · ' : ''}${RARITY_NAMES[r].toUpperCase()}`);
+    const amount = el('div', 'b-prize-amount', `+${format(o.amount)} ${RARITY_NAMES[r].toLowerCase()}`);
+    const detail = el('div', 'b-prize-detail', o.item.text);
+    this.result.replaceChildren(label, name, amount, detail);
+    this.caseNote.textContent = count > 1 ? `Партия ${format(D(count))} · показана лучшая находка` : 'Награда получена';
+    this.nextAutoAt = performance.now() + (rare ? 3500 : 1200);
+    if (rare) this.camera.find(RARITY_COLOR[r]);
+    // Automatic results stay inside the panel, without sounds or notification spam.
+    this.onChange(!automatic && RARITIES.indexOf(r) >= 4 ? `${RARITY_NAMES[r]}: ${o.item.name}` : undefined, !automatic);
   }
 
   /** Opens every container of a kind the money allows, without the strip; says what came out. */
   private openAll(id: ContainerId): void {
-    if (this.spinning) return;
+    if (this.spinning && !this.playingAuto) return;
+    clearTimeout(this.spinning);
+    this.spinning = 0;
+    this.playingAuto = false;
     const b = this.getState().bottom;
     const got: Partial<Record<Rarity, Decimal>> = {};
     let n = 0;
@@ -399,6 +452,7 @@ export class BottomPanel {
     this.result.textContent = `Вскрыто ${n}: ${parts.join(', ')}${fresh ? ` · новых находок: ${fresh}` : ''}`;
     this.result.className = `b-result r-${best!.item.rarity}`;
     if (RARITIES.indexOf(best!.item.rarity) >= 3) this.camera.find(RARITY_COLOR[best!.item.rarity]);
+    this.nextAutoAt = performance.now() + 3500;
     this.onChange();
   }
 
@@ -410,6 +464,20 @@ export class BottomPanel {
 
   render(state: GameState): void {
     const b = state.bottom;
+    if (this.bottomIdentity !== b) {
+      clearTimeout(this.spinning);
+      this.spinning = 0;
+      this.playingAuto = false;
+      this.pendingAuto = { count: 0, best: null };
+      this.bottomIdentity = b;
+      this.caseMode.textContent = b.auto > 0 ? 'АВТОВСКРЫТИЕ' : 'ВСКРЫТИЕ';
+      this.caseName.textContent = 'Ожидаем контейнер';
+      this.caseNote.textContent = 'Награда появится здесь';
+      this.caseArt.textContent = '[ --- ]';
+      this.caseArt.classList.remove('is-opening');
+      this.result.className = 'b-result';
+      this.result.textContent = 'Игнатьев копает. Выкопанное вскрывается здесь.';
+    }
     const target = depthTarget(b);
     const current = [...EPOCHS].reverse().find((e) => b.dug >= e.depth)!;
     this.meta.textContent = current.name;
@@ -428,7 +496,7 @@ export class BottomPanel {
       const n = b.stock[c.id];
       view.count.textContent = `×${n}`;
       view.row.classList.toggle('none', n === 0);
-      const can = canOpen(b, c.id) && !this.spinning;
+      const can = canOpen(b, c.id) && (!this.spinning || this.playingAuto);
       view.one.disabled = !can;
       view.all.disabled = !can;
     }
@@ -488,6 +556,17 @@ export class BottomPanel {
   /** Every frame while the view is on screen: the camera. */
   frame(dt: number, state: GameState): void {
     const b = state.bottom;
+    if (this.bottomIdentity !== b) this.render(state);
+    if (b.autoFeed.count > 0 && b.autoFeed.best) {
+      this.pendingAuto.count += b.autoFeed.count;
+      if (!this.pendingAuto.best || showcaseScore(b.autoFeed.best) >= showcaseScore(this.pendingAuto.best)) this.pendingAuto.best = b.autoFeed.best;
+      b.autoFeed = { count: 0, best: null };
+    }
+    if (!this.spinning && this.pendingAuto.best && performance.now() >= this.nextAutoAt && !document.hidden) {
+      const { best, count } = this.pendingAuto;
+      this.pendingAuto = { count: 0, best: null };
+      this.playOpening(best, true, count);
+    }
     this.camera.update(dt, {
       heap: b.heap,
       fall: fallPerMinute(b.above),

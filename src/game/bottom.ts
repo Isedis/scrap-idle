@@ -222,6 +222,8 @@ export interface BottomState {
   scripts: string[];
   /** The last openings, newest first, for the screen; not saved. */
   recent: Opening[];
+  /** Bounded, unsaved presentation feed: automatic rewards are already paid. */
+  autoFeed: { count: number; best: Opening | null };
 }
 
 const zeroMoney = (): Record<Rarity, Decimal> => ({ dust: D(0), scrap: D(0), nonferrous: D(0), antique: D(0), relic: D(0), anomaly: D(0) });
@@ -244,6 +246,7 @@ export const newBottom = (): BottomState => ({
   above: D(0),
   scripts: [],
   recent: [],
+  autoFeed: { count: 0, best: null },
 });
 
 // ---- Collection ---------------------------------------------------------------------
@@ -404,9 +407,20 @@ export function openOne(b: BottomState, id: ContainerId, rand: () => number): Op
 const RECENT_KEPT = 12;
 
 /** Opens what the automatic opening takes care of, at most `limit` containers. Returns how many. */
+/** Prefer rare rewards, then first discoveries; ties keep the latest real opening. */
+export const showcaseScore = (o: Opening) => RARITIES.indexOf(o.item.rarity) * 2 + (o.fresh ? 1 : 0);
+
 export function autoOpen(b: BottomState, rand: () => number, limit = 500): number {
   let n = 0;
-  for (const id of autoOpens(b)) while (n < limit && openOne(b, id, rand)) n++;
+  for (const id of autoOpens(b)) {
+    while (n < limit) {
+      const opening = openOne(b, id, rand);
+      if (!opening) break;
+      n++;
+      b.autoFeed.count++;
+      if (!b.autoFeed.best || showcaseScore(opening) >= showcaseScore(b.autoFeed.best)) b.autoFeed.best = opening;
+    }
+  }
   return n;
 }
 

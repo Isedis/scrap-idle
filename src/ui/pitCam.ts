@@ -50,6 +50,7 @@ export class PitCam extends Camera<PitView> {
 
   /** A rare find: the frame lights in its colour for a moment. */
   find(color: string): void {
+    if (this.reducedMotion) return;
     this.flashColor = color;
     this.flashLeft = 0.9;
   }
