@@ -1,5 +1,5 @@
 {
- "v": 19,
+ "v": 20,
  "trash": "0",
  "totalTrash": "6.391662096034331e40",
  "owned": {
@@ -126,67 +126,68 @@
     "bench": false,
     "borer": 0
    },
-   "dig": 0.52878658647621,
-   "dug": 1411.5287865864757,
+   "dig": 0.5565877240931876,
+   "dug": 1274.5565877240933,
    "stock": {
     "sack": 3,
     "crate": 1,
     "suitcase": 1,
-    "safe": 14,
+    "safe": 6,
     "coffin": 1
    },
    "money": {
-    "dust": "1899",
-    "scrap": "246",
-    "nonferrous": "14",
-    "antique": "0",
-    "relic": "67",
-    "anomaly": "23"
+    "dust": "707",
+    "scrap": "290.2782938620466",
+    "nonferrous": "351.09480570343254",
+    "antique": "1",
+    "relic": "163",
+    "anomaly": "59"
    },
    "tools": {
-    "pick": 7,
-    "lamp": 6,
-    "luck": 5
+    "pick": 6,
+    "lamp": 8,
+    "luck": 7
    },
    "auto": 0,
+   "saving": null,
    "dry": {
     "antique": 0,
     "relic": 0
    },
    "found": {
-    "horseshoe": 206,
-    "fishbone": 111,
-    "lapot": 122,
-    "arrowhead": 164,
-    "sherd": 157,
-    "birchbark": 126,
-    "buckle": 98,
-    "helm": 66,
-    "pewtercross": 107,
-    "bell": 17,
-    "sickle": 31,
-    "embers": 9,
-    "grain": 15,
-    "coin": 24,
-    "waxtab": 32,
-    "mask": 28,
-    "spear": 29,
-    "amphora": 15,
-    "curse": 28,
-    "seajar": 6
+    "horseshoe": 137,
+    "fishbone": 60,
+    "lapot": 68,
+    "arrowhead": 127,
+    "pewtercross": 126,
+    "buckle": 106,
+    "sherd": 71,
+    "birchbark": 205,
+    "helm": 167,
+    "bell": 48,
+    "spear": 6,
+    "waxtab": 38,
+    "mask": 40,
+    "sickle": 12,
+    "curse": 12,
+    "embers": 2,
+    "grain": 5,
+    "amphora": 3,
+    "coin": 18,
+    "seajar": 11
    },
-   "opened": 1391,
+   "opened": 1262,
    "ume": "0",
    "above": "0",
    "scripts": [
-    "producers",
-    "upgrades",
     "endless",
+    "producers",
     "light",
-    "recycle",
-    "line",
     "tree",
-    "sort"
+    "upgrades",
+    "recycle",
+    "sort",
+    "line"
    ]
   }
  },

@@ -10,6 +10,12 @@ import {
   depthTarget,
   findMultiplier,
   supplyRate,
+  DIG_SCRAP,
+  DIG_NONFERROUS,
+  savingGoal,
+  savingGoals,
+  buySavingGoal,
+  type SavingGoal,
   showcaseScore,
   ITEMS,
   RARITIES,
@@ -79,6 +85,13 @@ export class BottomPanel {
   private stripWindow!: HTMLElement;
   private result!: HTMLElement;
   private spinning = 0;
+  private reelVisible = false;
+  private reelObserver: IntersectionObserver | null = null;
+  private activeAuto: { opening: Opening; count: number } | null = null;
+  private savingSelect!: HTMLSelectElement;
+  private savingNote!: HTMLElement;
+  private savingBuy!: HTMLButtonElement;
+  private savingSignature = '';
   private playingAuto = false;
   private nextAutoAt = 0;
   private pendingAuto: { count: number; best: Opening | null } = { count: 0, best: null };
@@ -171,6 +184,23 @@ export class BottomPanel {
     }
 
     this.finds = el('div', 'b-finds');
+    const saving = el('div', 'b-saving');
+    const savingLabel = el('label', 'b-saving-label', 'Копить на улучшение');
+    this.savingSelect = el('select', 'b-saving-select');
+    this.savingSelect.id = 'bottom-saving';
+    savingLabel.htmlFor = this.savingSelect.id;
+    this.savingNote = el('div', 'b-saving-note');
+    this.savingBuy = el('button', 'btn b-saving-buy', 'Купить цель');
+    this.savingBuy.type = 'button';
+    this.savingBuy.addEventListener('click', () => {
+      if (buySavingGoal(this.getState().bottom)) this.onChange('purchase');
+    });
+    this.savingSelect.addEventListener('change', () => {
+      this.getState().bottom.saving = this.savingSelect.value || null;
+      this.pauseAutoPresentation();
+      this.onChange();
+    });
+    saving.append(savingLabel, this.savingSelect, this.savingNote, this.savingBuy);
 
     const equipment = el('div', 'b-list b-equipment');
     for (const e of EQUIPMENT) {
@@ -264,6 +294,7 @@ export class BottomPanel {
       this.result,
       crates,
       this.finds,
+      saving,
       section('Оборудование'),
       equipment,
       section('Инструменты Игнатьева'),
@@ -363,6 +394,7 @@ export class BottomPanel {
   private playOpening(opening: Opening, automatic: boolean, count: number): void {
     clearTimeout(this.spinning);
     this.playingAuto = automatic;
+    this.activeAuto = automatic ? { opening, count } : null;
     const b = this.getState().bottom;
     const id = opening.container;
     const odds = rarityOdds(b, id);
@@ -413,6 +445,7 @@ export class BottomPanel {
 
   private landed(o: Opening, automatic: boolean, count: number): void {
     this.playingAuto = false;
+    this.activeAuto = null;
     this.caseArt.classList.remove('is-opening');
     const r = o.item.rarity;
     const rare = RARITIES.indexOf(r) >= 3;
@@ -436,6 +469,7 @@ export class BottomPanel {
     clearTimeout(this.spinning);
     this.spinning = 0;
     this.playingAuto = false;
+    this.activeAuto = null;
     const b = this.getState().bottom;
     const got: Partial<Record<Rarity, Decimal>> = {};
     let n = 0;
@@ -469,6 +503,7 @@ export class BottomPanel {
       this.spinning = 0;
       this.playingAuto = false;
       this.pendingAuto = { count: 0, best: null };
+      this.activeAuto = null;
       this.bottomIdentity = b;
       this.caseMode.textContent = b.auto > 0 ? 'АВТОВСКРЫТИЕ' : 'ВСКРЫТИЕ';
       this.caseName.textContent = 'Ожидаем контейнер';
@@ -487,10 +522,11 @@ export class BottomPanel {
     this.targetReward.textContent = `Откроется: ${target.reward.toLowerCase()}`;
     this.supply.textContent = `Сверху ${fallPerMinute(b.above).toFixed(1)} т/мин → разбор до ${supplyRate(b)} т/мин. `
       + `В запасе ${format(D(b.heap))} т. Из тонны: 1 труха${b.equipment.bench ? ' и 0,25 лома' : ''}. `
-      + `Раскопки ${digRate(b).toFixed(1)} т/мин идут независимо от снабжения. `
+      + `Раскопки ${digRate(b).toFixed(1)} т/мин идут независимо от снабжения; с тонны +${DIG_SCRAP} лома и +${DIG_NONFERROUS} цветмета. `
       + (findMultiplier(b) > 1 ? `Добыча находок ×${findMultiplier(b).toFixed(1)}.` : 'Мусор сверху не уменьшает достигнутую глубину.');
     for (const r of RARITIES) this.money.get(r)!.textContent = format(b.money[r].floor());
     this.ume.textContent = format(b.ume);
+    this.renderSaving(state);
     for (const c of CONTAINERS) {
       const view = this.crates.get(c.id)!;
       const n = b.stock[c.id];
@@ -504,13 +540,53 @@ export class BottomPanel {
     for (const u of this.equipmentUpdaters) u(state);
     // The last finds the automatic opening made, when it runs.
     const sig = b.recent.map((o) => o.item.id + b.opened).join();
-    if (sig !== this.shownFinds && !this.spinning) {
+    if (sig !== this.shownFinds && !this.spinning && this.reelVisible) {
       this.shownFinds = sig;
       this.finds.replaceChildren(
         ...b.recent.slice(0, 5).map((o) => el('div', `b-find r-${o.item.rarity}`, `${o.fresh ? 'новое · ' : ''}${o.item.name} +${format(o.amount)}`)),
       );
     }
     this.renderCollection(state);
+  }
+
+  private goalName(goal: SavingGoal): string {
+    return goal.id.startsWith('script:') ? `Скрипт: ${scriptById(goal.id.slice(7))!.title}` : goal.name;
+  }
+
+  private renderSaving(state: GameState): void {
+    const b = state.bottom, goals = savingGoals(b);
+    const signature = JSON.stringify(goals.map((g) => [g.id, g.cost.toString(), g.unlocked]));
+    // Do not replace native iPhone select options while the player is choosing a goal.
+    if (signature !== this.savingSignature && document.activeElement !== this.savingSelect) {
+      this.savingSignature = signature;
+      this.savingSelect.replaceChildren(new Option('Без резерва', ''), ...goals.map((g) =>
+        new Option(`${this.goalName(g)} · ${format(g.cost)} ${g.costIn === 'ume' ? 'УМЕ' : RARITY_NAMES[g.costIn].toLowerCase()}${g.unlocked ? '' : ' · позже'}`, g.id)));
+    }
+    if (document.activeElement !== this.savingSelect) this.savingSelect.value = b.saving ?? '';
+    const goal = savingGoal(b);
+    this.savingBuy.hidden = !goal;
+    if (!goal) {
+      this.savingNote.textContent = 'Выберите покупку: автовскрытие будет использовать только избыток ресурсов.';
+      return;
+    }
+    const money = goal.costIn === 'ume' ? b.ume : b.money[goal.costIn];
+    const currency = goal.costIn === 'ume' ? 'УМЕ' : RARITY_NAMES[goal.costIn].toLowerCase();
+    this.savingNote.textContent = `${format(money.min(goal.cost).floor())} / ${format(goal.cost)} ${currency} отложено. Автовскрытие тратит только избыток.`;
+    this.savingBuy.textContent = goal.unlocked ? `Купить: ${this.goalName(goal)}` : 'Покупка откроется глубже';
+    this.savingBuy.disabled = !goal.unlocked || money.lt(goal.cost);
+  }
+
+  private pauseAutoPresentation(): void {
+    if (!this.playingAuto || !this.activeAuto) return;
+    clearTimeout(this.spinning);
+    this.spinning = 0;
+    const { opening, count } = this.activeAuto;
+    this.pendingAuto.count += count;
+    if (!this.pendingAuto.best || showcaseScore(opening) >= showcaseScore(this.pendingAuto.best)) this.pendingAuto.best = opening;
+    this.activeAuto = null;
+    this.playingAuto = false;
+    this.caseArt.classList.remove('is-opening');
+    this.strip.style.transition = 'none';
   }
 
   private folds = new Map<string, Fold>();
@@ -557,12 +633,28 @@ export class BottomPanel {
   frame(dt: number, state: GameState): void {
     const b = state.bottom;
     if (this.bottomIdentity !== b) this.render(state);
+    if (!this.reelObserver) {
+      this.reelObserver = new IntersectionObserver((entries) => {
+        this.reelVisible = entries[0].isIntersecting && entries[0].intersectionRatio >= 0.25;
+        if (!this.reelVisible) this.pauseAutoPresentation();
+      }, { root: this.root.closest('.panels'), threshold: [0, 0.25] });
+      this.reelObserver.observe(this.stripWindow);
+    }
+    const focused = this.root.querySelector<HTMLElement>('.b-saving :focus, .b-list :focus');
+    let shopping = false;
+    if (focused) {
+      const control = focused.getBoundingClientRect();
+      const viewport = this.root.closest('.panels')!.getBoundingClientRect();
+      // Safari keeps a closed native select focused even after scrolling away from it.
+      shopping = control.bottom > viewport.top && control.top < viewport.bottom;
+    }
+    if (shopping || !this.reelVisible) this.pauseAutoPresentation();
     if (b.autoFeed.count > 0 && b.autoFeed.best) {
       this.pendingAuto.count += b.autoFeed.count;
       if (!this.pendingAuto.best || showcaseScore(b.autoFeed.best) >= showcaseScore(this.pendingAuto.best)) this.pendingAuto.best = b.autoFeed.best;
       b.autoFeed = { count: 0, best: null };
     }
-    if (!this.spinning && this.pendingAuto.best && performance.now() >= this.nextAutoAt && !document.hidden) {
+    if (!this.spinning && this.pendingAuto.best && performance.now() >= this.nextAutoAt && !document.hidden && this.reelVisible && !shopping) {
       const { best, count } = this.pendingAuto;
       this.pendingAuto = { count: 0, best: null };
       this.playOpening(best, true, count);

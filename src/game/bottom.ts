@@ -46,8 +46,8 @@ export interface ContainerDef {
 
 export const CONTAINERS: readonly ContainerDef[] = [
   { id: 'sack', name: 'Мешок', cost: 0, costIn: 'dust', odds: [70, 25, 4.5, 0.5, 0, 0], weight: 70 },
-  { id: 'crate', name: 'Ящик', cost: 3, costIn: 'scrap', odds: [35, 42, 17, 5, 1, 0], weight: 22 },
-  { id: 'suitcase', name: 'Чемодан', cost: 2, costIn: 'nonferrous', odds: [10, 30, 38, 17, 4.6, 0.4], weight: 6 },
+  { id: 'crate', name: 'Ящик', cost: 1, costIn: 'scrap', odds: [35, 42, 17, 5, 1, 0], weight: 22 },
+  { id: 'suitcase', name: 'Чемодан', cost: 1, costIn: 'nonferrous', odds: [10, 30, 38, 17, 4.6, 0.4], weight: 6 },
   { id: 'safe', name: 'Сейф', cost: 2, costIn: 'antique', odds: [0, 15, 38, 34, 11, 2], weight: 1.7 },
   { id: 'coffin', name: 'Гроб', cost: 1, costIn: 'relic', odds: [0, 0, 20, 45, 28, 7], weight: 0.3 },
 ];
@@ -209,6 +209,8 @@ export interface BottomState {
   tools: Record<ToolId, number>;
   /** Levels of automatic opening bought (0..AUTO_OPEN.length). */
   auto: number;
+  /** One purchase protected from automatic container fees. */
+  saving: string | null;
   /** Openings since a find of each pity rarity or better. */
   dry: Record<string, number>;
   /** Times each find came up. */
@@ -239,6 +241,7 @@ export const newBottom = (): BottomState => ({
   money: zeroMoney(),
   tools: { pick: 0, lamp: 0, luck: 0 },
   auto: 0,
+  saving: null,
   dry: {},
   found: {},
   opened: 0,
@@ -263,6 +266,8 @@ export function setPower(b: BottomState, epoch: Epoch): number {
 
 /** Older strata take more work per tonne; tools improve power, not surface throughput. */
 export const STRATUM_DENSITY = 6000;
+export const DIG_SCRAP = 0.5;
+export const DIG_NONFERROUS = 0.35;
 const digPower = (b: BottomState) => BASE_DIG * 1.3 ** b.tools.pick
   * (b.equipment.hoist ? 1.25 : 1) * 1.5 ** b.equipment.borer
   * (setPower(b, 'medieval') ? 1 + 0.25 * setPower(b, 'medieval') : 1);
@@ -284,6 +289,7 @@ export function buyEquipment(b: BottomState, id: EquipmentId): boolean {
   if (!b.open || b.dug < e.depth || b.equipment[id] || b.money[e.costIn].lt(e.cost)) return false;
   b.money[e.costIn] = b.money[e.costIn].sub(e.cost);
   b.equipment[id] = true;
+  if (b.saving === `equipment:${id}`) b.saving = null;
   return true;
 }
 
@@ -292,6 +298,7 @@ export function buyBorer(b: BottomState): boolean {
   if (!b.open || !umeOpen(b) || b.ume.lt(borerCost(b))) return false;
   b.ume = b.ume.sub(borerCost(b));
   b.equipment.borer++;
+  if (b.saving === 'borer') b.saving = null;
   return true;
 }
 
@@ -345,6 +352,9 @@ export function bottomTick(b: BottomState, seconds: number, fall: number, rand: 
   const work = digPower(b) * minutes;
   const end = Math.sqrt(start * start + 2 * work / density);
   const dug = 2 * work / (start + end);
+  // Ordinary materials are recovered from every tonne, independently of rarity rolls.
+  b.money.scrap = b.money.scrap.add(dug * DIG_SCRAP);
+  b.money.nonferrous = b.money.nonferrous.add(dug * DIG_NONFERROUS);
   b.dug += dug;
   b.dig += dug;
   let n = 0;
@@ -412,8 +422,11 @@ export const showcaseScore = (o: Opening) => RARITIES.indexOf(o.item.rarity) * 2
 
 export function autoOpen(b: BottomState, rand: () => number, limit = 500): number {
   let n = 0;
+  const goal = savingGoal(b);
   for (const id of autoOpens(b)) {
     while (n < limit) {
+      const c = containerById(id)!;
+      if (c.cost > 0 && goal?.costIn === c.costIn && b.money[c.costIn].sub(c.cost).lt(goal.cost)) break;
       const opening = openOne(b, id, rand);
       if (!opening) break;
       n++;
@@ -436,6 +449,7 @@ export function buyAuto(b: BottomState): boolean {
   if (!next || b.money[next.costIn].lt(next.cost)) return false;
   b.money[next.costIn] = b.money[next.costIn].sub(next.cost);
   b.auto += 1;
+  if (b.saving === 'auto') b.saving = null;
   return true;
 }
 
@@ -447,6 +461,7 @@ export function buyTool(b: BottomState, id: ToolId): boolean {
   if (b.money[t.costIn].lt(cost)) return false;
   b.money[t.costIn] = b.money[t.costIn].sub(cost);
   b.tools[id] = level + 1;
+  if (b.saving === `tool:${id}`) b.saving = null;
   return true;
 }
 
@@ -494,5 +509,41 @@ export function buyAboveScript(b: BottomState, id: string): boolean {
   if (!s || b.scripts.includes(id) || b.money[s.costIn].lt(s.cost)) return false;
   b.money[s.costIn] = b.money[s.costIn].sub(s.cost);
   b.scripts.push(id);
+  if (b.saving === `script:${id}`) b.saving = null;
   return true;
+}
+
+
+export interface SavingGoal {
+  id: string;
+  name: string;
+  cost: Decimal;
+  costIn: Rarity | 'ume';
+  unlocked: boolean;
+}
+
+/** The same next offers drive the selector, reserve and direct purchase. */
+export function savingGoals(b: BottomState): SavingGoal[] {
+  const goals: SavingGoal[] = TOOLS.filter((t) => b.tools[t.id] < t.max).map((t) => ({
+    id: `tool:${t.id}`, name: `${t.name} · ур. ${b.tools[t.id] + 1}`, cost: toolCost(t, b.tools[t.id]), costIn: t.costIn, unlocked: true,
+  }));
+  for (const e of EQUIPMENT) if (!b.equipment[e.id]) goals.push({ id: `equipment:${e.id}`, name: e.name,
+    cost: D(e.cost), costIn: e.costIn, unlocked: b.dug >= e.depth });
+  const auto = AUTO_OPEN[b.auto];
+  if (auto) goals.push({ id: 'auto', name: `Автовскрытие · ур. ${b.auto + 1}`, cost: D(auto.cost), costIn: auto.costIn, unlocked: true });
+  for (const sc of ABOVE_SCRIPTS) if (!b.scripts.includes(sc.id)) goals.push({ id: `script:${sc.id}`, name: `Скрипт: ${sc.id}`,
+    cost: D(sc.cost), costIn: sc.costIn, unlocked: true });
+  goals.push({ id: 'borer', name: `Проходчик · ур. ${b.equipment.borer + 1}`, cost: borerCost(b), costIn: 'ume', unlocked: umeOpen(b) });
+  return goals;
+}
+
+export const savingGoal = (b: BottomState) => b.saving ? savingGoals(b).find((g) => g.id === b.saving) : undefined;
+
+export function buySavingGoal(b: BottomState): boolean {
+  const goal = savingGoal(b);
+  if (!goal?.unlocked) return false;
+  if (goal.id.startsWith('tool:')) return buyTool(b, goal.id.slice(5) as ToolId);
+  if (goal.id.startsWith('equipment:')) return buyEquipment(b, goal.id.slice(10) as EquipmentId);
+  if (goal.id.startsWith('script:')) return buyAboveScript(b, goal.id.slice(7));
+  return goal.id === 'auto' ? buyAuto(b) : buyBorer(b);
 }

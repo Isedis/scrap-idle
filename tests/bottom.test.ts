@@ -6,6 +6,12 @@ import {
   RARITIES,
   START_HEAP,
   autoOpen,
+  CONTAINERS,
+  containerOdds,
+  DIG_SCRAP,
+  DIG_NONFERROUS,
+  savingGoal,
+  buySavingGoal,
   EQUIPMENT,
   buyEquipment,
   buyBorer,
@@ -131,6 +137,61 @@ describe('the bottom of the pit', () => {
     expect(b.money.relic.toNumber()).toBe(1);
   });
 
+  it('pays ordinary metals per excavated tonne regardless of rarity upgrades', () => {
+    const a = newBottom(), b = newBottom();
+    a.open = b.open = true;
+    b.tools.lamp = b.tools.luck = 15;
+    bottomTick(a, 600, 0, () => 0);
+    bottomTick(b, 600, 0, () => 0);
+    expect(a.money.scrap.toNumber()).toBeCloseTo(a.dug * DIG_SCRAP);
+    expect(a.money.nonferrous.toNumber()).toBeCloseTo(a.dug * DIG_NONFERROUS);
+    expect(a.money.scrap.eq(b.money.scrap)).toBe(true);
+    expect(a.money.nonferrous.eq(b.money.nonferrous)).toBe(true);
+  });
+
+  it('guaranteed metals cover average crate and suitcase fees at every lamp level, before bonus finds', () => {
+    const b = newBottom();
+    for (let lamp = 0; lamp <= 15; lamp++) {
+      b.tools.lamp = lamp;
+      const weights = containerOdds(b), total = weights.reduce((a, n) => a + n, 0);
+      for (const [id, income] of [['crate', DIG_SCRAP], ['suitcase', DIG_NONFERROUS]] as const) {
+        const i = CONTAINERS.findIndex(c => c.id === id);
+        expect(weights[i] / total * CONTAINERS[i].cost).toBeLessThan(income);
+      }
+    }
+  });
+
+  it('reserves the chosen upgrade while free containers and paid surplus keep opening', () => {
+    const b = newBottom();
+    b.open = true; b.auto = 2; b.saving = 'equipment:hoist'; b.dug = 1000;
+    b.money.scrap = D(42); b.stock.crate = 10; b.stock.sack = 1;
+    // High luck makes bonus scrap negligible; a relic is returned in each opening.
+    b.tools.luck = 15;
+    autoOpen(b, () => 0.999999);
+    expect(b.money.scrap.gte(40)).toBe(true);
+    expect(b.stock.sack).toBe(0);
+    expect(b.stock.crate).toBeGreaterThan(0);
+    expect(savingGoal(b)!.cost.toNumber()).toBe(40);
+    expect(buySavingGoal(b)).toBe(true);
+    expect(b.equipment.hoist).toBe(true);
+    expect(b.saving).toBeNull();
+    expect(b.money.scrap.lt(40)).toBe(true);
+  });
+
+  it('can build a reserved balance from below its price, with free sacks still available', () => {
+    const b = newBottom(); b.open = true; b.auto = 1; b.saving = 'tool:lamp';
+    b.money.scrap = D(7); b.stock.crate = 3; b.stock.sack = 1;
+    autoOpen(b, () => 0);
+    expect(b.money.scrap.toNumber()).toBe(7);
+    expect(b.stock.crate).toBe(3);
+    expect(b.stock.sack).toBe(0);
+    bottomTick(b, 120, 0, () => 0);
+    autoOpen(b, () => 0.999999);
+    expect(b.money.scrap.gte(8)).toBe(true);
+    expect(buySavingGoal(b)).toBe(true);
+    expect(b.tools.lamp).toBe(1);
+  });
+
   it('a sack is free, a crate takes scrap, and the finds pay in their own currency', () => {
     const b = newBottom();
     b.stock.sack = 1;
@@ -234,7 +295,21 @@ describe('the descent and the save', () => {
     expect(back.bottom.money.nonferrous.toNumber()).toBe(17);
     expect(back.bottom.supplied).toBe(0);
     expect(back.bottom.equipment).toEqual({ hoist: false, bench: false, borer: 0 });
-    expect(JSON.parse(serialize(back)).v).toBe(19);
+    expect(JSON.parse(serialize(back)).v).toBe(20);
+  });
+
+  it('migrates v19 without changing currencies, and persists or sanitises the chosen goal', async () => {
+    const { newGame } = await import('../src/game/state');
+    const { serialize, deserialize } = await import('../src/game/save');
+    const state = newGame(0);
+    state.bottom.open = true; state.bottom.money.scrap = D(17); state.bottom.saving = 'tool:lamp';
+    expect(deserialize(serialize(state))!.bottom.saving).toBe('tool:lamp');
+    const old = JSON.parse(serialize(state)); old.v = 19; delete old.layers.bottom.saving;
+    const back = deserialize(JSON.stringify(old))!;
+    expect(back.bottom.money.scrap.eq(17)).toBe(true);
+    expect(back.bottom.saving).toBeNull();
+    old.v = 20; old.layers.bottom.saving = 'invalid';
+    expect(deserialize(JSON.stringify(old))!.bottom.saving).toBeNull();
   });
 
   it('round-trips bottom progress; a v12 save loads with the bottom closed', async () => {

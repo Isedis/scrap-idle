@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   AUTO_OPEN,
+  ABOVE_SCRIPTS,
+  autoOpen,
+  autoOpens,
+  buyAboveScript,
+  savingGoal,
+  savingGoals,
   EQUIPMENT,
   buyEquipment,
   buyBorer,
@@ -55,24 +61,13 @@ const digitsAt = (h: number) => {
 };
 
 /** Scripts of the world above, bought with currencies from below, in the order a player would. */
-const SCRIPTS: [string, number, Rarity][] = [
-  ['buy.producers', 40, 'dust'],
-  ['buy.upgrades', 80, 'dust'],
-  ['buy.endless', 6, 'scrap'],
-  ['light', 10, 'scrap'],
-  ['recycle', 15, 'scrap'],
-  ['buy.tree', 6, 'nonferrous'],
-  ['sort', 10, 'nonferrous'],
-  ['buy.line', 4, 'antique'],
-  ['reform', 30, 'anomaly'],
-  ['annex', 60, 'anomaly'],
-];
+const SCRIPTS: [string, number, Rarity][] = ABOVE_SCRIPTS.map((sc) => [sc.id, sc.cost, sc.costIn]);
 
-export function simulateBottom(hours: number, log: (h: number, what: string) => void) {
+export function simulateBottom(hours: number, log: (h: number, what: string) => void, seed = 12345) {
   const b: BottomState = newBottom();
   b.open = true;
   b.heap = START_HEAP;
-  let rand = 12345;
+  let rand = seed;
   const rng = () => (rand = (rand * 16807) % 2147483647) / 2147483647;
   let scripts = 0;
   // Time above runs faster with every script bought from below.
@@ -83,26 +78,42 @@ export function simulateBottom(hours: number, log: (h: number, what: string) => 
     const h = m / 60;
     aboveHours += (1 + 0.12 * scripts) / 60;
     const digits = digitsAt(aboveHours);
-    bottomTick(b, 60, fallPerMinute(D(10).pow(digits)), rng);
+    if (!savingGoal(b)) {
+      const offers = savingGoals(b);
+      const tool = TOOLS.filter(t => b.tools[t.id] < t.max).sort((a, c) => b.tools[a.id] - b.tools[c.id])[0];
+      const target = offers.find(g => g.id === 'auto')
+        ?? offers.find(g => g.id === `script:${SCRIPTS[scripts]?.[0]}`)
+        ?? offers.find(g => g.id.startsWith('equipment:') && g.unlocked)
+        ?? offers.find(g => g.id === 'borer' && g.unlocked && b.ume.gte(g.cost))
+        ?? offers.find(g => g.id === `tool:${tool?.id}`);
+      b.saving = target?.id ?? null;
+    }
+    b.above = D(10).pow(digits);
+    bottomTick(b, 60, fallPerMinute(b.above), rng);
+    // Match advance(): automatic fees happen BEFORE the player's purchases.
+    autoOpen(b, rng);
+    const canSpend = (id: string, currency: Rarity, cost: number) => {
+      const goal = savingGoal(b);
+      return !goal || goal.id === id || goal.costIn !== currency || b.money[currency].sub(cost).gte(goal.cost);
+    };
     // Purchases: automatic opening, then scripts, then the cheapest tool level.
-    if (AUTO_OPEN[b.auto] && buyAuto(b)) log(h, `автовскрытие ${b.auto}: ${AUTO_OPEN[b.auto - 1].name}`);
+    if (AUTO_OPEN[b.auto] && canSpend('auto', AUTO_OPEN[b.auto].costIn, AUTO_OPEN[b.auto].cost) && buyAuto(b)) log(h, `автовскрытие ${b.auto}: ${AUTO_OPEN[b.auto - 1].name}`);
     while (scripts < SCRIPTS.length) {
       const [name, cost, cur] = SCRIPTS[scripts];
-      if (b.money[cur].lt(cost)) break;
-      b.money[cur] = b.money[cur].sub(cost);
+      if (!canSpend(`script:${name}`, cur, cost) || !buyAboveScript(b, name)) break;
       scripts++;
       log(h, `скрипт наверху: ${name}`);
     }
     for (let guard = 0; guard < 50; guard++) {
-      const t = TOOLS.filter((x) => b.tools[x.id] < x.max).find((x) => b.money[x.costIn].gte(toolCost(x, b.tools[x.id])));
+      const t = TOOLS.filter((x) => b.tools[x.id] < x.max).find((x) => b.money[x.costIn].gte(toolCost(x, b.tools[x.id])) && canSpend(`tool:${x.id}`, x.costIn, toolCost(x, b.tools[x.id]).toNumber()));
       if (!t || !buyTool(b, t.id)) break;
-      if (b.tools[t.id] % 5 === 0) log(h, `${t.name} ур. ${b.tools[t.id]}`);
+      if (b.tools[t.id] === 1 || b.tools[t.id] % 5 === 0) log(h, `${t.name} ур. ${b.tools[t.id]}`);
     }
-    for (const e of EQUIPMENT) if (buyEquipment(b, e.id)) log(h, `оборудование: ${e.name}`);
+    for (const e of EQUIPMENT) if (canSpend(`equipment:${e.id}`, e.costIn, e.cost) && buyEquipment(b, e.id)) log(h, `оборудование: ${e.name}`);
     if (buyBorer(b)) log(h, `проходчик: ${b.equipment.borer}`);
     // Then opens everything the money still allows.
-    for (const c of CONTAINERS) {
-      while (canOpen(b, c.id)) {
+    for (const c of CONTAINERS.filter(c => !autoOpens(b).includes(c.id))) {
+      while (canOpen(b, c.id) && canSpend(`open:${c.id}`, c.costIn, c.cost)) {
         const r = openOne(b, c.id, rng)!;
         if (r.fresh) seen.add(r.item.id);
         if (!firstRarity.has(r.item.rarity)) {
@@ -124,7 +135,8 @@ export function simulateBottom(hours: number, log: (h: number, what: string) => 
         ...(AUTO_OPEN[b.auto]?.costIn === r ? [AUTO_OPEN[b.auto].cost] : []),
         ...(SCRIPTS[scripts]?.[2] === r ? [SCRIPTS[scripts][1]] : []),
       ];
-      const keep = Math.max(0, ...need);
+      const goal = savingGoal(b);
+      const keep = Math.max(0, ...need, goal?.costIn === r ? goal.cost.toNumber() : 0);
       const spare = Math.floor(b.money[r].toNumber() - keep);
       if (spare > 0) {
         const before = b.ume.toNumber();
@@ -141,7 +153,7 @@ export function simulateBottom(hours: number, log: (h: number, what: string) => 
 }
 
 describe.runIf(process.env.BOTTOM_SIM)('the bottom, played', () => {
-  it('reaches the first УМЕ in 10 to 15 hours', () => {
+  it('reaches the first УМЕ in 10 to 15 modelled hours with automatic fees before purchases', () => {
     let first = Infinity;
     const hours = Number(process.env.BOTTOM_HOURS ?? 16);
     simulateBottom(hours, (h, what) => {
@@ -151,4 +163,20 @@ describe.runIf(process.env.BOTTOM_SIM)('the bottom, played', () => {
     expect(first).toBeGreaterThan(10);
     expect(first).toBeLessThan(15);
   });
+
+  it('keeps early metal upgrades reachable across different find sequences with real automatic spending', () => {
+    for (const seed of [1, 7, 42, 98765]) {
+      let first = Infinity, lamp = Infinity, luck = Infinity;
+      simulateBottom(20, (h, what) => {
+        if (what.startsWith('УМЕ') && first === Infinity) first = h;
+        if (what.startsWith('Фонарь ур. 1') && lamp === Infinity) lamp = h;
+        if (what.startsWith('Чутьё ур. 1') && luck === Infinity) luck = h;
+      }, seed);
+      console.log(`seed ${seed}: lamp ${lamp.toFixed(2)}h, luck ${luck.toFixed(2)}h, UME ${first.toFixed(2)}h`);
+      expect(lamp, `lamp seed ${seed}`).toBeLessThanOrEqual(0.25);
+      expect(luck, `luck seed ${seed}`).toBeLessThanOrEqual(0.25);
+      expect(first, `UME seed ${seed}`).toBeLessThan(20);
+    }
+  });
+
 });

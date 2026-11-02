@@ -1,5 +1,5 @@
 {
- "v": 19,
+ "v": 20,
  "trash": "10000000000",
  "totalTrash": "6.391662096034331e40",
  "owned": {
@@ -267,6 +267,7 @@
     "luck": 0
    },
    "auto": 0,
+   "saving": null,
    "dry": {},
    "found": {},
    "opened": 0,

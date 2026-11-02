@@ -1963,3 +1963,14 @@ html, body { overflow: hidden; }
 .s-line-build .a-note { height: 64px; overflow-y: auto; font-size: 11px; line-height: 1.45; }
 
 .sorting .s-now-auto { height: 96px; overflow-y: auto; }
+
+.b-saving { display: grid; gap: 6px; padding: 12px 0; border-block: 1px solid var(--line); }
+.b-saving-label { font-size: 12px; color: var(--amber); }
+.b-saving-select { min-height: 44px; width: 100%; min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: 3px; padding: 8px; font: inherit; font-size: 12px; color: var(--glow); background: var(--bg); }
+.b-saving-note { color: var(--mid); font-size: 11px; min-height: 2.9em; }
+.b-saving-buy { min-height: 44px; white-space: normal; }
+.bottom .b-finds { height: 90px; min-height: 90px; overflow: hidden; }
+.bottom .b-find { line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bottom .b-opening-head { height: 94px; min-height: 94px; overflow: hidden; }
+
+.b-coin-value { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
