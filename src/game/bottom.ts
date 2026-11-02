@@ -1,14 +1,6 @@
 import { D, Decimal } from './num';
 
-/**
- * The bottom of the pit, the fourth layer. Ignatyev, gone since 1987, digs the heap the
- * world above keeps pouring down. What he digs out is containers: a sack, a crate, a
- * suitcase, a safe, a coffin. The operator opens them, a strip of finds runs and stops on
- * one; each find pays in the currency of its rarity. Currencies buy Ignatyev's tools and
- * the scripts that run the world above, and melt up a ladder whose top is the УМЕ, the
- * ultra-waste unit the next layers will run on. A collection of finds, by epoch, gives
- * lasting bonuses. Everything here is pure: chance comes in as `rand`.
- */
+/** The bottom has independent excavation and a surface-waste supply line. */
 
 // ---- Rarities and currencies -------------------------------------------------------
 
@@ -175,14 +167,14 @@ export const AUTO_OPEN: readonly { cost: number; costIn: Rarity; upTo: Container
 
 // ---- The world above, as it reaches the bottom -------------------------------------
 
-/** What the town left lying at the bottom when it went in: the first tonnes to dig. */
+/** The old town supplies the first recovery materials after descent. */
 export const START_HEAP = 300;
-/** Tonnes a minute the miner digs at the start. */
+/** Excavation power before strata resistance and equipment. */
 export const BASE_DIG = 2;
 /**
  * Tonnes a minute that fall in from above: a few per power of ten of trash collected up
- * there since the descent. A logarithm: the world above feeds the heap, and its runaway
- * numbers never make the bottom trivial.
+ * there since the descent. A logarithm keeps the material supply bounded relative
+ * to the runaway upper economy.
  */
 export const FALL_PER_DIGIT = 0.1;
 export const fallPerMinute = (aboveTrash: Decimal) => FALL_PER_DIGIT * Math.max(0, aboveTrash.add(1).log10().toNumber());
@@ -202,8 +194,11 @@ export const REPEAT_CAP = 1;
 export interface BottomState {
   /** Opened by the descent; stays open. */
   open: boolean;
-  /** Tonnes lying ready to dig. */
+  /** Surface waste awaiting recovery; never limits excavation. */
   heap: number;
+  /** Surface tonnes recovered separately from excavation. */
+  supplied: number;
+  equipment: { hoist: boolean; bench: boolean; borer: number };
   /** Fraction of a tonne dug toward the next container. */
   dig: number;
   /** Tonnes dug in all: how deep the miner has gone, which epochs he has reached. */
@@ -219,7 +214,7 @@ export interface BottomState {
   /** Times each find came up. */
   found: Record<string, number>;
   opened: number;
-  /** Ultra-waste units: never spent here. */
+  /** Ultra-waste units, spent on permanent borer upgrades. */
   ume: Decimal;
   /** Trash collected above since the descent: what keeps falling in. */
   above: Decimal;
@@ -234,6 +229,8 @@ const zeroMoney = (): Record<Rarity, Decimal> => ({ dust: D(0), scrap: D(0), non
 export const newBottom = (): BottomState => ({
   open: false,
   heap: 0,
+  supplied: 0,
+  equipment: { hoist: false, bench: false, borer: 0 },
   dig: 0,
   dug: 0,
   stock: { sack: 0, crate: 0, suitcase: 0, safe: 0, coffin: 0 },
@@ -261,7 +258,49 @@ export function setPower(b: BottomState, epoch: Epoch): number {
   return 1 + Math.min(REPEAT_CAP, REPEAT_STEP * repeats);
 }
 
-export const digRate = (b: BottomState) => BASE_DIG * 1.3 ** b.tools.pick * (setPower(b, 'medieval') ? 1 + 0.25 * setPower(b, 'medieval') : 1);
+/** Older strata take more work per tonne; tools improve power, not surface throughput. */
+export const STRATUM_DENSITY = 6000;
+const digPower = (b: BottomState) => BASE_DIG * 1.3 ** b.tools.pick
+  * (b.equipment.hoist ? 1.25 : 1) * 1.5 ** b.equipment.borer
+  * (setPower(b, 'medieval') ? 1 + 0.25 * setPower(b, 'medieval') : 1);
+export const digRate = (b: BottomState) => digPower(b) / (1 + b.dug / STRATUM_DENSITY);
+export const supplyRate = (b: BottomState) => b.equipment.hoist ? 6 : 2;
+/** Completed deep sectors improve every find, without requiring a full collection. */
+export const DEEP_SECTOR = 11000;
+export const deepSectors = (b: BottomState) => Math.max(0, Math.floor(b.dug / DEEP_SECTOR) - 1);
+export const findMultiplier = (b: BottomState) => 1 + deepSectors(b) * 0.1;
+
+export const EQUIPMENT = [
+  { id: 'hoist', name: 'Подъёмник', depth: 1000, cost: 40, costIn: 'scrap', text: 'Снабжение 6 т/мин вместо 2; раскопки на 25% быстрее' },
+  { id: 'bench', name: 'Разборочный стол', depth: 4500, cost: 12, costIn: 'nonferrous', text: 'Из каждой тонны сверху дополнительно извлекает 0,25 лома' },
+] as const;
+export type EquipmentId = typeof EQUIPMENT[number]['id'];
+
+export function buyEquipment(b: BottomState, id: EquipmentId): boolean {
+  const e = EQUIPMENT.find((e) => e.id === id)!;
+  if (!b.open || b.dug < e.depth || b.equipment[id] || b.money[e.costIn].lt(e.cost)) return false;
+  b.money[e.costIn] = b.money[e.costIn].sub(e.cost);
+  b.equipment[id] = true;
+  return true;
+}
+
+export const borerCost = (b: BottomState) => D(2).pow(b.equipment.borer);
+export function buyBorer(b: BottomState): boolean {
+  if (!b.open || !umeOpen(b) || b.ume.lt(borerCost(b))) return false;
+  b.ume = b.ume.sub(borerCost(b));
+  b.equipment.borer++;
+  return true;
+}
+
+/** The single persistent depth target, shared by the panel and guidance. */
+export function depthTarget(b: BottomState): { name: string; from: number; to: number; reward: string } {
+  const next = EPOCHS.findIndex((e) => e.depth > b.dug);
+  if (next >= 0) return { name: EPOCHS[next].name, from: EPOCHS[next - 1].depth, to: EPOCHS[next].depth,
+    reward: next === 1 ? 'Новые находки и подъёмник' : next === 2 ? 'Новые находки и разборочный стол' : 'Новые находки и проходчик за УМЕ' };
+  const to = (Math.floor(b.dug / DEEP_SECTOR) + 1) * DEEP_SECTOR;
+  return { name: `Глубинный пласт ${Math.floor(b.dug / DEEP_SECTOR)}`, from: to - DEEP_SECTOR, to,
+    reward: 'Добыча из каждой находки ещё +10% от базовой' };
+}
 export const meltBonus = (b: BottomState) => (setPower(b, 'inhuman') ? 1 + 0.25 * setPower(b, 'inhuman') : 1);
 /** Income multiplier the bottom sends up. */
 export const aboveIncome = (b: BottomState) => (setPower(b, 'prehistoric') ? D(1000).pow(setPower(b, 'prehistoric')) : D(1));
@@ -286,17 +325,25 @@ function pick<T>(items: readonly T[], weights: readonly number[], r: number): T 
   return items[items.length - 1];
 }
 
-/**
- * Time at the bottom: the fall from above grows the heap, the miner digs what is there,
- * every tonne dug gives a container. Returns the containers dug this time.
- */
+/** Surface recovery supplies common materials; old strata always remain diggable. */
 export function bottomTick(b: BottomState, seconds: number, fall: number, rand: () => number): number {
-  if (!b.open) return 0;
-  b.heap += (fall * seconds) / 60;
-  const dug = Math.min(b.heap, (digRate(b) * seconds) / 60);
-  b.heap -= dug;
-  b.dig += dug;
+  if (!b.open || !Number.isFinite(seconds) || seconds <= 0) return 0;
+  const minutes = seconds / 60;
+  b.heap += Math.max(0, fall) * minutes;
+  const recovered = Math.min(b.heap, supplyRate(b) * minutes);
+  b.heap = Math.max(0, b.heap - recovered);
+  b.supplied += recovered;
+  b.money.dust = b.money.dust.add(recovered);
+  if (b.equipment.bench) b.money.scrap = b.money.scrap.add(recovered * 0.25);
+
+  // Integrate the increasing resistance exactly, independent of tick size.
+  const density = STRATUM_DENSITY;
+  const start = 1 + b.dug / density;
+  const work = digPower(b) * minutes;
+  const end = Math.sqrt(start * start + 2 * work / density);
+  const dug = 2 * work / (start + end);
   b.dug += dug;
+  b.dig += dug;
   let n = 0;
   const odds = containerOdds(b);
   while (b.dig >= 1) {
@@ -345,7 +392,7 @@ export function openOne(b: BottomState, id: ContainerId, rand: () => number): Op
   const found = pool[Math.floor(rand() * pool.length)];
   const fresh = !b.found[found.id];
   b.found[found.id] = (b.found[found.id] ?? 0) + 1;
-  const amount = D(YIELD[rarity]);
+  const amount = D(YIELD[rarity]).mul(findMultiplier(b));
   b.money[rarity] = b.money[rarity].add(amount);
   const opening = { item: found, container: id, amount, fresh };
   b.recent.unshift(opening);

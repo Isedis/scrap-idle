@@ -1,5 +1,5 @@
 {
- "v": 18,
+ "v": 19,
  "trash": "10000000000",
  "totalTrash": "6.391662096034331e40",
  "owned": {
@@ -238,6 +238,12 @@
   "bottom": {
    "open": false,
    "heap": 0,
+   "supplied": 0,
+   "equipment": {
+    "hoist": false,
+    "bench": false,
+    "borer": 0
+   },
    "dig": 0,
    "dug": 0,
    "stock": {

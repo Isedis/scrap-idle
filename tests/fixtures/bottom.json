@@ -1,7 +1,7 @@
 {
- "v": 18,
+ "v": 19,
  "trash": "0",
- "totalTrash": "3.008734618278703e40",
+ "totalTrash": "6.391662096034331e40",
  "owned": {
   "collector": 1
  },
@@ -11,8 +11,8 @@
  "upgrades": [],
  "seenUpgrades": [
   "collector-1",
-  "cart-1",
   "collector-2",
+  "cart-1",
   "night-shift",
   "collector-3",
   "truck-1",
@@ -30,8 +30,8 @@
   "sorter-2",
   "plant-1",
   "sorter-3",
-  "state-order",
   "truck-4",
+  "state-order",
   "cart-4",
   "press-2",
   "landfill-1",
@@ -47,17 +47,17 @@
   "landfill-2",
   "scrap-exchange",
   "landfill-3",
+  "plant-4",
   "waste-fuel",
   "incinerator-2",
+  "incinerator-3",
   "galactic-tender",
   "singularity-1",
-  "incinerator-3",
-  "plant-4",
   "landfill-4",
   "orbital-2",
-  "orbital-3",
   "orbital-drop",
   "singularity-2",
+  "orbital-3",
   "singularity-3",
   "incinerator-4",
   "orbital-4",
@@ -95,13 +95,14 @@
    "queue": 0,
    "progress": 0,
    "arrival": 0,
-   "inspected": 39,
+   "inspected": 42,
    "found": [
     "lantern",
     "boot",
     "bag",
     "letter",
-    "eye"
+    "eye",
+    "bottle"
    ],
    "echoes": {},
    "cycleSeconds": 0
@@ -118,57 +119,63 @@
   },
   "bottom": {
    "open": true,
-   "heap": 0,
-   "dig": 0.7499999999999396,
-   "dug": 1308.7499999999995,
+   "heap": 1008.75,
+   "supplied": 300,
+   "equipment": {
+    "hoist": false,
+    "bench": false,
+    "borer": 0
+   },
+   "dig": 0.52878658647621,
+   "dug": 1411.5287865864757,
    "stock": {
     "sack": 3,
     "crate": 1,
     "suitcase": 1,
-    "safe": 1,
+    "safe": 14,
     "coffin": 1
    },
    "money": {
-    "dust": "2115",
-    "scrap": "23",
-    "nonferrous": "26",
-    "antique": "7",
-    "relic": "58",
-    "anomaly": "20"
+    "dust": "1899",
+    "scrap": "246",
+    "nonferrous": "14",
+    "antique": "0",
+    "relic": "67",
+    "anomaly": "23"
    },
    "tools": {
     "pick": 7,
     "lamp": 6,
-    "luck": 4
+    "luck": 5
    },
    "auto": 0,
    "dry": {
     "antique": 0,
-    "relic": 1
+    "relic": 0
    },
    "found": {
-    "fishbone": 154,
-    "lapot": 152,
-    "horseshoe": 166,
-    "sherd": 132,
-    "arrowhead": 171,
-    "pewtercross": 87,
-    "birchbark": 123,
-    "buckle": 86,
-    "helm": 57,
-    "bell": 19,
-    "spear": 13,
-    "coin": 21,
-    "waxtab": 24,
-    "sickle": 25,
-    "grain": 14,
-    "embers": 12,
-    "amphora": 8,
-    "curse": 18,
-    "seajar": 1,
-    "mask": 18
+    "horseshoe": 206,
+    "fishbone": 111,
+    "lapot": 122,
+    "arrowhead": 164,
+    "sherd": 157,
+    "birchbark": 126,
+    "buckle": 98,
+    "helm": 66,
+    "pewtercross": 107,
+    "bell": 17,
+    "sickle": 31,
+    "embers": 9,
+    "grain": 15,
+    "coin": 24,
+    "waxtab": 32,
+    "mask": 28,
+    "spear": 29,
+    "amphora": 15,
+    "curse": 28,
+    "seajar": 6
    },
-   "opened": 1301,
+   "opened": 1391,
    "ume": "0",
    "above": "0",
    "scripts": [
@@ -176,9 +183,9 @@
     "upgrades",
     "endless",
     "light",
-    "tree",
-    "line",
     "recycle",
+    "line",
+    "tree",
     "sort"
    ]
   }
@@ -187,8 +194,8 @@
  "threat": {
   "level": 0,
   "losses": 0,
-  "lights": 27,
-  "bravest": 0.544814276089194
+  "lights": 26,
+  "bravest": 0.6078779616241592
  },
  "story": {
   "cityLetters": 24,

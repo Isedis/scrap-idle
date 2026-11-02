@@ -319,7 +319,7 @@ export function advance(state: GameState, seconds: number, offline = false, slic
     state.trash = state.trash.add(gained);
     state.totalTrash = state.totalTrash.add(gained);
     state.runTrash = state.runTrash.add(gained);
-    // Down there, all of it lands on the heap Ignatyev digs.
+    // Surface waste feeds recovery; excavation below proceeds independently.
     const b = state.bottom;
     if (b.open) {
       b.above = b.above.add(gained);

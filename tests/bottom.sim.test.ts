@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   AUTO_OPEN,
+  EQUIPMENT,
+  buyEquipment,
+  buyBorer,
   CONTAINERS,
   EPOCHS,
   RARITIES,
@@ -95,6 +98,8 @@ export function simulateBottom(hours: number, log: (h: number, what: string) => 
       if (!t || !buyTool(b, t.id)) break;
       if (b.tools[t.id] % 5 === 0) log(h, `${t.name} ур. ${b.tools[t.id]}`);
     }
+    for (const e of EQUIPMENT) if (buyEquipment(b, e.id)) log(h, `оборудование: ${e.name}`);
+    if (buyBorer(b)) log(h, `проходчик: ${b.equipment.borer}`);
     // Then opens everything the money still allows.
     for (const c of CONTAINERS) {
       while (canOpen(b, c.id)) {
@@ -113,6 +118,7 @@ export function simulateBottom(hours: number, log: (h: number, what: string) => 
     // Melt the surplus upward, keeping enough for the next purchase in each currency.
     for (const r of RARITIES) {
       const need = [
+        ...EQUIPMENT.filter((e) => e.costIn === r && !b.equipment[e.id]).map((e) => e.cost),
         ...TOOLS.filter((x) => x.costIn === r && b.tools[x.id] < x.max).map((x) => toolCost(x, b.tools[x.id]).toNumber()),
         ...CONTAINERS.filter((c) => c.costIn === r && c.cost > 0).map((c) => c.cost * 5),
         ...(AUTO_OPEN[b.auto]?.costIn === r ? [AUTO_OPEN[b.auto].cost] : []),

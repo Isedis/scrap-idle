@@ -3,6 +3,13 @@ import {
   AUTO_OPEN,
   CONTAINERS,
   EPOCHS,
+  EQUIPMENT,
+  borerCost,
+  buyBorer,
+  buyEquipment,
+  depthTarget,
+  findMultiplier,
+  supplyRate,
   ITEMS,
   RARITIES,
   RARITY_NAMES,
@@ -59,6 +66,12 @@ export class BottomPanel {
   readonly root: HTMLElement;
   readonly camera = new PitCam();
   private meta!: HTMLElement;
+  private operation!: HTMLElement;
+  private progress!: HTMLProgressElement;
+  private target!: HTMLElement;
+  private targetReward!: HTMLElement;
+  private supply!: HTMLElement;
+  private equipmentUpdaters: ((s: GameState) => void)[] = [];
   private money = new Map<Rarity, HTMLElement>();
   private ume!: HTMLElement;
   private strip!: HTMLElement;
@@ -84,6 +97,18 @@ export class BottomPanel {
     const head = el('div', 'panel-head');
     this.meta = el('span', 'panel-meta');
     head.append(el('h2', 'panel-title', 'Дно ямы'), this.meta);
+
+    this.operation = el('div', 'b-operation');
+    this.target = el('div', 'b-target');
+    this.targetReward = el('div', 'b-target-reward');
+    this.progress = el('progress', 'b-depth-progress');
+    this.progress.max = 1;
+    this.progress.setAttribute('aria-label', 'Продвижение к следующему пласту');
+    this.operation.append(el('div', 'b-operation-label', '> РАСКОПКИ'), this.target, this.progress, this.targetReward);
+    const supplyDetails = el('details', 'b-supply');
+    supplyDetails.append(el('summary', '', 'Снабжение с поверхности'));
+    this.supply = el('p', 's-why');
+    supplyDetails.append(this.supply);
 
     const wallet = el('div', 'b-money');
     for (const r of RARITIES) {
@@ -127,6 +152,37 @@ export class BottomPanel {
     }
 
     this.finds = el('div', 'b-finds');
+
+    const equipment = el('div', 'b-list b-equipment');
+    for (const e of EQUIPMENT) {
+      const row = this.buyRow(e.name, e.text,
+        (s) => s.bottom.equipment[e.id] ? null : { cost: D(e.cost), costIn: e.costIn,
+          level: s.bottom.dug < e.depth ? `после ${format(D(e.depth))} т` : 'доступно' },
+        () => buyEquipment(this.getState().bottom, e.id) && e.name, 'Работает');
+      row.id = `bottom-${e.id}`;
+      equipment.append(row);
+      this.equipmentUpdaters.push((s) => {
+        if (s.bottom.dug < e.depth) row.querySelector('button')!.disabled = true;
+      });
+    }
+    const borer = el('div', 'b-row');
+    borer.id = 'bottom-borer';
+    const borerText = el('div', 'b-row-text');
+    const borerTitle = el('div', 'b-row-title', 'Проходчик');
+    const borerSub = el('div', 'b-row-sub');
+    const borerButton = el('button', 'btn b-buy');
+    borerButton.type = 'button';
+    borerButton.addEventListener('click', () => { if (buyBorer(this.getState().bottom)) this.onChange(); });
+    borerText.append(borerTitle, borerSub);
+    borer.append(borerText, borerButton);
+    equipment.append(borer);
+    this.equipmentUpdaters.push((s) => {
+      const b = s.bottom;
+      borerTitle.textContent = `Проходчик · ур. ${b.equipment.borer}`;
+      borerSub.textContent = umeOpen(b) ? 'Каждый уровень ускоряет раскопки в 1,5 раза' : 'Доступен после 11 тыс т · покупка за УМЕ';
+      borerButton.textContent = `${format(borerCost(b))} УМЕ`;
+      borerButton.disabled = !umeOpen(b) || b.ume.lt(borerCost(b));
+    });
 
     const tools = el('div', 'b-list');
     for (const t of TOOLS) {
@@ -181,12 +237,15 @@ export class BottomPanel {
     this.root.append(
       this.camera.root,
       head,
-      el('p', 's-why', 'Игнатьев копает то, что сыплется сверху. Вскрываете вы — что внутри, решает случай.'),
+      this.operation,
+      supplyDetails,
       wallet,
       this.stripWindow,
       this.result,
       crates,
       this.finds,
+      section('Оборудование'),
+      equipment,
       section('Инструменты Игнатьева'),
       tools,
       section('Переплавка'),
@@ -351,7 +410,17 @@ export class BottomPanel {
 
   render(state: GameState): void {
     const b = state.bottom;
-    this.meta.textContent = `вглубь ${format(D(Math.floor(b.dug)))} т · гора ${format(D(Math.floor(b.heap)))} т · сверху ${fallPerMinute(b.above).toFixed(1)} т/мин`;
+    const target = depthTarget(b);
+    const current = [...EPOCHS].reverse().find((e) => b.dug >= e.depth)!;
+    this.meta.textContent = current.name;
+    this.target.textContent = `${target.name} · ${format(D(Math.floor(b.dug)))} / ${format(D(target.to))} т`;
+    this.progress.value = Math.max(0, Math.min(1, (b.dug - target.from) / (target.to - target.from)));
+    this.progress.setAttribute('aria-valuetext', `${Math.round(this.progress.value * 100)}% до пласта «${target.name}»`);
+    this.targetReward.textContent = `Откроется: ${target.reward.toLowerCase()}`;
+    this.supply.textContent = `Сверху ${fallPerMinute(b.above).toFixed(1)} т/мин → разбор до ${supplyRate(b)} т/мин. `
+      + `В запасе ${format(D(b.heap))} т. Из тонны: 1 труха${b.equipment.bench ? ' и 0,25 лома' : ''}. `
+      + `Раскопки ${digRate(b).toFixed(1)} т/мин идут независимо от снабжения. `
+      + (findMultiplier(b) > 1 ? `Добыча находок ×${findMultiplier(b).toFixed(1)}.` : 'Мусор сверху не уменьшает достигнутую глубину.');
     for (const r of RARITIES) this.money.get(r)!.textContent = format(b.money[r].floor());
     this.ume.textContent = format(b.ume);
     for (const c of CONTAINERS) {
@@ -364,6 +433,7 @@ export class BottomPanel {
       view.all.disabled = !can;
     }
     for (const u of this.updaters) u(state);
+    for (const u of this.equipmentUpdaters) u(state);
     // The last finds the automatic opening made, when it runs.
     const sig = b.recent.map((o) => o.item.id + b.opened).join();
     if (sig !== this.shownFinds && !this.spinning) {
@@ -421,7 +491,10 @@ export class BottomPanel {
     this.camera.update(dt, {
       heap: b.heap,
       fall: fallPerMinute(b.above),
-      dig: b.heap > 0.01 ? digRate(b) : 0,
+      dig: digRate(b),
+      equipment: b.equipment,
+      auto: b.auto,
+      depth: b.dug,
       stock: CONTAINERS.map((c) => b.stock[c.id]),
     });
   }

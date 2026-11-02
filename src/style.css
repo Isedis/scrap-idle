@@ -1906,3 +1906,16 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .c-development .c-card-title { font-size: 12px; overflow-wrap: anywhere; }
 .c-development .c-card-text { color: var(--mid); font-size: 11px; line-height: 1.6; }
 .c-development-buy { min-height: 44px; width: 100%; font-size: 12px; white-space: normal; }
+
+/* A single depth objective; supply details stay secondary. */
+.b-operation { padding: 10px 0 12px; border-block: 1px solid var(--line); }
+.b-operation-label { color: var(--mid); font-size: 10px; letter-spacing: .1em; }
+.b-target { color: var(--glow); font-size: 13px; margin-top: 5px; overflow-wrap: anywhere; }
+.b-target-reward { color: var(--mid); font-size: 11px; margin-top: 5px; }
+.b-depth-progress { display: block; width: 100%; height: 8px; margin-top: 8px; border: 1px solid var(--line); border-radius: 0; appearance: none; background: var(--bg); color: var(--mid); }
+.b-depth-progress::-webkit-progress-bar { background: var(--bg); }
+.b-depth-progress::-webkit-progress-value { background: var(--mid); }
+.b-depth-progress::-moz-progress-bar { background: var(--mid); }
+.b-supply > summary { min-height: 44px; display: list-item; padding-block: 11px; color: var(--mid); font-size: 12px; cursor: pointer; }
+.b-supply .s-why { margin-top: 0; }
+.b-equipment .b-row-title { flex-wrap: wrap; gap: 3px 8px; }

@@ -5,6 +5,13 @@ import {
   MELT,
   RARITIES,
   START_HEAP,
+  EQUIPMENT,
+  buyEquipment,
+  buyBorer,
+  borerCost,
+  depthTarget,
+  digRate,
+  findMultiplier,
   bottomTick,
   buyAuto,
   buyTool,
@@ -28,16 +35,80 @@ describe('the bottom of the pit', () => {
     for (const e of EPOCHS) for (const r of RARITIES) expect(ITEMS.some((i) => i.epoch === e.id && i.rarity === r), `${e.id} ${r}`).toBe(true);
   });
 
-  it('digs what has fallen in, a container per tonne', () => {
+  it('excavates old strata even with no incoming surface waste', () => {
     const b = newBottom();
     b.open = true;
-    b.heap = 1;
-    // 2 t/min for a minute, but only one tonne lies there.
-    expect(bottomTick(b, 60, 0, () => 0)).toBe(1);
+    expect(bottomTick(b, 61, 0, () => 0)).toBe(2);
     expect(b.heap).toBe(0);
-    expect(b.stock.sack).toBe(1);
-    expect(bottomTick(b, 60, 60, () => 0)).toBe(2);
+    expect(b.stock.sack).toBe(2);
+    expect(b.dug).toBeGreaterThan(2);
+    expect(b.money.dust.eq(0)).toBe(true);
     expect(START_HEAP).toBeGreaterThan(0);
+  });
+
+  it('separates fresh waste recovery from excavation and never buries depth', () => {
+    const a = newBottom(), b = newBottom();
+    a.open = b.open = true;
+    a.heap = 1;
+    bottomTick(a, 60, 0, () => 0);
+    bottomTick(b, 60, 60, () => 0);
+    expect(a.dug).toBeCloseTo(b.dug, 10);
+    expect(a.stock).toEqual(b.stock);
+    expect(a.money.dust.toNumber()).toBe(1);
+    expect(b.money.dust.toNumber()).toBe(2);
+    expect(b.heap).toBe(58);
+    expect(b.supplied).toBe(2);
+  });
+
+  it('integrates excavation and supply consistently online and offline', () => {
+    const a = newBottom(), b = newBottom();
+    a.open = b.open = true;
+    a.equipment = b.equipment = { hoist: true, bench: true, borer: 2 };
+    a.heap = b.heap = 300;
+    a.tools.pick = b.tools.pick = 12;
+    bottomTick(a, 3600, 4, () => 0);
+    for (let i = 0; i < 3600; i++) bottomTick(b, 1, 4, () => 0);
+    expect(a.dug).toBeCloseTo(b.dug, 7);
+    expect(a.dig).toBeCloseTo(b.dig, 7);
+    expect(a.stock).toEqual(b.stock);
+    expect(a.heap).toBeCloseTo(b.heap, 7);
+    expect(a.money.scrap.toNumber()).toBeCloseTo(b.money.scrap.toNumber(), 7);
+  });
+
+  it('equipment requires depth and resources; UME permanently upgrades the borer', () => {
+    const b = newBottom();
+    b.open = true;
+    b.money.scrap = D(40);
+    expect(buyEquipment(b, 'hoist')).toBe(false);
+    b.dug = EQUIPMENT[0].depth;
+    const rate = digRate(b);
+    expect(buyEquipment(b, 'hoist')).toBe(true);
+    expect(digRate(b)).toBeCloseTo(rate * 1.25);
+    expect(b.money.scrap.eq(0)).toBe(true);
+    expect(buyEquipment(b, 'hoist')).toBe(false);
+    b.ume = D(3);
+    expect(buyBorer(b)).toBe(false);
+    b.dug = 11000;
+    const before = digRate(b);
+    expect(buyBorer(b)).toBe(true);
+    expect(b.ume.toNumber()).toBe(2);
+    expect(digRate(b)).toBeCloseTo(before * 1.5);
+    expect(borerCost(b).toNumber()).toBe(2);
+    expect(buyBorer(b)).toBe(true);
+    expect(buyBorer(b)).toBe(false);
+    expect(b.equipment.borer).toBe(2);
+  });
+
+  it('deep sectors continue progress without demanding complete collections', () => {
+    const b = newBottom();
+    b.dug = 11000;
+    expect(depthTarget(b).to).toBe(22000);
+    expect(findMultiplier(b)).toBe(1);
+    b.dug = 22000;
+    expect(depthTarget(b).to).toBe(33000);
+    expect(findMultiplier(b)).toBe(1.1);
+    b.stock.sack = 1;
+    expect(openOne(b, 'sack', () => 0)!.amount.toNumber()).toBeCloseTo(13.2);
   });
 
   it('a sack is free, a crate takes scrap, and the finds pay in their own currency', () => {
@@ -113,15 +184,48 @@ describe('the descent and the save', () => {
     // The world above keeps falling in, and Ignatyev digs.
     advance(s, 120);
     expect(s.bottom.dug).toBeGreaterThan(0);
+    const depth = s.bottom.dug;
+    s.bottom.equipment = { hoist: true, bench: true, borer: 2 };
+    s.bottom.supplied = 50;
+    s.city.owned.push('pit');
+    expect(descend(s)).toBe(true);
+    expect(s.bottom.dug).toBe(depth);
+    expect(s.bottom.supplied).toBe(50);
+    expect(s.bottom.equipment).toEqual({ hoist: true, bench: true, borer: 2 });
   });
 
-  it('round-trips in a v13 save; a v12 save loads with the bottom closed', async () => {
+  it('migrates v18 without losing depth, unopened finds, currencies or UME', async () => {
+    const { newGame } = await import('../src/game/state');
+    const { serialize, deserialize } = await import('../src/game/save');
+    const state = newGame(0);
+    Object.assign(state.bottom, { open: true, dug: 12000, heap: 45, ume: D(3), found: { bell: 2 } });
+    state.bottom.stock.safe = 4;
+    state.bottom.money.nonferrous = D(17);
+    const old = JSON.parse(serialize(state));
+    old.v = 18;
+    delete old.layers.bottom.supplied;
+    delete old.layers.bottom.equipment;
+    const back = deserialize(JSON.stringify(old))!;
+    expect(back.bottom.dug).toBe(12000);
+    expect(back.bottom.heap).toBe(45);
+    expect(back.bottom.stock.safe).toBe(4);
+    expect(back.bottom.found).toEqual({ bell: 2 });
+    expect(back.bottom.ume.toNumber()).toBe(3);
+    expect(back.bottom.money.nonferrous.toNumber()).toBe(17);
+    expect(back.bottom.supplied).toBe(0);
+    expect(back.bottom.equipment).toEqual({ hoist: false, bench: false, borer: 0 });
+    expect(JSON.parse(serialize(back)).v).toBe(19);
+  });
+
+  it('round-trips bottom progress; a v12 save loads with the bottom closed', async () => {
     const { newGame } = await import('../src/game/state');
     const { deserialize, serialize } = await import('../src/game/save');
     const s = newGame(0);
     const b = s.bottom;
     b.open = true;
     b.heap = 120.5;
+    b.supplied = 87.25;
+    b.equipment = { hoist: true, bench: true, borer: 3 };
     b.dug = 3000;
     b.stock.safe = 2;
     b.money.relic = D(7);
@@ -133,6 +237,8 @@ describe('the descent and the save', () => {
     const back = deserialize(serialize(s))!;
     expect(back.bottom.open).toBe(true);
     expect(back.bottom.heap).toBe(120.5);
+    expect(back.bottom.supplied).toBe(87.25);
+    expect(back.bottom.equipment).toEqual(b.equipment);
     expect(back.bottom.stock.safe).toBe(2);
     expect(back.bottom.money.relic.toNumber()).toBe(7);
     expect(back.bottom.tools.pick).toBe(4);

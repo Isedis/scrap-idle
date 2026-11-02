@@ -1,3 +1,4 @@
+import type { BottomState } from '../game/bottom';
 import { Camera } from './camera';
 import { C } from './scene';
 
@@ -11,6 +12,9 @@ export interface PitView {
   dig: number;
   /** Containers dug out and waiting, by kind, sack first. */
   stock: number[];
+  equipment: BottomState['equipment'];
+  auto: number;
+  depth: number;
 }
 
 interface Bit {
@@ -54,14 +58,14 @@ export class PitCam extends Camera<PitView> {
     const v = this.view!;
     // Trash down the shaft: more of it the more falls.
     if (Math.random() < dt * Math.min(30, 2 + v.fall * 0.8)) {
-      this.bits.push({ x: this.w * rnd(0.42, 0.58), y: this.h * 0.12, vy: rnd(40, 80), s: rnd(1.5, 3.5), c: C.items[Math.floor(Math.random() * C.items.length)] });
+      this.bits.push({ x: this.w * rnd(0.18, 0.27), y: this.h * 0.12, vy: rnd(40, 80), s: rnd(1.5, 3.5), c: C.items[Math.floor(Math.random() * C.items.length)] });
     }
     for (const b of this.bits) {
       b.vy += 160 * dt;
       b.y += b.vy * dt;
       b.x += Math.sin(b.y * 0.05) * 0.3;
     }
-    const ground = this.heapTop(this.w * 0.5);
+    const ground = this.heapTop(this.w * 0.23);
     this.bits = this.bits.filter((b) => b.y < ground);
     if (v.dig > 0 && this.lookUp <= 0) this.swing += dt * (2.4 + Math.min(4, v.dig * 0.15));
     this.lookIn -= dt;
@@ -78,7 +82,7 @@ export class PitCam extends Camera<PitView> {
     const { w, h } = this;
     const v = this.view!;
     const tall = Math.min(0.42, 0.12 + Math.log10(1 + v.heap) * 0.08);
-    const u = (x - w * 0.5) / (w * 0.75);
+    const u = (x - w * 0.23) / (w * 0.42);
     return h - h * tall * Math.max(0, 1 - u * u) - h * 0.06;
   }
 
@@ -98,18 +102,27 @@ export class PitCam extends Camera<PitView> {
     ctx.strokeStyle = 'rgb(170 230 190 / 0.5)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.ellipse(w * 0.5, h * 0.08, w * 0.09, h * 0.025, 0, 0, Math.PI * 2);
+    ctx.ellipse(w * 0.23, h * 0.08, w * 0.07, h * 0.025, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.fillStyle = 'rgb(170 230 190 / 0.12)';
     ctx.fill();
     // The walls of the shaft narrowing down into the dark.
     ctx.strokeStyle = 'rgb(60 110 80 / 0.25)';
     ctx.beginPath();
-    ctx.moveTo(w * 0.41, h * 0.09);
+    ctx.moveTo(w * 0.16, h * 0.09);
     ctx.lineTo(w * 0.05, h * 0.75);
-    ctx.moveTo(w * 0.59, h * 0.09);
-    ctx.lineTo(w * 0.95, h * 0.75);
+    ctx.moveTo(w * 0.30, h * 0.09);
+    ctx.lineTo(w * 0.39, h * 0.75);
     ctx.stroke();
+
+    // Exposed layers belong to the excavation, independently of the supply heap.
+    const strata = Math.min(4, Math.floor(v.depth / 1000));
+    for (let i = 0; i < 4; i++) {
+      const y = h * (0.37 + i * 0.12);
+      this.line(w * 0.44, y, w * 0.96, y + 3, i <= strata ? '#356b49' : '#193724', 1, 0.55);
+    }
+    this.label('СНАБЖЕНИЕ', w * 0.22, h * 0.40, '#558265');
+    this.label('ЗАБОЙ', w * 0.73, h * 0.29, '#79aa88');
 
     // Falling trash.
     for (const b of this.bits) {
@@ -146,7 +159,7 @@ export class PitCam extends Camera<PitView> {
     ];
     v.stock.forEach((n, i) => {
       const [bw, bh, c] = shapes[i];
-      for (let k = 0; k < Math.min(n, i === 0 ? 5 : 3); k++) {
+      for (let k = 0; k < Math.min(n, 2) && x + bw < w - 8; k++) {
         const y = this.heapTop(x) - bh;
         this.box(x, y - (k % 2) * 2, bw, bh, c, 1);
         if (i === 4) {
@@ -163,7 +176,8 @@ export class PitCam extends Camera<PitView> {
       }
     });
 
-    this.miner(w * 0.46, this.heapTop(w * 0.46));
+    this.machines();
+    this.miner(w * 0.57, this.heapTop(w * 0.57));
 
     if (this.flashLeft > 0) {
       ctx.fillStyle = this.flashColor;
@@ -172,6 +186,45 @@ export class PitCam extends Camera<PitView> {
       ctx.globalAlpha = 1;
     }
     this.vignette(0.5);
+  }
+
+  /** Purchased machinery has a distinct silhouette and keeps a static reduced-motion view. */
+  private machines(): void {
+    const { w, h } = this;
+    const v = this.view!;
+    if (v.equipment.hoist) {
+      const left = w * 0.42, right = w * 0.64, top = h * 0.38, floor = h * 0.91;
+      this.box(left, top, 4, floor - top, '#386747');
+      this.box(right, top, 4, floor - top, '#386747');
+      this.box(left - 3, top - 4, right - left + 10, 6, '#568568');
+      this.circle((left + right) / 2, top + 5, 5, '#759c7d');
+      const travel = this.reducedMotion ? 0.45 : (1 + Math.sin(this.t * 0.8)) / 2;
+      const y = top + 20 + travel * (floor - top - 40);
+      this.line((left + right) / 2, top + 5, (left + right) / 2, y, '#93b795');
+      this.box((left + right) / 2 - 9, y, 18, 11, '#467653');
+    }
+    if (v.equipment.bench || v.auto > 0) {
+      const x = w * 0.07, y = h * 0.83;
+      this.box(x, y, w * 0.23, 5, '#6c9472');
+      this.box(x + 4, y + 5, 3, h * 0.1, '#386747');
+      this.box(x + w * 0.20, y + 5, 3, h * 0.1, '#386747');
+      this.box(x + 7, y - 12, 12, 11, '#4f8059');
+      if (v.equipment.bench) {
+        this.box(x + w * 0.13, y - 17, 14, 16, '#527c62');
+        this.circle(x + w * 0.13 + 7, y - 9, 4, '#9fbea0');
+        const phase = this.reducedMotion ? 0.5 : (this.t * 0.5) % 1;
+        this.box(x + phase * w * 0.18, y - 4, 4, 3, '#a1b39a');
+      }
+    }
+    if (v.equipment.borer > 0) {
+      const x = w * 0.73, y = h * 0.91;
+      this.box(x, y - 19, w * 0.16, 16, '#56765e');
+      this.box(x - 12, y - 14, 12, 5, '#a4b8a1');
+      this.poly([[x - 12, y - 19], [x - 21, y - 12], [x - 12, y - 5]], '#6a9479');
+      for (let i = 0; i < 3; i++) this.circle(x + 6 + i * 12, y - 1, 5, '#35583e');
+      const phase = this.reducedMotion ? 0 : Math.sin(this.t * 8) * 2;
+      this.line(x - 18, y - 15 + phase, x - 12, y - 10 + phase, '#b7ccb5');
+    }
   }
 
   /** Ignatyev: a padded jacket, a cap with a lamp, the pick going up and down. */

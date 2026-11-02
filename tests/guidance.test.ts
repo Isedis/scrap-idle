@@ -96,10 +96,11 @@ describe('goals beyond the upper resets', () => {
     expect(nextGoal(s).text).not.toContain('первую');
   });
 
-  it('sends an exhausted heap back to the available production tab', () => {
+  it('keeps excavating when surface supply is exhausted', () => {
     const s = newGame(0);
     s.bottom.open = true;
-    expect(nextGoal(s).tab).toBe('dump');
+    expect(nextGoal(s).layer).toBe('bottom');
+    expect(nextGoal(s).text).toContain('до нового слоя');
   });
 });
 
