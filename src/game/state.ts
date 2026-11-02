@@ -1,4 +1,4 @@
-import { newHorizon, horizonTick, type HorizonState } from './horizon';
+import { newHorizon, horizonTick, settleUmeOrder, type HorizonState } from './horizon';
 import { coveredNodes, coveredRecipes } from './capabilities';
 import { D, Decimal } from './num';
 import { affordableLineRecipes, assembleLine, lineRecipe, lineReserves } from './linePlanner';
@@ -330,6 +330,7 @@ export function advance(state: GameState, seconds: number, offline = false, slic
       b.above = b.above.add(gained);
       bottomTick(b, dt, fallPerMinute(b.above, state.city.development), Math.random);
       autoOpen(b, Math.random);
+      settleUmeOrder(state.horizon,b);
     }
     horizonTick(state.horizon, dt, state.city);
     state.runSeconds += dt;

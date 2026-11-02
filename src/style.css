@@ -2021,3 +2021,6 @@ html, body { overflow: hidden; }
 .h-invest-why > summary { min-height: 44px; padding: 12px 0; color: var(--mid); font-size: 12px; cursor: pointer; }
 .away-attention { color: var(--amber); }
 .away-resolve { min-height: 44px; width: 100%; white-space: normal; }
+.b-work-note, .ume-order-note { margin: 6px 0; color: var(--mid); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.ume-order { margin: 10px 0; padding: 10px 0; border-block: 1px solid var(--line); }
+.ume-order-button { width: 100%; min-height: 44px; white-space: normal; }

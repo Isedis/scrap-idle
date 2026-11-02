@@ -1,5 +1,5 @@
 import { D, Decimal } from './num';
-import type { BottomState } from './bottom';
+import { melt, meltCost, savingGoal, umeOpen, type BottomState } from './bottom';
 import { streetsOwned, type CityState } from './city';
 
 export type Machine = 'transport' | 'processing' | 'assembly';
@@ -30,12 +30,14 @@ export interface HorizonState {
   levels: Record<Machine, number>; work: Decimal[];
   mode: BuildMode; autoBuild: boolean; autoBuy: boolean; smart: boolean;
   selected: number; pinned: boolean; reserveUme: boolean; clock: number;
+  /** One manual order for the current gate; stops once the shared wallet has one UME. */
+  umeOrder: boolean;
   nextPurchase: Machine | null; connections: { frame: boolean; conductor: boolean };
 }
 export const newHorizon = (): HorizonState => ({ open: false, points: D(0), total: D(0), opened: 0,
   levels: { transport: 0, processing: 0, assembly: 0 }, work: HALLS[0].nodes.map(() => D(0)),
   mode: 'balance', autoBuild: true, autoBuy: false, smart: false, selected: 0, pinned: false,
-  reserveUme: true, clock: 0, nextPurchase: null, connections: { frame: false, conductor: false } });
+  reserveUme: true, umeOrder: false, clock: 0, nextPurchase: null, connections: { frame: false, conductor: false } });
 export const canEnterHorizon = (b: BottomState) => b.open && b.dug >= 22000 && b.equipment.borer > 0 && b.umeMade.gte(1);
 export function enterHorizon(h: HorizonState, b: BottomState): boolean {
   if (h.open || !canEnterHorizon(b)) return false;
@@ -47,9 +49,27 @@ export const nodeDone = (h: HorizonState, i: number) => !!HALLS[h.opened]?.nodes
 export const nodeAvailable = (h: HorizonState, i: number) => !!HALLS[h.opened]?.nodes[i] && !nodeDone(h, i) && HALLS[h.opened].nodes[i].needs.every(n => nodeDone(h, n));
 export const gateReady = (h: HorizonState) => h.open && h.opened < 5 && HALLS[h.opened].nodes.every((_, i) => nodeDone(h, i));
 export const umeReserved = (h: HorizonState) => h.open && h.opened < 5 && h.reserveUme ? 1 : 0;
+export const canOrderUme = (h: HorizonState, b: BottomState) => h.open && h.opened < HALLS.length && b.open && b.umeMade.gte(1) && umeOpen(b) && b.ume.lt(1);
+export function requestUme(h: HorizonState, b: BottomState): boolean {
+  if (h.umeOrder || !canOrderUme(h,b)) return false;
+  h.umeOrder = true;
+  return true;
+}
+export function umeOrderShortfall(b: BottomState): Decimal {
+  const goal=savingGoal(b);
+  const reserved=goal?.costIn==='anomaly'?goal.cost:D(0);
+  return D(meltCost(b,'anomaly')).add(reserved).sub(b.money.anomaly).max(0);
+}
+/** Melts anomalies only, never takes the selected purchase's reserve or repeats an order. */
+export function settleUmeOrder(h: HorizonState, b: BottomState): void {
+  if (!h.umeOrder) return;
+  if (!canOrderUme(h,b)) { h.umeOrder=false; return; }
+  if (umeOrderShortfall(b).gt(0)) return;
+  if (melt(b,'anomaly',1)>0) h.umeOrder=false;
+}
 export function openGate(h: HorizonState, b: BottomState): boolean {
   if (!gateReady(h) || b.ume.lt(1)) return false;
-  b.ume = b.ume.sub(1); h.opened++;
+  b.ume = b.ume.sub(1); h.opened++; h.umeOrder=false;
   b.supplyExtension = true;
   h.work = (HALLS[h.opened]?.nodes ?? []).map(() => D(0)); h.selected = 0; h.pinned = false;
   return true;

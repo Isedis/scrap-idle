@@ -1,4 +1,4 @@
-import { umeReserved } from '../game/horizon';
+import { umeReserved, settleUmeOrder } from '../game/horizon';
 import {
   ABOVE_SCRIPTS,
   AUTO_OPEN,
@@ -6,6 +6,8 @@ import {
   EPOCHS,
   EQUIPMENT,
   OBJECT_WORK,
+  OBJECT_NAMES,
+  excavationTask,
   activeObject,
   objectReady,
   objectUnlocked,
@@ -13,7 +15,6 @@ import {
   borerCost,
   buyBorer,
   buyEquipment,
-  depthTarget,
   findMultiplier,
   supplyRate,
   DIG_SCRAP,
@@ -50,7 +51,9 @@ import {
 import { D, format, type Decimal } from '../game/num';
 import { scriptById, type ScriptId } from '../game/scripts';
 import type { GameState } from '../game/state';
+import { writeSave } from '../game/save';
 import { el } from './dom';
+import { UmeOrder } from './umeOrder';
 import { Fold } from './fold';
 import { PitCam } from './pitCam';
 
@@ -119,12 +122,15 @@ export class BottomPanel {
   private shownFinds = '';
   private collection!: HTMLElement;
   private shownCollection = '';
+  private umeOrder: UmeOrder;
+  private workNote=el('p','b-work-note');
 
   constructor(
     private getState: () => GameState,
     private onChange: (message?: string, loud?: boolean) => void,
   ) {
     this.root = el('section', 'panel bottom');
+    this.umeOrder=new UmeOrder(getState,()=>{writeSave(getState());onChange();});
     this.build();
   }
 
@@ -178,7 +184,7 @@ export class BottomPanel {
       this.benchControls.append(button);
     }
     this.reveal = el('div', 'b-ume-reveal');
-    this.operation.append(el('div', 'b-operation-label', '> РАСКОПКИ'), this.target, this.progress, this.targetReward, this.siteStatus, this.routeControls, this.siteSelect, this.siteLaunch, this.benchControls, this.reveal);
+    this.operation.append(el('div', 'b-operation-label', '> РАБОТА ШАХТЫ'), this.target, this.progress, this.targetReward, this.workNote, this.siteStatus, this.routeControls, this.siteSelect, this.siteLaunch, this.benchControls, this.reveal);
     const supplyDetails = el('details', 'b-supply');
     supplyDetails.append(el('summary', '', 'Снабжение с поверхности'));
     this.supply = el('p', 's-why');
@@ -283,7 +289,7 @@ export class BottomPanel {
       borerTitle.textContent = `Проходчик · ур. ${b.equipment.borer}`;
       borer.hidden = !b.firstUmeGranted;
       borerSub.textContent = b.equipment.borer > 0 ? '×1,5 к раскопке за уровень · жила: 1 аномалия / 20 т' : objectReady(b, 'borer') ? 'Корпус освобождён · можно запустить' : `Откопать корпус: ${format(D(Math.floor(b.objectWork.borer)))} / 600 т`;
-      if (umeReserved(s.horizon) && b.ume.lt(borerCost(b).add(1))) borerSub.textContent += ' · покупка использует резерв затвора';
+      if (umeReserved(s.horizon) && b.ume.gte(borerCost(b)) && b.ume.lt(borerCost(b).add(1))) borerSub.textContent += ' · ручная покупка потратит УМЕ затвора';
       borerButton.textContent = `${format(borerCost(b))} УМЕ`;
       borerButton.disabled = !umeOpen(b) || (b.equipment.borer === 0 && !objectReady(b, 'borer')) || b.ume.lt(borerCost(b));
     });
@@ -362,6 +368,7 @@ export class BottomPanel {
       shortcuts,
       supplyDetails,
       wallet,
+      this.umeOrder.root,
       saving,
       machines,
       instruments,
@@ -441,7 +448,10 @@ export class BottomPanel {
     const go = (times: number) => {
       const b = this.getState().bottom;
       const n = melt(b, from, times);
-      if (n > 0) this.onChange(from === 'anomaly' ? `УМЕ +${n}` : 'melt', from === 'anomaly');
+      if (n > 0) {
+        if(from==='anomaly')settleUmeOrder(this.getState().horizon,b);
+        this.onChange(from === 'anomaly' ? `УМЕ +${n}` : 'melt', from === 'anomaly');
+      }
     };
     one.addEventListener('click', () => go(1));
     all.addEventListener('click', () => go(1e9));
@@ -589,21 +599,26 @@ export class BottomPanel {
       this.result.className = 'b-result';
       this.result.textContent = 'Игнатьев копает. Выкопанное вскрывается здесь.';
     }
-    const target = depthTarget(b);
     const current = [...EPOCHS].reverse().find((e) => b.dug >= e.depth)!;
     this.meta.textContent = current.name;
-    this.target.textContent = `${target.name} · ${format(D(Math.floor(b.dug)))} / ${format(D(target.to))} т`;
-    this.progress.value = Math.max(0, Math.min(1, (b.dug - target.from) / (target.to - target.from)));
-    this.progress.setAttribute('aria-valuetext', `${Math.round(this.progress.value * 100)}% до пласта «${target.name}»`);
-    this.targetReward.textContent = `Откроется: ${target.reward.toLowerCase()}`;
     const fall = fallPerMinute(b.above, state.city.development);
+    const task=excavationTask(b,fall);
+    this.target.textContent=`${task.name} · ${format(D(task.current).floor())} / ${format(D(task.total))} т${task.kind==='depth'?' породы':' работы'}`;
+    this.progress.value=Math.max(0,Math.min(1,(task.current-task.from)/(task.total-task.from)));
+    this.progress.setAttribute('aria-valuetext',`${Math.round(this.progress.value*100)}% · ${task.name}`);
+    this.targetReward.textContent=`Результат: ${task.result.toLowerCase()}`;
+    const minutes=task.etaSeconds===null?null:Math.ceil(task.etaSeconds/60);
+    const eta=minutes===null?null:task.etaSeconds!<60?'Менее минуты':minutes<60?`≈${minutes} мин`:minutes<1440?`≈${Math.floor(minutes/60)} ч${minutes%60?` ${minutes%60} мин`:''}`:`≈${Math.floor(minutes/1440)} д ${Math.floor(minutes%1440/60)} ч`;
+    const consequence=task.kind==='seam'?'Углубление на паузе: вся мощность идёт на жилу.':task.kind==='site'?task.depthShare?'На углубление идёт 25% мощности.':'Углубление на паузе: освобождаем объект.':b.route==='site'?'Объект готов или недоступен: продолжаем углубление.':'Вся мощность идёт на углубление.';
+    this.workNote.textContent=`${consequence} ${eta?`${eta} до результата при текущей мощности.`:'Оценка времени недоступна.'}`;
     const site = activeObject(b);
     const objects = (['hoist', 'bench', 'borer'] as const).filter((id) => objectUnlocked(b, id) && !objectReady(b, id));
-    const names = { hoist: 'Подъёмник', bench: 'Разборочный стол', borer: 'Проходчик' };
+    const names = OBJECT_NAMES;
     const focus = site ?? objects[0];
     const ready = (['hoist', 'bench', 'borer'] as const).find((id) => objectReady(b, id) && !(id === 'borer' ? b.equipment.borer > 0 : b.equipment[id]));
     this.siteStatus.textContent = focus ? `${names[focus]} [${'█'.repeat(Math.floor(10 * b.objectWork[focus] / OBJECT_WORK[focus]))}${'░'.repeat(10 - Math.floor(10 * b.objectWork[focus] / OBJECT_WORK[focus]))}] ${Math.floor(b.objectWork[focus])}/${OBJECT_WORK[focus]} т`
       : ready ? `${names[ready]} освобождён · готов к запуску` : '';
+    this.siteStatus.hidden=task.kind==='site';
     this.siteSelect.replaceChildren(...objects.map((id) => new Option(names[id], id)));
     if (objects.length && objects.includes(b.siteId)) this.siteSelect.value = b.siteId;
     this.siteSelect.hidden = objects.length < 2;
@@ -634,6 +649,7 @@ export class BottomPanel {
       + (findMultiplier(b) > 1 ? `Добыча находок ×${findMultiplier(b).toFixed(1)}.` : 'Мусор сверху не уменьшает достигнутую глубину.');
     for (const r of RARITIES) this.money.get(r)!.textContent = format(b.money[r].floor());
     this.ume.textContent = format(b.ume);
+    this.umeOrder.render(state);
     document.getElementById('bottom-ume')!.hidden = !b.firstUmeGranted;
     this.renderSaving(state);
     for (const c of CONTAINERS) {
@@ -681,6 +697,7 @@ export class BottomPanel {
     const money = goal.costIn === 'ume' ? b.ume : b.money[goal.costIn];
     const currency = goal.costIn === 'ume' ? 'УМЕ' : RARITY_NAMES[goal.costIn].toLowerCase();
     this.savingNote.textContent = `${format(money.min(goal.cost).floor())} / ${format(goal.cost)} ${currency} отложено. Автовскрытие тратит только избыток.`;
+    if(goal.costIn==='ume'&&umeReserved(state.horizon)&&b.ume.gte(goal.cost)&&b.ume.lt(goal.cost.add(1)))this.savingNote.textContent+=' Ручная покупка потратит УМЕ затвора.';
     this.savingBuy.textContent = goal.unlocked ? `Купить: ${this.goalName(goal)}` : 'Покупка откроется глубже';
     this.savingBuy.disabled = !goal.unlocked || money.lt(goal.cost);
   }

@@ -3,6 +3,7 @@ import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost
 import type { GameState } from '../game/state';
 import { el } from './dom';
 import { HorizonCam } from './horizonCam';
+import { UmeOrder } from './umeOrder';
 
 export class HorizonPanel {
   readonly root = el('section', 'panel horizon');
@@ -13,6 +14,7 @@ export class HorizonPanel {
   private content = el('div', 'h-content');
   private wallet = el('div', 'h-wallet');
   private ume = el('div', 'h-note');
+  private umeOrder: UmeOrder;
   private title = el('h2', 'panel-title');
   private nodeText = el('div', 'h-node-text');
   private inspection = el('div', 'h-inspection');
@@ -37,6 +39,7 @@ export class HorizonPanel {
   private identity: GameState['horizon'] | null = null;
   private currentButtons: HTMLButtonElement[] = [];
   constructor(private getState: () => GameState, private onChange: () => void, private visitMine: () => void) {
+    this.umeOrder=new UmeOrder(getState,onChange);
     this.camera = new HorizonCam(i => {
       const h = this.getState().horizon;
       if (this.viewedHall >= 0 && this.viewedHall !== h.opened) return;
@@ -86,7 +89,7 @@ export class HorizonPanel {
     connections.append(this.connections,el('p','s-why','10 восстановленных улиц дают транспорту +10%, пока город сохраняет их. Подключения необязательны.'));
     this.history.setAttribute('aria-label','Камеры пройденных залов');this.history.addEventListener('change',()=>{this.viewedHall=Number(this.history.value);this.onChange();});
     const targets=el('details','h-targets');targets.append(el('summary','','Осмотреть узлы'),this.nodes);
-    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.note,this.nodeText,this.inspection,this.modes,this.gate,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
+    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.note,this.nodeText,this.inspection,this.modes,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
     this.root.append(this.entry,this.content);
   }
   render(s: GameState): void {
@@ -97,7 +100,7 @@ export class HorizonPanel {
     this.enter.disabled=!canEnterHorizon(s.bottom);if(!h.open)return;
     const r=horizonRates(h,s.city), hall=HALLS[h.opened], targets=buildTargets(h);
     this.wallet.textContent=`${format(h.points)} КМ · +${format(r.production)} КМ/мин`;
-    this.ume.textContent=`УМЕ ${format(s.bottom.ume)}${h.reserveUme&&h.opened<5?` · на затвор ${format(s.bottom.ume.min(1))}/1`:''}`;
+    this.ume.textContent=`УМЕ ${format(s.bottom.ume)}`;this.umeOrder.render(s);
     this.title.textContent=hall?`${h.opened+1}/5 · ${hall.name}`:'Глава завершена · сопряжение';
     this.note.textContent=hall?`${hall.reward} · ${h.pinned?'ручная цель':h.autoBuild?'автомонтаж':'выбор цели вручную'}`:'За главным створом — неподключённая система. Следующая глава ещё не открыта. Производство и прежние залы сохранены.';
     if(this.renderedHall!==h.opened){

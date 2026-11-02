@@ -364,11 +364,40 @@ function pick<T>(items: readonly T[], weights: readonly number[], r: number): T 
 
 const OBJECT_ORDER: readonly (EquipmentId | 'borer')[] = ['hoist', 'bench', 'borer'];
 const OBJECT_DEPTH = { hoist: 1000, bench: 4500, borer: 11000 } as const;
+export const OBJECT_NAMES = { hoist: 'Подъёмник', bench: 'Разборочный стол', borer: 'Проходчик' } as const;
 
 export function activeObject(b: BottomState): EquipmentId | 'borer' | null {
   const available = OBJECT_ORDER.filter((id) => objectUnlocked(b, id) && !objectReady(b, id) && !objectBought(b, id));
   if (b.route === 'auto') return available[0] ?? null;
   return b.route === 'site' && available.includes(b.siteId) ? b.siteId : null;
+}
+
+function workShares(b: BottomState) {
+  const site=activeObject(b),seam=b.route==='seam'&&b.equipment.borer>0;
+  return { site, seam, depthShare: seam ? 0 : site ? b.equipment.hoist ? .25 : 0 : 1 };
+}
+
+/** Current useful work and its ETA with today's power/pressure; no future purchases assumed. */
+export function excavationTask(b: BottomState, fall=0) {
+  const {site,seam,depthShare}=workShares(b);
+  const power=digPower(b)*pressure(b,fall),k=1+b.dug/STRATUM_DENSITY;
+  let name: string, current: number, from=0, total: number, result: string, minutes: number;
+  if(site){
+    name=OBJECT_NAMES[site];current=b.objectWork[site];total=OBJECT_WORK[site];result='Освобождение объекта для запуска';
+    const remaining=Math.max(0,total-current),sideShare=1-depthShare;
+    const depth=remaining*depthShare/sideShare;
+    minutes=depthShare?(k*depth+depth*depth/(2*STRATUM_DENSITY))/(power*depthShare):remaining*k/power;
+  }else if(seam){
+    name='Жила';current=b.seamProgress;total=20;result='Следующая аномалия';
+    minutes=Math.max(0,total-current)*k/power;
+  }else{
+    const target=depthTarget(b);name=target.name;current=b.dug;from=target.from;total=target.to;result=target.reward;
+    const depth=Math.max(0,total-current);
+    minutes=(k*depth+depth*depth/(2*STRATUM_DENSITY))/power;
+  }
+  const seconds=minutes*60;
+  return {kind:site?'site' as const:seam?'seam' as const:'depth' as const,name,current,from,total,result,depthShare,
+    etaSeconds:Number.isFinite(seconds)&&seconds>=0?seconds:null};
 }
 
 /** Surface recovery and exact excavation across site/depth milestones. */
@@ -393,9 +422,7 @@ export function bottomTick(b: BottomState, seconds: number, fall: number, rand: 
       b.ume = b.ume.add(1);
       b.firstUmeGranted = true;
     }
-    const site = activeObject(b);
-    const seam = b.route === 'seam' && b.equipment.borer > 0;
-    const depthShare = seam ? 0 : site ? b.equipment.hoist ? 0.25 : 0 : 1;
+    const {site,seam,depthShare} = workShares(b);
     const sideShare = 1 - depthShare;
     const power = digPower(b) * pressure(b, fall);
     const k = 1 + b.dug / density;

@@ -15,7 +15,7 @@ export interface AwaySnapshot {
   threat: number;
   fractions: Decimal;
   news: number;
-  horizon: { total: Decimal; opened: number; work: number };
+  horizon: { total: Decimal; opened: number; work: number; umeOrder: boolean; umeMade: Decimal };
   bottom: { firstUme: boolean; work: { hoist: number; bench: number; borer: number }; seamFound: number };
 }
 
@@ -37,7 +37,7 @@ export interface AwayReport {
   balance: { trash: Decimal; recycled: Decimal; fractions: Decimal };
   income: Decimal;
   hearing: 'idle' | 'walk' | 'check' | 'caught';
-  horizon: { gained: Decimal; note: string; attention: { text: string; action: 'ume' | 'assembly' | 'gate'; label: string } | null };
+  horizon: { gained: Decimal; note: string; umeCompleted: boolean; attention: { text: string; action: 'ume' | 'assembly' | 'gate'; label: string } | null };
   bottom: { firstUme: boolean; site: string; seamFound: number };
 }
 
@@ -57,7 +57,7 @@ function horizonAttention(s: GameState): AwayReport['horizon']['attention'] {
 
 export function awaySnapshot(s: GameState): AwaySnapshot {
   return { trash: s.trash, totalTrash: s.totalTrash, threat: s.threat.level, fractions: sumFractions(s), news: s.sorting.news.length,
-    horizon: { total: s.horizon.total, opened: s.horizon.opened, work: s.horizon.work.reduce((sum,w)=>sum+w.toNumber(),0) },
+    horizon: { total: s.horizon.total, opened: s.horizon.opened, work: s.horizon.work.reduce((sum,w)=>sum+w.toNumber(),0), umeOrder: s.horizon.umeOrder, umeMade: s.bottom.umeMade },
     bottom: { firstUme: s.bottom.firstUmeGranted, work: { ...s.bottom.objectWork }, seamFound: s.bottom.seamFound } };
 }
 
@@ -71,7 +71,7 @@ export function awayReport(before: AwaySnapshot, s: GameState, seconds: number):
     balance: { trash: s.trash, recycled: s.recycle.points, fractions: FRACS.reduce((sum, f) => sum.add(s.sorting.fractions[f]), new Decimal(0)) },
     income: ratePerSecond(s),
     hearing: s.hearing.phase,
-    horizon: { gained: s.horizon.total.sub(before.horizon.total).max(0), note: s.horizon.open && s.horizon.opened < 5 ? gateReady(s.horizon) ? 'Горизонт: затвор готов к открытию' : s.horizon.work.reduce((sum,w)=>sum+w.toNumber(),0) > before.horizon.work ? 'Продолжался монтаж: '+HALLS[s.horizon.opened].name : '' : '', attention: horizonAttention(s) },
+    horizon: { gained: s.horizon.total.sub(before.horizon.total).max(0), note: s.horizon.open && s.horizon.opened < 5 ? gateReady(s.horizon) ? 'Горизонт: затвор готов к открытию' : s.horizon.work.reduce((sum,w)=>sum+w.toNumber(),0) > before.horizon.work ? 'Продолжался монтаж: '+HALLS[s.horizon.opened].name : '' : '', umeCompleted: before.horizon.umeOrder && !s.horizon.umeOrder && s.bottom.umeMade.gt(before.horizon.umeMade), attention: horizonAttention(s) },
     bottom: { firstUme: !before.bottom.firstUme && s.bottom.firstUmeGranted,
       site: site ? `${siteName[site]}: ${Math.floor(s.bottom.objectWork[site])} / ${site === 'hoist' ? 120 : site === 'bench' ? 300 : 600} т${s.bottom.objectWork[site] >= (site === 'hoist' ? 120 : site === 'bench' ? 300 : 600) ? ' · можно запустить' : ''}` : '',
       seamFound: Math.max(0, s.bottom.seamFound - before.bottom.seamFound) },

@@ -89,6 +89,7 @@ export class AwayScreen {
     if (resets.length) summary.append(el('p', 'away-brief-note', resets.join(' · ')));
     if (r.finds.length) summary.append(el('p', 'away-brief-note', `На столе новые находки: ${r.finds.length}.`));
     if (r.horizon.note&&!r.horizon.attention) summary.append(el('p','away-brief-note',r.horizon.note));
+    if(r.horizon.umeCompleted)summary.append(el('p','away-brief-note','УМЕ для затвора получена: поручение выполнено.'));
     if(r.horizon.attention){
       const attention=r.horizon.attention;
       summary.append(el('p','away-brief-note away-attention',attention.text));
