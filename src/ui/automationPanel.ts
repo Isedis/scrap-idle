@@ -1,4 +1,4 @@
-import { format } from '../game/num';
+import { D, type Decimal, format } from '../game/num';
 import { PRODUCERS } from '../game/producers';
 import { TRACKS } from '../game/infinite';
 import {
@@ -139,6 +139,8 @@ export class AutomationPanel {
   private chipsFor = '';
   private logList!: HTMLElement;
   private logEmpty!: HTMLElement;
+  private resetSummary = el('div', 'a-reset-summary');
+  private resetTotals = new Map<'recycle' | 'sort', { count: number; gain: Decimal; row: HTMLElement }>();
   private lines: LogLine[] = [];
   /** Purchases since the last flush: per script, what and how many times. */
   private pending = new Map<ScriptId, Map<string, number>>();
@@ -194,7 +196,7 @@ export class AutomationPanel {
     this.logEmpty = el('p', 'empty', 'Пока тихо. Здесь видно всё, что скрипты делают без вас.');
     this.logList = el('div', 'a-log');
     this.logList.setAttribute('aria-live', 'off');
-    views.get('log')!.append(this.logEmpty, this.logList);
+    views.get('log')!.append(this.logEmpty, this.resetSummary, this.logList);
 
     const tabs = el('div', 'modes s-tabs');
     tabs.setAttribute('role', 'group');
@@ -522,10 +524,18 @@ export class AutomationPanel {
     }
   }
 
-  /** One line from outside the scripts' own tick, such as an automatic recycle. */
-  note(text: string): void {
-    this.write(text, false, false);
-    this.camera.pulse(text.startsWith('sort') ? 'sort' : 'recycle');
+  /** Routine resets update two bounded summary lines instead of flooding the log. */
+  resetNote(kind: 'recycle' | 'sort', gain: Decimal): void {
+    let total = this.resetTotals.get(kind);
+    if (!total) {
+      total = { count: 0, gain: D(0), row: el('div', 'a-line') };
+      this.resetTotals.set(kind, total);
+      this.resetSummary.append(total.row);
+    }
+    total.count++;
+    total.gain = total.gain.add(gain);
+    total.row.textContent = `${kind}: ×${total.count} · +${format(total.gain)} ${kind === 'sort' ? 'фракций' : 'ВС'} за сеанс`;
+    this.logEmpty.hidden = true;
   }
 
   /** Every animation frame while the tab is on screen: the camera. */

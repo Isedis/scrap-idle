@@ -211,13 +211,13 @@ describe('reform', () => {
     expect(deserialize(JSON.stringify(broken))!.city.owned).toEqual(['dump', 'zavod']);
   });
 
-  it('three schools automate every earlier layer, switched on after a reform', () => {
+  it('three schools provide every earlier script without overriding switches after a reform', () => {
     const s = readyToReform();
     s.city.owned.push('school1', 'school2', 'school3');
     reform(s);
     for (const id of ['producers', 'upgrades', 'endless', 'light', 'recycle', 'tree', 'sort', 'line'] as const) expect(scriptOwned(s, id), id).toBe(true);
-    expect(s.autoRecycle.on).toBe(true);
-    expect(s.scripts.sortOn).toBe(true);
+    expect(s.autoRecycle.on).toBe(false);
+    expect(s.scripts.sortOn).toBe(false);
   });
 
   it('the caretaker buys the tree cheapest first; the fitter fills the line, levels it, buys recipes', () => {

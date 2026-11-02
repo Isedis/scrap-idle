@@ -422,22 +422,22 @@ export function addFractions(s: SortingState, f: Frac, amount: Decimal): void {
   s.total = s.total.add(amount);
 }
 
-export function canBuyRecipe(s: SortingState, r: RecipeDef): boolean {
-  return !hasRecipe(s, r.id) && (!r.requires || hasRecipe(s, r.requires)) && canAfford(s, r.cost);
+export function canBuyRecipe(s: SortingState, r: RecipeDef, covered: readonly string[] = []): boolean {
+  return !hasRecipe(s, r.id) && !covered.includes(r.id) && (!r.requires || hasRecipe(s, r.requires) || covered.includes(r.requires)) && canAfford(s, r.cost);
 }
 
-export function buyRecipe(s: SortingState, id: string): boolean {
+export function buyRecipe(s: SortingState, id: string, covered: readonly string[] = []): boolean {
   const r = recipeById(id);
-  if (!r || !canBuyRecipe(s, r)) return false;
+  if (!r || !canBuyRecipe(s, r, covered)) return false;
   pay(s, r.cost);
   s.recipes.push(id);
   return true;
 }
 
-export const alloysOpen = (s: SortingState) => RECIPES.every((r) => hasRecipe(s, r.id));
+export const alloysOpen = (s: SortingState, covered: readonly string[] = []) => RECIPES.every((r) => hasRecipe(s, r.id) || covered.includes(r.id));
 
-export function buyAlloy(s: SortingState): boolean {
-  if (!alloysOpen(s)) return false;
+export function buyAlloy(s: SortingState, covered: readonly string[] = []): boolean {
+  if (!alloysOpen(s, covered)) return false;
   const cost = alloyCost(s.alloys);
   const price: Price = { plastic: 0, metal: 0, glass: 0, paper: 0 };
   for (const f of FRACS) price[f] = cost.toNumber();

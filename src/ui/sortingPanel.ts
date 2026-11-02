@@ -1,3 +1,4 @@
+import { coveredRecipes, recipeSources } from '../game/capabilities';
 import { ResetPreview } from './resetPreview';
 import { D, format, type Decimal } from '../game/num';
 import {
@@ -302,7 +303,7 @@ export class SortingPanel {
         button.type = 'button';
         button.id = `recipe-${def.id}`;
         button.addEventListener('click', () => {
-          if (buyRecipe(this.getState().sorting, def.id)) this.onChange(`Рецепт: ${def.name}`);
+          if (buyRecipe(this.getState().sorting, def.id, coveredRecipes(this.getState()))) this.onChange(`Рецепт: ${def.name}`);
         });
         root.append(body, button);
         list.append(root);
@@ -318,7 +319,7 @@ export class SortingPanel {
     this.alloyButton.type = 'button';
     this.alloyButton.id = 'alloy';
     this.alloyButton.addEventListener('click', () => {
-      if (buyAlloy(this.getState().sorting)) this.onChange(`Сплав: ур. ${this.getState().sorting.alloys}`);
+      if (buyAlloy(this.getState().sorting, coveredRecipes(this.getState()))) this.onChange(`Сплав: ур. ${this.getState().sorting.alloys}`);
     });
     root.append(el('span', 'r-twig', '└─'), body, this.alloyButton);
     this.alloyBox.append(el('div', 'r-branch-title', 'Бесконечное'), root);
@@ -565,7 +566,7 @@ export class SortingPanel {
 
   render(state: GameState): void {
     this.preview.render(state, 'sorting');
-    for (const { fold, ids } of this.recipeFolds) fold.update(ids.filter((id) => state.sorting.recipes.includes(id)).length, ids.length);
+    for (const { fold, ids } of this.recipeFolds) fold.update(ids.filter((id) => state.sorting.recipes.includes(id) || coveredRecipes(state).includes(id)).length, ids.length);
     const so = state.sorting;
     this.closed.hidden = so.open;
     this.body.hidden = !so.open;
@@ -588,7 +589,7 @@ export class SortingPanel {
     const marks: Record<View, boolean> = {
       line: so.line.slice(0, slotCount(so)).some((id) => !id),
       table: false,
-      recipes: RECIPES.some((r) => canBuyRecipe(so, r)),
+      recipes: RECIPES.some((r) => canBuyRecipe(so, r, coveredRecipes(state))),
       reset: canResort(state),
     };
     for (const [view, b] of this.viewButtons) {
@@ -606,7 +607,7 @@ export class SortingPanel {
     const so = state.sorting;
     this.lineBuildControls.hidden = !scriptOwned(state, 'line');
     for (const [auto, button] of this.lineBuildButtons) button.setAttribute('aria-pressed', String(state.scripts.lineBuild === auto));
-    const target = state.scripts.lineBuild ? lineRecipe(so) : undefined;
+    const target = state.scripts.lineBuild ? lineRecipe(so, coveredRecipes(state)) : undefined;
     this.lineBuildNote.textContent = !state.scripts.lineOn ? 'Наладчик выключен. Автосборка приостановлена.'
       : !state.scripts.lineBuild ? 'Ручная схема. Наладчик покупает улучшения, не меняя станции.'
       : target ? `Наладчик подбирает станции и копит фракции на «${target.name}».`
@@ -648,16 +649,21 @@ export class SortingPanel {
 
   private renderRecipes(state: GameState): void {
     const so = state.sorting;
+    const sources = recipeSources(state);
+    const covered = Object.keys(sources);
     for (const row of this.recipeRows) {
+      const source = sources[row.def.id];
       const owned = hasRecipe(so, row.def.id);
-      const open = !row.def.requires || hasRecipe(so, row.def.requires);
-      row.root.classList.toggle('owned', owned);
+      const open = !row.def.requires || hasRecipe(so, row.def.requires) || covered.includes(row.def.requires);
+      row.root.classList.toggle('owned', owned || !!source);
+      row.root.classList.toggle('covered', !owned && !!source);
       row.root.classList.toggle('closed', !owned && !open);
-      row.button.textContent = owned ? 'Есть' : priceText(row.def.cost, format, FRAC_LETTER);
-      row.button.disabled = !canBuyRecipe(so, row.def);
+      row.button.textContent = owned ? 'Есть' : source ? 'Действует' : priceText(row.def.cost, format, FRAC_LETTER);
+      row.root.querySelector('.r-node-text')!.textContent = source && !owned ? `Обеспечено: ${source.toLowerCase()}` : row.def.text;
+      row.button.disabled = !canBuyRecipe(so, row.def, covered);
     }
-    this.alloyBox.hidden = !alloysOpen(so);
-    if (alloysOpen(so)) {
+    this.alloyBox.hidden = !alloysOpen(so, covered);
+    if (alloysOpen(so, covered)) {
       const cost = alloyCost(so.alloys);
       this.alloyButton.textContent = `ур. ${so.alloys} · по ${format(cost)} каждой`;
       this.alloyButton.disabled = FRACS.some((f) => so.fractions[f].lt(cost));
@@ -707,7 +713,7 @@ export class SortingPanel {
     const so = state.sorting;
     if (!so.open) return [];
     const auto = state.scripts.sortOn && scriptOwned(state, 'sort');
-    return [...(canResort(state) && !auto ? ['resort'] : []), ...RECIPES.filter((r) => canBuyRecipe(so, r)).map((r) => `recipe:${r.id}`)];
+    return [...(canResort(state) && !auto ? ['resort'] : []), ...RECIPES.filter((r) => canBuyRecipe(so, r, coveredRecipes(state))).map((r) => `recipe:${r.id}`)];
   }
 
   /** Shows what the table found last. */

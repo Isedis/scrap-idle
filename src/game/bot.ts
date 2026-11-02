@@ -1,3 +1,4 @@
+import { coveredNodes, coveredRecipes } from './capabilities';
 import {
   advance,
   availableUpgrades,
@@ -212,7 +213,7 @@ export function simulate(
 
   const spendTree = () => {
     for (;;) {
-      const node = NODES.filter((n) => canBuyNode(s.recycle, n)).sort((a, b) => a.cost.cmp(b.cost))[0];
+      const node = NODES.filter((n) => canBuyNode(s.recycle, n, coveredNodes(s))).sort((a, b) => a.cost.cmp(b.cost))[0];
       if (!node || !buyNode(s, node.id)) break;
       log({ t, what: `дерево: ${node.name}` });
     }
@@ -227,10 +228,10 @@ export function simulate(
   const spendSorting = () => {
     const so = s.sorting;
     for (;;) {
-      const recipe = RECIPES.filter((x) => canBuyRecipe(so, x)).sort(
+      const recipe = RECIPES.filter((x) => canBuyRecipe(so, x, coveredRecipes(s))).sort(
         (a, b) => Object.values(a.cost).reduce((x, y) => x + y, 0) - Object.values(b.cost).reduce((x, y) => x + y, 0),
       )[0];
-      if (!recipe || !buyRecipe(so, recipe.id)) break;
+      if (!recipe || !buyRecipe(so, recipe.id, coveredRecipes(s))) break;
       log({ t, what: `рецепт: ${recipe.name}` });
     }
     // Fill new slots in the bot's order.

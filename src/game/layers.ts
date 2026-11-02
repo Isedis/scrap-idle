@@ -144,13 +144,13 @@ export function nodeById(id: string): NodeDef | undefined {
 export const hasNode = (layer: LayerState, id: string) => layer.nodes.includes(id);
 
 /** Whether the node can be bought now. */
-export function canBuyNode(layer: LayerState, node: NodeDef): boolean {
-  return !hasNode(layer, node.id) && (!node.requires || hasNode(layer, node.requires)) && layer.points.gte(node.cost);
+export function canBuyNode(layer: LayerState, node: NodeDef, covered: readonly string[] = []): boolean {
+  return !hasNode(layer, node.id) && !covered.includes(node.id) && isNodeOpen(layer, node, covered) && layer.points.gte(node.cost);
 }
 
 /** Whether the node is next in its branch (its prerequisite is bought). */
-export function isNodeOpen(layer: LayerState, node: NodeDef): boolean {
-  return !node.requires || hasNode(layer, node.requires);
+export function isNodeOpen(layer: LayerState, node: NodeDef, covered: readonly string[] = []): boolean {
+  return !node.requires || hasNode(layer, node.requires) || covered.includes(node.requires);
 }
 
 // ---- Effects, read by the rest of the game ----------------------------------

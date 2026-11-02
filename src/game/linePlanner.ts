@@ -6,8 +6,8 @@ import {
 const priceSum = (r: RecipeDef) => Object.values(r.cost).reduce((sum, n) => sum + (n ?? 0), 0);
 
 /** Match the fitter's recipe priority; its ingredients must not all go into station levels. */
-export function lineRecipe(s: SortingState): RecipeDef | undefined {
-  return RECIPES.filter((r) => !hasRecipe(s, r.id) && (!r.requires || hasRecipe(s, r.requires)))
+export function lineRecipe(s: SortingState, covered: readonly string[] = []): RecipeDef | undefined {
+  return RECIPES.filter((r) => !hasRecipe(s, r.id) && !covered.includes(r.id) && (!r.requires || hasRecipe(s, r.requires) || covered.includes(r.requires)))
     .sort((a, b) => priceSum(a) - priceSum(b))[0];
 }
 
@@ -19,8 +19,8 @@ const plans = new WeakMap<SortingState, { key: string; line: readonly StationId[
  * Only collector permutations need searching (at most 24 per subset). Resource deficits
  * are bucketed in tenths, so each incoming grain does not trigger another search.
  */
-export function planLine(s: SortingState): readonly StationId[] {
-  const target = lineRecipe(s);
+export function planLine(s: SortingState, covered: readonly string[] = []): readonly StationId[] {
+  const target = lineRecipe(s, covered);
   const need = FRACS.map((f) => {
     const price = target?.cost[f] ?? 0;
     const gap = s.fractions[f].lt(price) ? s.fractions[f].neg().add(price).toNumber() : 0;
@@ -70,14 +70,14 @@ export function planLine(s: SortingState): readonly StationId[] {
 }
 
 /** True when construction changed the belt; station levels and currencies are untouched. */
-export function assembleLine(s: SortingState): boolean {
+export function assembleLine(s: SortingState, covered: readonly string[] = []): boolean {
   if (!s.open) return false;
-  const line = planLine(s);
+  const line = planLine(s, covered);
   if (line.length === s.line.length && line.every((id, i) => id === s.line[i])) return false;
   s.line = [...line];
   return true;
 }
 
 /** An affordable recipe should be bought before spending its ingredients elsewhere. */
-export const affordableLineRecipes = (s: SortingState) => RECIPES.filter((r) => canBuyRecipe(s, r))
+export const affordableLineRecipes = (s: SortingState, covered: readonly string[] = []) => RECIPES.filter((r) => canBuyRecipe(s, r, covered))
   .sort((a, b) => priceSum(a) - priceSum(b));

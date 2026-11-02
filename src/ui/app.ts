@@ -240,7 +240,7 @@ export class App {
     private setState: (state: GameState) => void,
   ) {
     this.build();
-    this.resetKnown();
+    this.resetKnown(true);
   }
 
   /** Replaces the game with another state (an imported save, a debug fixture) and saves it. */
@@ -248,13 +248,13 @@ export class App {
     state.lastTick = Date.now();
     this.setState(state);
     writeSave(state);
-    this.resetKnown();
+    this.resetKnown(true);
     this.toast(note);
     this.render();
   }
 
   /** Treats producers and milestones in the current state as already seen (on load, import or reset). */
-  private resetKnown(): void {
+  private resetKnown(markSeen = false): void {
     const state = this.getState();
     this.knownRevealed = state.revealed.length;
     for (const def of PRODUCERS) {
@@ -267,8 +267,20 @@ export class App {
     saveAnnounced(this.announced);
     this.knownRecycleReady = canRecycle(state);
     this.knownStage = stageIndex(state.threat.level);
-    this.knownSortOpen = state.sorting.open;
-    this.knownCityOpen = state.city.open;
+    this.knownSortOpen = markSeen ? state.sorting.open : this.announced.unlocks.includes('sorting');
+    this.knownCityOpen = markSeen ? state.city.open : this.announced.unlocks.includes('city');
+    if (markSeen && state.sorting.open && !this.announced.unlocks.includes('sorting')) this.announced.unlocks.push('sorting');
+    if (markSeen && state.city.open && !this.announced.unlocks.includes('city')) this.announced.unlocks.push('city');
+    if (markSeen) {
+      const seen = [
+        ...(state.recycle.resets > 0 || state.runTrash.gte(RECYCLE_AT.div(100)) || state.bottom.open ? ['recycle'] : []),
+        ...(automationOpen(state) ? ['automation'] : []),
+        ...(canRecycle(state) || state.recycle.resets > 0 || state.sorting.open || state.city.open || state.bottom.open ? ['recycle-ready'] : []),
+      ];
+      for (const id of seen) if (!this.announced.unlocks.includes(id)) this.announced.unlocks.push(id);
+    }
+    this.announced.rank = Math.max(this.announced.rank, state.sorting.sorts);
+    saveAnnounced(this.announced);
     this.knownPhase = state.hearing.phase === 'caught' ? 'check' : state.hearing.phase;
   }
 
@@ -898,9 +910,7 @@ export class App {
     if (gain.lte(0)) return;
     writeSave(state);
     this.resetKnown();
-    this.recyclePanel.camera.slam();
-    this.sound.press();
-    this.automationPanel.note(`recycle: №${state.recycle.resets}, +${format(gain)} ВС`);
+    this.automationPanel.resetNote('recycle', gain);
     this.render();
   }
 
@@ -914,12 +924,17 @@ export class App {
     }
     if (so.open && !this.knownSortOpen) {
       this.knownSortOpen = true;
-      this.toast('Сортировочная линия запущена. Вкладка «Слои» → «Сортировка»');
+      const first = !this.announced.unlocks.includes('sorting');
+      if (first) {
+        this.announced.unlocks.push('sorting');
+        saveAnnounced(this.announced);
+        this.toast('Сортировочная линия запущена. Вкладка «Слои» → «Сортировка»');
+      }
       if (!introSeen()) {
         markIntroSeen();
         this.intro.show(SORTING_INTRO);
       }
-      this.typeLine('ЛЕНТА ПОШЛА. ХВОСТЫ УХОДЯТ ОБРАТНО В КУЧУ. ОНО ИХ ЖДЁТ');
+      if (first) this.typeLine('ЛЕНТА ПОШЛА. ХВОСТЫ УХОДЯТ ОБРАТНО В КУЧУ. ОНО ИХ ЖДЁТ');
     }
     this.drainFinds(state);
     // The first look at the running line comes with a walk-through.
@@ -937,7 +952,9 @@ export class App {
     this.layerButtons.get('city')!.hidden = !city.open && city.development === 0;
     if (city.open && !this.knownCityOpen) {
       this.knownCityOpen = true;
-      if (city.reforms === 0 && city.owned.length === 1) {
+      if (!this.announced.unlocks.includes('city')) {
+        this.announced.unlocks.push('city');
+        saveAnnounced(this.announced);
         this.toast(`Новая вкладка: «Слои» → «Город». Реформа — после ${REFORM_SORTS} пересортировок`);
         this.typeLine('ГОРСОВЕТ ГЛУХОВО: СКОРО ОТДАДИМ КВАРТАЛЫ. ЗАБЕРИТЕ ЕГО ОТ НАС');
       }
@@ -1027,17 +1044,19 @@ export class App {
   /** Burns Recycling for fractions. The auto-sorter does it without the drama. */
   private doResort(auto: boolean): void {
     const state = this.getState();
-    const before = state.sorting.sorts;
+    const before = Math.max(this.announced.rank, state.sorting.sorts);
     const gain = resort(state);
     if (gain.lte(0)) return;
     writeSave(state);
     this.resetKnown();
-    this.toastQueue = [];
-    this.sound.press();
-    if (!auto) this.typeLine(`ПЕРЕСОРТИРОВКА №${state.sorting.sorts}. ПЕРЕРАБОТКА СОЖЖЕНА. КУЧА ПОМНИТ`);
-    this.toast(`Пересортировка №${state.sorting.sorts}: +${format(gain)} фракций, доход ×2`);
-    for (const r of RANKS.filter((x) => x.at > before && x.at <= state.sorting.sorts)) this.toast(`Разряд ${r.at}: ${r.text}`);
-    if (auto) this.automationPanel.note(`sort: №${state.sorting.sorts}, +${format(gain)} фракций`);
+    if (!auto) {
+      this.sound.press();
+      this.typeLine(`ПЕРЕСОРТИРОВКА №${state.sorting.sorts}. ПЕРЕРАБОТКА СОЖЖЕНА. КУЧА ПОМНИТ`);
+      this.toast(`Пересортировка №${state.sorting.sorts}: +${format(gain)} фракций, доход ×2`);
+    }
+    const ranks = RANKS.filter((r) => r.at > before && r.at <= state.sorting.sorts);
+    if (ranks.length) this.toast(`Новый разряд ${ranks[ranks.length - 1].at}: ${ranks.map((r) => r.text).join('; ')}`);
+    if (auto) this.automationPanel.resetNote('sort', gain);
     this.render();
   }
 
@@ -1266,7 +1285,7 @@ export class App {
       reset.textContent = 'Сбросить игру';
       wipeSave();
       // A new game is new to the player again: every producer and milestone is news.
-      this.announced = { producers: [], milestones: {} };
+      this.announced = { producers: [], milestones: {}, unlocks: [], rank: 0 };
       this.setState(newGame());
       this.resetKnown();
       this.toastQueue = [];
@@ -1441,7 +1460,9 @@ export class App {
       this.knownRecycleReady = true;
       // News once: the first time ever. After that the tab's badge says it, and the
       // auto-recycler would have it pop up every few seconds.
-      if (state.recycle.resets === 0) {
+      if (!this.announced.unlocks.includes('recycle-ready')) {
+        this.announced.unlocks.push('recycle-ready');
+        saveAnnounced(this.announced);
         this.toast('Открыта переработка! Загляните во вкладку');
         this.caption('Доступна переработка');
       }
@@ -1546,7 +1567,11 @@ export class App {
     const recycleVisible = layer.resets > 0 || state.runTrash.gte(RECYCLE_AT.div(100)) || state.bottom.open;
     if (recycleVisible && this.recycleTab.hidden) {
       this.recycleTab.hidden = false;
-      if (layer.resets === 0) this.toast('Новая вкладка: Переработка');
+      if (!this.announced.unlocks.includes('recycle')) {
+        this.announced.unlocks.push('recycle');
+        saveAnnounced(this.announced);
+        this.toast('Новая вкладка: Переработка');
+      }
     }
     // The badge calls for what is new since the player last looked at the tab.
     const calls = [...this.recyclePanel.attention(state), ...this.sortingPanel.attention(state), ...this.cityPanel.attention(state), ...this.bottomPanel.attention(state)];
@@ -1555,7 +1580,11 @@ export class App {
     this.recycleBadge.hidden = calls.every((c) => this.layersSeen.has(c));
     if (this.autoTab.hidden && automationOpen(state)) {
       this.autoTab.hidden = false;
-      this.toast('Новая вкладка: Автоматика');
+      if (!this.announced.unlocks.includes('automation')) {
+        this.announced.unlocks.push('automation');
+        saveAnnounced(this.announced);
+        this.toast('Новая вкладка: Автоматика');
+      }
     }
     this.autoBadge.hidden = !this.automationPanel.attention(state);
     this.renderSorting(state);
@@ -1971,6 +2000,8 @@ const ANNOUNCED_KEY = 'scrap-idle-announced';
 interface Announced {
   producers: string[];
   milestones: Record<string, number>;
+  unlocks: string[];
+  rank: number;
 }
 
 function loadAnnounced(): Announced {
@@ -1979,9 +2010,11 @@ function loadAnnounced(): Announced {
     return {
       producers: Array.isArray(data?.producers) ? data.producers.filter((id) => typeof id === 'string') : [],
       milestones: data?.milestones && typeof data.milestones === 'object' ? { ...data.milestones } : {},
+      unlocks: Array.isArray(data?.unlocks) ? data.unlocks.filter((id) => typeof id === 'string') : [],
+      rank: typeof data?.rank === 'number' && Number.isFinite(data.rank) ? Math.max(0, data.rank) : 0,
     };
   } catch {
-    return { producers: [], milestones: {} };
+    return { producers: [], milestones: {}, unlocks: [], rank: 0 };
   }
 }
 

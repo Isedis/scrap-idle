@@ -1,3 +1,4 @@
+import { coveredNodes, nodeSources } from '../game/capabilities';
 import { ResetPreview } from './resetPreview';
 import { format, type Decimal } from '../game/num';
 import { BRANCHES, LAYERS, NODES, RECYCLE_AT, REPEATS, canBuyNode, hasNode, isNodeOpen, nextGainAt, passiveBonus, repeatCost, type NodeDef, type RepeatDef } from '../game/layers';
@@ -214,7 +215,9 @@ export class RecyclePanel {
 
   render(state: GameState): void {
     this.preview.render(state, 'recycle');
-    for (const { fold, ids } of this.folds) fold.update(ids.filter((id) => state.recycle.nodes.includes(id)).length, ids.length);
+    const sources = nodeSources(state);
+    const covered = Object.keys(sources);
+    for (const { fold, ids } of this.folds) fold.update(ids.filter((id) => state.recycle.nodes.includes(id) || covered.includes(id)).length, ids.length);
     const layer = state.recycle;
     const lines: string[] = [];
     lines.push(`вторсырьё: ${format(layer.points)}`);
@@ -252,15 +255,19 @@ export class RecyclePanel {
     }
 
     // A dot on the tree's tab when a node can be bought.
-    this.viewButtons.get('tree')!.classList.toggle('marked', NODES.some((n) => canBuyNode(layer, n)) && this.view !== 'tree');
+    this.viewButtons.get('tree')!.classList.toggle('marked', NODES.some((n) => canBuyNode(layer, n, covered)) && this.view !== 'tree');
     for (const row of this.nodeRows) {
+      const source = sources[row.def.id];
       const owned = hasNode(layer, row.def.id);
-      const open = isNodeOpen(layer, row.def);
-      row.root.classList.toggle('owned', owned);
+      const open = isNodeOpen(layer, row.def, covered);
+      row.root.classList.toggle('owned', owned || !!source);
+      row.root.classList.toggle('covered', !owned && !!source);
       row.root.classList.toggle('closed', !owned && !open);
-      row.button.disabled = !canBuyNode(layer, row.def);
-      row.button.textContent = owned ? 'Есть' : open ? `${format(row.def.cost)} ВС` : 'Закрыто';
-      row.button.style.setProperty('--p', String(owned ? 0 : progress(layer.points, row.def.cost)));
+      row.button.disabled = !canBuyNode(layer, row.def, covered);
+      row.button.textContent = owned ? 'Есть' : source ? 'Действует' : open ? `${format(row.def.cost)} ВС` : 'Закрыто';
+      row.button.title = source && !owned ? source : '';
+      row.root.querySelector('.r-node-text')!.textContent = source && !owned ? `Обеспечено: ${source.toLowerCase()}` : row.def.text;
+      row.button.style.setProperty('--p', String(owned || source ? 0 : progress(layer.points, row.def.cost)));
     }
   }
 
@@ -274,7 +281,7 @@ export class RecyclePanel {
     const layer = state.recycle;
     const auto = state.autoRecycle.on && scriptOwned(state, 'recycle');
     const worth = canRecycle(state) && !auto && (layer.resets === 0 || currentGain(state).gte(layer.total));
-    return [...(worth ? ['recycle'] : []), ...NODES.filter((n) => canBuyNode(layer, n)).map((n) => `node:${n.id}`)];
+    return [...(worth ? ['recycle'] : []), ...NODES.filter((n) => canBuyNode(layer, n, coveredNodes(state))).map((n) => `node:${n.id}`)];
   }
 
   /** Every animation frame while the tab is on screen: the camera. */

@@ -91,8 +91,10 @@ body::after {
   font-size: 12px;
 }
 
-/* Flow and Recycled material share one line. */
-.flows { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-top: 2px; }
+/* Reserve both readout lines: resets must never change the sticky header height. */
+.flows { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 19px 19px; gap: 0; margin-top: 2px; width: 100%; }
+.flows > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.amount .trash { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .rate {
   color: var(--glow);
@@ -1919,3 +1921,7 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 .b-supply > summary { min-height: 44px; display: list-item; padding-block: 11px; color: var(--mid); font-size: 12px; cursor: pointer; }
 .b-supply .s-why { margin-top: 0; }
 .b-equipment .b-row-title { flex-wrap: wrap; gap: 3px 8px; }
+
+.a-reset-summary { font-size: 12px; color: var(--mid); overflow-wrap: anywhere; }
+
+.r-node.covered .r-node-text { display: block; font-size: 11px; color: var(--mid); }

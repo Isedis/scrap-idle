@@ -114,6 +114,12 @@ export function newScripts(): ScriptsState {
   };
 }
 
+/** Reset purchased progress while retaining the operator's switches and preferences. */
+export function resetScripts(old: ScriptsState): ScriptsState {
+  return { ...old, bought: [], speed: 0, reliability: 0, clock: 0, cooldown: 0, peak: 0,
+    producerOff: [...old.producerOff], endlessOff: [...old.endlessOff] };
+}
+
 export const UPGRADE_SHARES = [0.01, 0.1, 0.5, 1] as const;
 export const RECYCLE_MINUTES = [1, 5, 15, 60] as const;
 export const LIGHT_LEVELS = [0.5, 0.75, 0.9] as const;

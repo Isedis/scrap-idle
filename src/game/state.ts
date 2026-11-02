@@ -1,3 +1,4 @@
+import { coveredNodes, coveredRecipes } from './capabilities';
 import { D, Decimal } from './num';
 import { affordableLineRecipes, assembleLine, lineRecipe } from './linePlanner';
 import { PRODUCERS, affordableCount, costOf, costOfMany, milestonesReached, producerById } from './producers';
@@ -60,6 +61,7 @@ import {
   RELIABILITY_MAX,
   failChance,
   newScripts,
+  resetScripts,
   reliabilityCost,
   scriptById,
   speedCost,
@@ -612,7 +614,10 @@ export function buyTrack(state: GameState, id: string): boolean {
 }
 
 /** Endless Recycling nodes open once the whole tree is bought. */
-export const repeatsOpen = (state: GameState) => NODES.every((n) => n.extra || state.recycle.nodes.includes(n.id));
+export const repeatsOpen = (state: GameState) => {
+  const covered = coveredNodes(state);
+  return NODES.every((n) => n.extra || state.recycle.nodes.includes(n.id) || covered.includes(n.id));
+};
 
 export function buyRepeat(state: GameState, id: string): boolean {
   const def = repeatById(id);
@@ -937,8 +942,7 @@ export function reform(state: GameState): Decimal {
   const layer = newLayer();
   layer.points = fx.startPoints;
   state.recycle = layer;
-  state.scripts = newScripts();
-  state.autoRecycle = { on: false, factor: AUTO_FACTOR_DEFAULT };
+  state.scripts = resetScripts(state.scripts);
   state.tracks = {};
   state.compacted = 0;
   state.upgrades = [];
@@ -950,9 +954,7 @@ export function reform(state: GameState): Decimal {
     noise: fullNoiseAutomation(state) ? hearing.resumeNoise ?? hearing.noise : 1,
     survived: hearing.survived, losses: hearing.losses,
   };
-  // What the schools set up comes switched on.
-  if (fx.schools >= 2) state.autoRecycle.on = true;
-  if (fx.schools >= 3) state.scripts.sortOn = true;
+  // Script availability changes; operator switches and thresholds do not.
   startNewRun(state);
   return gain;
 }
@@ -981,8 +983,7 @@ export function descend(state: GameState): boolean {
   state.recycle = newLayer();
   rememberCity(state.story, state.city);
   state.city = { ...newCity(), development: state.city.development };
-  state.scripts = newScripts();
-  state.autoRecycle = { on: false, factor: AUTO_FACTOR_DEFAULT };
+  state.scripts = resetScripts(state.scripts);
   state.tracks = {};
   state.compacted = 0;
   state.upgrades = [];
@@ -995,7 +996,8 @@ export function descend(state: GameState): boolean {
 
 /** The caretaker: buys the cheapest of tree nodes, endless nodes, speed and reliability. Returns what it bought. */
 export function autoTree(state: GameState): string | null {
-  const node = NODES.filter((n) => canBuyNode(state.recycle, n)).sort((a, b) => a.cost.cmp(b.cost))[0];
+  const covered = coveredNodes(state);
+  const node = NODES.filter((n) => canBuyNode(state.recycle, n, covered)).sort((a, b) => a.cost.cmp(b.cost))[0];
   if (node && buyNode(state, node.id)) return node.name;
   const options: { name: string; cost: Decimal; buy: () => boolean }[] = [];
   if (repeatsOpen(state)) {
@@ -1015,10 +1017,11 @@ export function autoTree(state: GameState): string | null {
 export function autoLine(state: GameState): string | null {
   const so = state.sorting;
   if (!so.open) return null;
-  const recipe = affordableLineRecipes(so)[0];
-  if (recipe && buyRecipe(so, recipe.id)) return recipe.name;
-  if (state.scripts.lineBuild && assembleLine(so)) return 'лента: автосборка';
-  const reserve = state.scripts.lineBuild ? lineRecipe(so)?.cost : undefined;
+  const covered = coveredRecipes(state);
+  const recipe = affordableLineRecipes(so, covered)[0];
+  if (recipe && buyRecipe(so, recipe.id, covered)) return recipe.name;
+  if (state.scripts.lineBuild && assembleLine(so, covered)) return 'лента: автосборка';
+  const reserve = state.scripts.lineBuild ? lineRecipe(so, covered)?.cost : undefined;
   const slots = slotCount(so);
   const onLine = so.line.slice(0, slots);
   const levels = onLine
@@ -1030,7 +1033,7 @@ export function autoLine(state: GameState): string | null {
     return so.fractions[pays].gte(o.cost.add(reserve?.[pays] ?? 0)) && buyLevel(so, o.id, o.kind);
   });
   if (level) return `${stationById(level.id)!.name}: ${level.kind === 'speed' ? 'скорость' : 'чистота'}`;
-  return buyAlloy(so) ? `сплав ${so.alloys}` : null;
+  return buyAlloy(so, covered) ? `сплав ${so.alloys}` : null;
 }
 
 /** The threat reached the edge: the run is lost with nothing in return. Recycling progress stays. */
@@ -1059,7 +1062,7 @@ export function loseToHearing(state: GameState): void {
 
 export function buyNode(state: GameState, id: string): boolean {
   const node = nodeById(id);
-  if (!node || !canBuyNode(state.recycle, node)) return false;
+  if (!node || !canBuyNode(state.recycle, node, coveredNodes(state))) return false;
   state.recycle.points = state.recycle.points.sub(node.cost);
   state.recycle.nodes.push(id);
   return true;

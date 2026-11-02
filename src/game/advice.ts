@@ -1,3 +1,4 @@
+import { coveredNodes, coveredRecipes } from './capabilities';
 import { D, format } from './num';
 import { lineRecipe } from './linePlanner';
 import { NODES, RECYCLE_AT, canBuyNode, hasNode, isNodeOpen } from './layers';
@@ -36,7 +37,7 @@ export function recycleAdvice(state: GameState): string {
   if (!canRecycle(state) && layer.resets === 0) {
     return `Собери ${format(RECYCLE_AT)} кг за один заход — тогда весь мусор можно будет сдать на переработку.`;
   }
-  const node = NODES.find((n) => canBuyNode(layer, n));
+  const node = NODES.find((n) => canBuyNode(layer, n, coveredNodes(state)));
   if (node) return `Купи в дереве «${node.name}»: ${node.text.toLowerCase()}.`;
   if (canRecycle(state)) {
     const gain = currentGain(state);
@@ -50,7 +51,7 @@ export function recycleAdvice(state: GameState): string {
     }
     return `Переработка даст +${format(gain)} вторсырья. Начнётся новый заход; вторсырьё и дерево останутся.`;
   }
-  const next = NODES.filter((n) => !hasNode(layer, n.id) && isNodeOpen(layer, n)).sort((a, b) => a.cost.cmp(b.cost))[0];
+  const next = NODES.filter((n) => !hasNode(layer, n.id) && !coveredNodes(state).includes(n.id) && isNodeOpen(layer, n, coveredNodes(state))).sort((a, b) => a.cost.cmp(b.cost))[0];
   if (next) return `Копи вторсырьё на «${next.name}»: нужно ${format(next.cost)}, есть ${format(layer.points)}.`;
   return 'Дерево куплено. Перерабатывай, когда награда растёт, и копи на бесконечные узлы.';
 }
@@ -59,17 +60,17 @@ export function sortingAdvice(state: GameState): string {
   const so = state.sorting;
   if (!so.open) return `Заработай ${format(SORT_AT)} вторсырья за один цикл переработки — и линия запустится.`;
   if (state.scripts.lineOn && state.scripts.lineBuild && scriptOwned(state, 'line')) {
-    const target = lineRecipe(so);
+    const target = lineRecipe(so, coveredRecipes(state));
     return target ? `Наладчик подбирает ленту и копит фракции на «${target.name}».`
       : 'Наладчик улучшает линию. Ручная перестановка отключит автосборку.';
   }
   const empty = Array.from({ length: slotCount(so) }, (_, i) => so.line[i] ?? null).indexOf(null);
   if (empty >= 0) return `На ленте пустое место №${empty + 1} — поставь туда станцию.`;
-  const recipe = RECIPES.find((r) => canBuyRecipe(so, r));
+  const recipe = RECIPES.find((r) => canBuyRecipe(so, r, coveredRecipes(state)));
   if (recipe) return `Хватает на рецепт «${recipe.name}»: ${recipe.text.toLowerCase()}.`;
   if (canResort(state)) return `Можно пересортировать: +${format(resortGain(state))} фракций и доход ×2 до реформы.`;
   if (tailsOf(so) > 0.5) return `Больше половины мусора уходит обратно в кучу — прокачай станциям «Быстрее».`;
-  const next = RECIPES.filter((r) => !hasRecipe(so, r.id) && (!r.requires || hasRecipe(so, r.requires)))
+  const next = RECIPES.filter((r) => !hasRecipe(so, r.id) && !coveredRecipes(state).includes(r.id) && (!r.requires || hasRecipe(so, r.requires)))
     .map((r) => ({ r, gap: missing(state, r.cost) }))
     .filter((x) => x.gap)[0];
   if (next) {
