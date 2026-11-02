@@ -234,7 +234,7 @@ export class CityPanel {
     const cost = annexCost(city, d.id);
     this.neighbours.hidden = !seen || cluster <= 1;
     this.neighbours.textContent = `${owned ? 'Сила квартала' : 'Сила после присоединения'} ×${cluster.toFixed(2)} · соседи своего типа`;
-    this.cardButton.hidden = owned;
+    this.cardButton.hidden = owned || (d.type === 'pit' && city.pitOpened);
     this.cardButton.disabled = !canAnnex(city, d.id);
     if (!seen) {
       // Fog: nobody from the landfill has been there; what it is stays unknown.
@@ -244,7 +244,7 @@ export class CityPanel {
       this.cardButton.textContent = 'В тумане';
     } else {
       this.cardTitle.textContent = `${d.name} · ${TYPE_NAMES[d.type]}`;
-      this.cardText.textContent = `${TYPE_TEXT[d.type]}${d.people ? ` · жителей ${d.people}` : ''}`;
+      this.cardText.textContent = d.type === 'pit' && city.pitOpened ? 'Яма открыта навсегда · дно продолжает работать' : `${TYPE_TEXT[d.type]}${d.people ? ` · жителей ${d.people}` : ''}`;
       this.card.dataset.state = owned ? 'owned' : visible(city, d.id) ? 'next' : 'far';
       if (d.type === 'pit' && !pitReady(city)) this.cardButton.textContent = `Нужен весь город · ${streetsOwned(city)}/${STREETS}`;
       else this.cardButton.textContent = visible(city, d.id) ? `Присоединить · ${format(cost)} га` : 'Не граничит со свалкой';
@@ -279,14 +279,14 @@ export class CityPanel {
     const archive = cityArchive(city, state.story);
     this.archiveLink.textContent = `Письма Глухово → архив (${archive.letters.length})`;
     this.reformButton.disabled = !ready;
-    this.descent.hidden = !city.owned.includes('pit');
+    this.descent.hidden = !city.owned.includes('pit') || state.bottom.open;
 
   }
 
   /** Every frame while the view is on screen: the camera and the plan. */
   frame(dt: number, state: GameState): void {
     const city = state.city;
-    this.camera.update(dt, { owned: city.owned, selected: this.plan.selected, people: peopleLeft(city) / TOWN_PEOPLE, development: city.development });
+    this.camera.update(dt, { owned: city.owned, selected: this.plan.selected, people: peopleLeft(city) / TOWN_PEOPLE, development: city.development, pitOpened: city.pitOpened });
     this.plan.draw(dt, city);
   }
 

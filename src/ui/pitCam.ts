@@ -15,6 +15,7 @@ export interface PitView {
   equipment: BottomState['equipment'];
   auto: number;
   depth: number;
+  object: { id: 'hoist' | 'bench' | 'borer'; progress: number } | null;
 }
 
 interface Bit {
@@ -178,6 +179,7 @@ export class PitCam extends Camera<PitView> {
     });
 
     this.machines();
+    this.buriedObject();
     this.miner(w * 0.57, this.heapTop(w * 0.57));
 
     if (this.flashLeft > 0) {
@@ -187,6 +189,37 @@ export class PitCam extends Camera<PitView> {
       ctx.globalAlpha = 1;
     }
     this.vignette(0.5);
+  }
+
+  /** Purchased machinery has a distinct silhouette and keeps a static reduced-motion view. */
+  private buriedObject(): void {
+    const v = this.view!;
+    if (!v.object) return;
+    const { w, h } = this;
+    const x = w * 0.72, y = h * 0.49;
+    const p = Math.max(0, Math.min(1, v.object.progress));
+    const color = p >= 1 ? '#b2c587' : '#608c70';
+    this.box(x - 5, y - 5, w * 0.24, h * 0.30, '#122a1c', 0.8);
+    if (v.object.id === 'hoist') {
+      this.box(x, y, 4, h * 0.22, color);
+      this.box(x + 38, y, 4, h * 0.22, color);
+      this.box(x, y, 42, 5, color);
+      this.box(x + 10, y + h * 0.14, 23, 10, color);
+    } else if (v.object.id === 'bench') {
+      this.box(x, y + 20, 49, 6, color);
+      this.box(x + 5, y + 25, 4, h * 0.17, color);
+      this.box(x + 41, y + 25, 4, h * 0.17, color);
+      this.box(x + 12, y + 7, 28, 12, color);
+    } else {
+      this.box(x + 2, y + 24, 47, 23, color);
+      this.poly([[x + 2, y + 23], [x - 14, y + 35], [x + 2, y + 46]], color);
+      for (let i = 0; i < 3; i++) this.circle(x + 12 + i * 13, y + 49, 4, color);
+    }
+    for (let i = 0; i < 4; i++) {
+      const top = y + h * 0.30 - 1 - i * h * 0.075;
+      if (p < (i + 1) / 4) this.box(x - 5, top, w * 0.24, h * 0.075, '#0b2116', 0.85);
+    }
+    this.label(p >= 1 ? 'ГОТОВО' : `ОТКОПАНО ${Math.floor(p * 100)}%`, x + 10, y - 10, '#8bb997');
   }
 
   /** Purchased machinery has a distinct silhouette and keeps a static reduced-motion view. */

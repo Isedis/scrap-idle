@@ -27,7 +27,7 @@ import {
 
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
-const VERSION = 20;
+const VERSION = 21;
 
 /** Run length for a run whose start is not known; stays negative however long it is played. */
 const UNKNOWN_RUN_SECONDS = -1e12;
@@ -138,6 +138,7 @@ interface CitySave {
   total: string;
   reforms: number;
   development: number;
+  pitOpened?: boolean;
   owned: string[];
 }
 
@@ -164,6 +165,14 @@ interface BottomSave {
   heap: number;
   supplied: number;
   equipment: BottomState['equipment'];
+  route?: BottomState['route'];
+  siteId?: BottomState['siteId'];
+  objectWork?: BottomState['objectWork'];
+  benchMode?: BottomState['benchMode'];
+  seamProgress?: number;
+  seamFound?: number;
+  firstUmeGranted?: boolean;
+  firstUmePresented?: boolean;
   dig: number;
   dug: number;
   stock: Record<string, number>;
@@ -180,7 +189,7 @@ interface BottomSave {
 }
 
 interface SaveV13 extends Omit<SaveV12, 'v' | 'layers'> {
-  v: 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20;
+  v: 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21;
   layers: { recycle: LayerSave; sorting: SortingSave; city: CitySave; bottom: BottomSave };
 }
 
@@ -190,6 +199,14 @@ function saveBottom(b: BottomState): BottomSave {
     heap: b.heap,
     supplied: b.supplied,
     equipment: { ...b.equipment },
+    route: b.route,
+    siteId: b.siteId,
+    objectWork: { ...b.objectWork },
+    benchMode: b.benchMode,
+    seamProgress: b.seamProgress,
+    seamFound: b.seamFound,
+    firstUmeGranted: b.firstUmeGranted,
+    firstUmePresented: b.firstUmePresented,
     dig: b.dig,
     dug: b.dug,
     stock: { ...b.stock },
@@ -220,8 +237,18 @@ function loadBottom(data: Partial<BottomSave> | undefined): BottomState | null {
     bench: data.equipment?.bench === true,
     borer: int(data.equipment?.borer),
   };
+  if (data.route === 'auto' || data.route === 'depth' || data.route === 'site' || data.route === 'seam') b.route = data.route;
+  if (data.siteId === 'hoist' || data.siteId === 'bench' || data.siteId === 'borer') b.siteId = data.siteId;
+  if (data.benchMode === 'scrap' || data.benchMode === 'nonferrous') b.benchMode = data.benchMode;
+  b.seamProgress = n(data.seamProgress, 20);
+  b.seamFound = int(data.seamFound);
+  for (const [id, limit] of Object.entries({ hoist: 120, bench: 300, borer: 600 }) as [keyof BottomState['objectWork'], number][]) {
+    b.objectWork[id] = data.objectWork ? n(data.objectWork[id], limit) : (id === 'borer' ? b.equipment.borer > 0 : b.equipment[id]) || n(data.dug) >= (id === 'hoist' ? 1000 : id === 'bench' ? 4500 : 11000) ? limit : 0;
+  }
   b.dig = n(data.dig, 1);
   b.dug = n(data.dug);
+  b.firstUmeGranted = data.firstUmeGranted === true;
+  b.firstUmePresented = data.firstUmePresented === true;
   for (const c of CONTAINERS) b.stock[c.id] = int(data.stock?.[c.id]);
   for (const r of RARITIES) {
     const v = parseNum(data.money?.[r] ?? '0');
@@ -238,6 +265,11 @@ function loadBottom(data: Partial<BottomSave> | undefined): BottomState | null {
   if (!ume || !above) return null;
   b.ume = ume.max(0);
   b.above = above.max(0);
+  if (data.firstUmeGranted === undefined && b.dug >= 11000) {
+    b.firstUmeGranted = true;
+    if (b.equipment.borer > 0 || b.ume.gt(0)) b.firstUmePresented = true;
+    else b.ume = b.ume.add(1);
+  }
   b.scripts = Array.isArray(data.scripts) ? [...new Set(data.scripts.filter((id) => ABOVE_SCRIPTS.some((x) => x.id === id)))] : [];
   b.saving = typeof data.saving === 'string' ? data.saving : null;
   if (!savingGoal(b)) b.saving = null;
@@ -252,6 +284,7 @@ function loadCity(data: Partial<CitySave> | undefined): CityState | null {
   if (!points || !total) return null;
   c.development = typeof data.development === 'number' && Number.isFinite(data.development)
     ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(data.development))) : 0;
+  c.pitOpened = data.pitOpened === true;
   c.open = data.open === true;
   c.points = points.max(0);
   c.total = total.max(c.points);
@@ -455,7 +488,7 @@ export function serialize(state: GameState): string {
     layers: {
       recycle: saveLayer(state.recycle),
       sorting: saveSorting(state.sorting),
-      city: { open: state.city.open, points: state.city.points.toString(), total: state.city.total.toString(), reforms: state.city.reforms, development: state.city.development, owned: state.city.owned },
+      city: { open: state.city.open, points: state.city.points.toString(), total: state.city.total.toString(), reforms: state.city.reforms, development: state.city.development, pitOpened: state.city.pitOpened, owned: state.city.owned },
       bottom: saveBottom(state.bottom),
     },
     autobuy: state.autobuy,
@@ -480,7 +513,7 @@ export function deserialize(text: string): GameState | null {
   } catch {
     return null;
   }
-  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].includes(data.v as number)) return null;
+  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(data.v as number)) return null;
 
   const state = newGame(typeof data.lastTick === 'number' ? data.lastTick : Date.now());
   const trash = parseNum(data.trash ?? '0');
@@ -497,7 +530,7 @@ export function deserialize(text: string): GameState | null {
   if (!state.revealed.includes('collector')) state.revealed.unshift('collector');
 
   // A v1 save simply has none of these yet.
-  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20) {
+  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21) {
     const ids = (list: unknown) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string' && upgradeById(id)) : []);
     state.upgrades = [...new Set(ids(data.upgrades))];
     state.seenUpgrades = [...new Set([...ids(data.seenUpgrades), ...state.upgrades])];
@@ -507,7 +540,7 @@ export function deserialize(text: string): GameState | null {
   // Before v3 there was a single run: everything collected so far belongs to it, length unknown.
   state.runTrash = state.totalTrash;
   state.runSeconds = UNKNOWN_RUN_SECONDS;
-  if (data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20) {
+  if (data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21) {
     const run = parseNum(data.runTrash ?? '0');
     const recycle = loadLayer(data.layers?.recycle);
     if (!run || !recycle) return null;
@@ -518,14 +551,14 @@ export function deserialize(text: string): GameState | null {
   }
 
   // Older saves start with nothing stirring.
-  if (data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20) {
+  if (data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21) {
     const t = data.threat;
     const level = typeof t?.level === 'number' && Number.isFinite(t.level) ? t.level : 0;
     state.threat.level = Math.min(Math.max(level, 0), 1);
     state.threat.losses = typeof t?.losses === 'number' && t.losses >= 0 ? Math.floor(t.losses) : 0;
   }
-  if (data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20) state.story = loadStory(data.story);
-  if (data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20) {
+  if (data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21) state.story = loadStory(data.story);
+  if (data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21) {
     const t = data.threat;
     state.threat.lights = typeof t?.lights === 'number' && t.lights >= 0 ? Math.floor(t.lights) : 0;
     state.threat.bravest = typeof t?.bravest === 'number' && Number.isFinite(t.bravest) ? Math.min(Math.max(t.bravest, 0), 1) : 0;
@@ -537,36 +570,37 @@ export function deserialize(text: string): GameState | null {
     state.autoRecycle = {
       on: ar?.on === true,
       // Before v12 the factor was a multiple of everything earned and could never be reached.
-      factor: (data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20) && AUTO_FACTORS.includes(ar?.factor as (typeof AUTO_FACTORS)[number]) ? ar!.factor : AUTO_FACTOR_DEFAULT,
+      factor: (data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21) && AUTO_FACTORS.includes(ar?.factor as (typeof AUTO_FACTORS)[number]) ? ar!.factor : AUTO_FACTOR_DEFAULT,
     };
   }
   // Before v7 there was no Automation tab: every script starts uninstalled, with default settings.
-  if (data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20) state.scripts = loadScripts(data.scripts);
+  if (data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21) state.scripts = loadScripts(data.scripts);
   // Before v8 there was no Sorting: the line opens on its own once Recycling has earned enough.
-  if (data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20) {
+  if (data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21) {
     const sorting = loadSorting(data.layers?.sorting);
     if (!sorting) return null;
     state.sorting = sorting;
   }
   // Before v9 nothing listened: the plant starts at normal load.
-  if (data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20) state.hearing = loadHearing(data.hearing);
+  if (data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21) state.hearing = loadHearing(data.hearing);
   // Before v10 there was no town: it opens on its own after enough resorts in one cycle.
-  if (data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20) {
+  if (data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21) {
     const city = loadCity((data.layers as SaveV10['layers'] | undefined)?.city);
     if (!city) return null;
     state.city = city;
   }
   // Before v13 nobody had gone down: the bottom is closed.
-  if (data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20) {
+  if (data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21) {
     const bottom = loadBottom((data.layers as SaveV13['layers'] | undefined)?.bottom);
     if (!bottom) return null;
     state.bottom = bottom;
   }
-  if (data.v !== 17 && data.v !== 18 && data.v !== 19 && data.v !== 20 && state.hearing.phase === 'check' && state.hearing.noise === 0
+  if (data.v !== 17 && data.v !== 18 && data.v !== 19 && data.v !== 20 && data.v !== 21 && state.hearing.phase === 'check' && state.hearing.noise === 0
     && state.hearing.noiseAuto && cityEffects(state.city).silencerFail === 0) state.hearing.resumeNoise = 1;
   rememberCity(state.story, state.city);
   // A prior descent required the whole town, so its full archive was earned already.
   if (state.bottom.open) {
+    state.city.pitOpened = true;
     state.story.cityLetters = LETTERS.length;
     state.story.cityDocuments = true;
   }

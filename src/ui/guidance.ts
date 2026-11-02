@@ -3,7 +3,7 @@ import { PRODUCERS } from '../game/producers';
 import { RECYCLE_AT } from '../game/layers';
 import { SORT_AT, sortNeed } from '../game/sorting';
 import { CITY_OPEN_SORTS, REFORM_SORTS, DISTRICTS, canAnnex, canDevelop } from '../game/city';
-import { ABOVE_SCRIPTS, AUTO_OPEN, CONTAINERS, EPOCHS, TOOLS, autoOpens, canOpen, meltCost, toolCost, umeOpen, EQUIPMENT, borerCost, depthTarget } from '../game/bottom';
+import { ABOVE_SCRIPTS, AUTO_OPEN, CONTAINERS, EPOCHS, TOOLS, autoOpens, canOpen, meltCost, toolCost, umeOpen, EQUIPMENT, borerCost, depthTarget, objectReady } from '../game/bottom';
 import { scriptById } from '../game/scripts';
 import { canDescend, canRecycle, canResort, canReform, currentGain, resortGain, reformGainOf, type GameState } from '../game/state';
 
@@ -34,11 +34,10 @@ export function nextGoal(s: GameState): Goal {
 function bottomGoal(s: GameState): Goal {
   const b = s.bottom;
   const goal = (text: string, ready = false): Goal => ({ text, ready, tab: 'recycle', layer: 'bottom' });
-  if (b.equipment.borer === 0 && b.ume.eq(0) && umeOpen(b) && b.money.anomaly.gte(meltCost(b, 'anomaly'))) {
-    return goal('Дно: можно переплавить аномалии в первую УМЕ', true);
-  }
-  if (umeOpen(b) && b.ume.gte(borerCost(b))) return goal('Дно: можно улучшить проходчик за УМЕ', true);
-  const equipment = EQUIPMENT.find((e) => !b.equipment[e.id] && b.dug >= e.depth && b.money[e.costIn].gte(e.cost));
+  if (b.firstUmeGranted && b.equipment.borer === 0 && !objectReady(b, 'borer')) return goal('Дно: первая УМЕ найдена · раскопайте корпус проходчика');
+  if (b.firstUmeGranted && b.equipment.borer === 0 && b.ume.eq(0) && umeOpen(b) && b.money.anomaly.gte(meltCost(b, 'anomaly'))) return goal('Дно: можно переплавить аномалии в УМЕ', true);
+  if (b.firstUmeGranted && umeOpen(b) && b.ume.gte(borerCost(b)) && (b.equipment.borer > 0 || objectReady(b, 'borer'))) return goal('Дно: можно улучшить проходчик за УМЕ', true);
+  const equipment = EQUIPMENT.find((e) => !b.equipment[e.id] && objectReady(b, e.id) && b.money[e.costIn].gte(e.cost));
   if (equipment) return goal(`Дно: доступно оборудование «${equipment.name}»`, true);
   const auto = AUTO_OPEN[b.auto];
   if (auto && b.money[auto.costIn].gte(auto.cost)) return goal('Дно: доступно автовскрытие', true);
@@ -54,5 +53,5 @@ function bottomGoal(s: GameState): Goal {
   if (tool) return goal(`Дно: можно улучшить «${tool.name}»`, true);
   const epoch = EPOCHS.find((e) => b.dug < e.depth);
   if (epoch) return goal(`Дно: до нового слоя ещё ${format(D(Math.ceil(epoch.depth - b.dug)))} т`);
-  return goal(b.equipment.borer === 0 ? 'Дно: собирайте УМЕ для проходчика' : `Дно: следующий пласт на ${format(D(depthTarget(b).to))} т · добыча находок +10%`);
+  return goal(b.equipment.borer === 0 ? 'Дно: продолжайте раскопки проходчика' : `Дно: следующий пласт на ${format(D(depthTarget(b).to))} т · добыча находок +10%`);
 }

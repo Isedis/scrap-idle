@@ -72,7 +72,7 @@ async function ensureServer() {
   fs.mkdirSync(path.dirname(out), { recursive: true });
 
   const server = await ensureServer();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
   try {
     const page = await (await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 })).newPage();
     page.on('pageerror', (e) => console.log('page error:', e.message));

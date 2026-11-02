@@ -6,7 +6,7 @@ import { D } from '../src/game/num';
 import { nextGoal } from '../src/ui/guidance';
 import { resetPreview } from '../src/ui/resetPreview';
 import { DISTRICTS, canAnnex } from '../src/game/city';
-import { EPOCHS, MELT } from '../src/game/bottom';
+import { EPOCHS, MELT, bottomTick } from '../src/game/bottom';
 
 describe('operator guidance', () => {
   it('keeps the first goal on an available tab', () => {
@@ -90,9 +90,11 @@ describe('goals beyond the upper resets', () => {
     s.bottom.heap = 300;
     s.bottom.money.anomaly = D(MELT.anomaly);
     expect(nextGoal(s).text).not.toContain('переплавить');
-    s.bottom.dug = EPOCHS.find((e) => e.id === 'inhuman')!.depth;
-    expect(nextGoal(s).text).toContain('первую УМЕ');
-    s.bottom.ume = D(1);
+    s.bottom.dug = EPOCHS.find((e) => e.id === 'inhuman')!.depth - 1;
+    s.bottom.route = 'depth';
+    bottomTick(s.bottom, 120, 0, () => 0);
+    expect(nextGoal(s).text).toContain('первая УМЕ найдена');
+    s.bottom.objectWork.borer = 600;
     expect(nextGoal(s).text).not.toContain('первую');
   });
 

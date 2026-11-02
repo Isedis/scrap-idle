@@ -384,7 +384,7 @@ describe('permanent scripts from the bottom', () => {
     expect(automationOpen(s)).toBe(true);
     expect(scriptOwned(s, 'line')).toBe(true);
     s.city.owned.push('pit');
-    expect(descend(s)).toBe(true);
+    expect(descend(s)).toBe(false);
     expect(scriptOwned(s, 'tree')).toBe(true);
     s.recycle.points = D(1);
     expect(runScripts(s, BASE_TICK).some((n) => n.script === 'tree')).toBe(true);

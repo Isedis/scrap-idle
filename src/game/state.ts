@@ -80,7 +80,7 @@ import {
 import { REPEATS } from './layers';
 import { HOLD_SECONDS, afterLoss, hearingTick, newHearing, noiseMult, type HearingState } from './hearing';
 import { rememberCity, CITY_OPEN_SORTS, REFORM_SORTS, cityEffects, schoolScripts, newCity, reformGain, type CityState } from './city';
-import { START_HEAP, aboveIncome, autoOpen, bottomTick, fallPerMinute, newBottom, type BottomState } from './bottom';
+import { startHeap, aboveIncome, autoOpen, bottomTick, fallPerMinute, newBottom, type BottomState } from './bottom';
 import {
   FIRST_EVENT_SECONDS,
   FRESH_CASE_FACTOR,
@@ -325,7 +325,7 @@ export function advance(state: GameState, seconds: number, offline = false, slic
     const b = state.bottom;
     if (b.open) {
       b.above = b.above.add(gained);
-      bottomTick(b, dt, fallPerMinute(b.above), Math.random);
+      bottomTick(b, dt, fallPerMinute(b.above, state.city.development), Math.random);
       autoOpen(b, Math.random);
     }
     state.runSeconds += dt;
@@ -960,7 +960,7 @@ export function reform(state: GameState): Decimal {
 }
 
 /** The pit is taken: the way down is open. */
-export const canDescend = (state: GameState) => state.city.owned.includes('pit');
+export const canDescend = (state: GameState) => !state.bottom.open && state.city.owned.includes('pit');
 
 /**
  * The descent: everything above starts over, the town included; achievements, the finds on
@@ -969,10 +969,8 @@ export const canDescend = (state: GameState) => state.city.owned.includes('pit')
 export function descend(state: GameState): boolean {
   if (!canDescend(state)) return false;
   const b = state.bottom;
-  if (!b.open) {
-    b.open = true;
-    b.heap += START_HEAP;
-  }
+  b.open = true;
+  b.heap += startHeap(state.totalTrash);
   b.above = D(0);
   const old = state.sorting;
   const sorting = newSorting();
@@ -982,7 +980,7 @@ export function descend(state: GameState): boolean {
   state.sorting = sorting;
   state.recycle = newLayer();
   rememberCity(state.story, state.city);
-  state.city = { ...newCity(), development: state.city.development };
+  state.city = { ...newCity(), development: state.city.development, pitOpened: true };
   state.scripts = resetScripts(state.scripts);
   state.tracks = {};
   state.compacted = 0;

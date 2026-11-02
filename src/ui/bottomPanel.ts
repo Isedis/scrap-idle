@@ -4,6 +4,11 @@ import {
   CONTAINERS,
   EPOCHS,
   EQUIPMENT,
+  OBJECT_WORK,
+  activeObject,
+  objectReady,
+  objectUnlocked,
+  pressure,
   borerCost,
   buyBorer,
   buyEquipment,
@@ -77,6 +82,13 @@ export class BottomPanel {
   private progress!: HTMLProgressElement;
   private target!: HTMLElement;
   private targetReward!: HTMLElement;
+  private siteStatus!: HTMLElement;
+  private routeControls!: HTMLElement;
+  private siteSelect!: HTMLSelectElement;
+  private siteLaunch!: HTMLButtonElement;
+  private benchControls!: HTMLElement;
+  private reveal!: HTMLElement;
+  private revealUntil = 0;
   private supply!: HTMLElement;
   private equipmentUpdaters: ((s: GameState) => void)[] = [];
   private money = new Map<Rarity, HTMLElement>();
@@ -126,7 +138,46 @@ export class BottomPanel {
     this.progress = el('progress', 'b-depth-progress');
     this.progress.max = 1;
     this.progress.setAttribute('aria-label', 'Продвижение к следующему пласту');
-    this.operation.append(el('div', 'b-operation-label', '> РАСКОПКИ'), this.target, this.progress, this.targetReward);
+    this.siteStatus = el('div', 'b-site-status');
+    this.routeControls = el('div', 'b-routes');
+    for (const [id, label] of [['auto', 'АВТО'], ['depth', 'В ГЛУБИНУ'], ['site', 'К ОБЪЕКТУ'], ['seam', 'К ЖИЛЕ']] as const) {
+      const button = el('button', 'btn b-route', label);
+      button.type = 'button';
+      button.dataset.route = id;
+      button.addEventListener('click', () => {
+        const b = this.getState().bottom;
+        b.route = id;
+        if (id === 'site') b.siteId = this.siteSelect.value as typeof b.siteId;
+        this.onChange();
+      });
+      this.routeControls.append(button);
+    }
+    this.siteSelect = el('select', 'b-site-select');
+    this.siteSelect.setAttribute('aria-label', 'Объект раскопки');
+    this.siteSelect.addEventListener('change', () => {
+      const b = this.getState().bottom;
+      b.siteId = this.siteSelect.value as typeof b.siteId;
+      b.route = 'site';
+      this.onChange();
+    });
+    this.siteLaunch = el('button', 'btn b-site-launch');
+    this.siteLaunch.type = 'button';
+    this.siteLaunch.addEventListener('click', () => {
+      const b = this.getState().bottom;
+      const id = (['hoist', 'bench', 'borer'] as const).find((key) => objectReady(b, key) && !(key === 'borer' ? b.equipment.borer > 0 : b.equipment[key]));
+      if (!id) return;
+      if (id === 'borer' ? buyBorer(b) : buyEquipment(b, id)) this.onChange('purchase');
+    });
+    this.benchControls = el('div', 'b-bench-controls');
+    for (const [mode, label] of [['scrap', 'ЛОМ'], ['nonferrous', 'ЦВЕТМЕТ']] as const) {
+      const button = el('button', 'btn b-bench-mode', label);
+      button.type = 'button';
+      button.dataset.mode = mode;
+      button.addEventListener('click', () => { this.getState().bottom.benchMode = mode; this.onChange(); });
+      this.benchControls.append(button);
+    }
+    this.reveal = el('div', 'b-ume-reveal');
+    this.operation.append(el('div', 'b-operation-label', '> РАСКОПКИ'), this.target, this.progress, this.targetReward, this.siteStatus, this.routeControls, this.siteSelect, this.siteLaunch, this.benchControls, this.reveal);
     const supplyDetails = el('details', 'b-supply');
     supplyDetails.append(el('summary', '', 'Снабжение с поверхности'));
     this.supply = el('p', 's-why');
@@ -141,6 +192,7 @@ export class BottomPanel {
       wallet.append(cell);
     }
     const ume = el('div', 'b-coin b-ume');
+    ume.id = 'bottom-ume';
     this.ume = el('span', 'b-coin-value', '0');
     ume.append(el('span', 'b-coin-name', 'УМЕ'), this.ume);
     wallet.append(ume);
@@ -206,12 +258,12 @@ export class BottomPanel {
     for (const e of EQUIPMENT) {
       const row = this.buyRow(e.name, e.text,
         (s) => s.bottom.equipment[e.id] ? null : { cost: D(e.cost), costIn: e.costIn,
-          level: s.bottom.dug < e.depth ? `после ${format(D(e.depth))} т` : 'доступно' },
+          level: s.bottom.dug < e.depth ? `после ${format(D(e.depth))} т` : !objectReady(s.bottom, e.id) ? `откопать ${format(D(Math.floor(s.bottom.objectWork[e.id])))} / ${OBJECT_WORK[e.id]} т` : 'готов к запуску' },
         () => buyEquipment(this.getState().bottom, e.id) && e.name, 'Работает');
       row.id = `bottom-${e.id}`;
       equipment.append(row);
       this.equipmentUpdaters.push((s) => {
-        if (s.bottom.dug < e.depth) row.querySelector('button')!.disabled = true;
+        if (!objectReady(s.bottom, e.id)) row.querySelector('button')!.disabled = true;
       });
     }
     const borer = el('div', 'b-row');
@@ -228,9 +280,10 @@ export class BottomPanel {
     this.equipmentUpdaters.push((s) => {
       const b = s.bottom;
       borerTitle.textContent = `Проходчик · ур. ${b.equipment.borer}`;
-      borerSub.textContent = umeOpen(b) ? 'Каждый уровень ускоряет раскопки в 1,5 раза' : 'Доступен после 11 тыс т · покупка за УМЕ';
+      borer.hidden = !b.firstUmeGranted;
+      borerSub.textContent = b.equipment.borer > 0 ? '×1,5 к раскопке за уровень · жила: 1 аномалия / 20 т' : objectReady(b, 'borer') ? 'Корпус освобождён · можно запустить' : `Откопать корпус: ${format(D(Math.floor(b.objectWork.borer)))} / 600 т`;
       borerButton.textContent = `${format(borerCost(b))} УМЕ`;
-      borerButton.disabled = !umeOpen(b) || b.ume.lt(borerCost(b));
+      borerButton.disabled = !umeOpen(b) || (b.equipment.borer === 0 && !objectReady(b, 'borer')) || b.ume.lt(borerCost(b));
     });
 
     const tools = el('div', 'b-list');
@@ -373,6 +426,7 @@ export class BottomPanel {
     row.append(body, one, all);
     this.updaters.push((s) => {
       const b = s.bottom;
+      row.hidden = from === 'anomaly' && !b.firstUmeGranted;
       const per = meltCost(b, from);
       const locked = from === 'anomaly' && !umeOpen(b);
       sub.textContent = locked ? `${per} → 1, только на глубине «Не люди»` : `${per} → 1`;
@@ -520,12 +574,45 @@ export class BottomPanel {
     this.progress.value = Math.max(0, Math.min(1, (b.dug - target.from) / (target.to - target.from)));
     this.progress.setAttribute('aria-valuetext', `${Math.round(this.progress.value * 100)}% до пласта «${target.name}»`);
     this.targetReward.textContent = `Откроется: ${target.reward.toLowerCase()}`;
-    this.supply.textContent = `Сверху ${fallPerMinute(b.above).toFixed(1)} т/мин → разбор до ${supplyRate(b)} т/мин. `
-      + `В запасе ${format(D(b.heap))} т. Из тонны: 1 труха${b.equipment.bench ? ' и 0,25 лома' : ''}. `
-      + `Раскопки ${digRate(b).toFixed(1)} т/мин идут независимо от снабжения; с тонны +${DIG_SCRAP} лома и +${DIG_NONFERROUS} цветмета. `
+    const fall = fallPerMinute(b.above, state.city.development);
+    const site = activeObject(b);
+    const objects = (['hoist', 'bench', 'borer'] as const).filter((id) => objectUnlocked(b, id) && !objectReady(b, id));
+    const names = { hoist: 'Подъёмник', bench: 'Разборочный стол', borer: 'Проходчик' };
+    const focus = site ?? objects[0];
+    const ready = (['hoist', 'bench', 'borer'] as const).find((id) => objectReady(b, id) && !(id === 'borer' ? b.equipment.borer > 0 : b.equipment[id]));
+    this.siteStatus.textContent = focus ? `${names[focus]} [${'█'.repeat(Math.floor(10 * b.objectWork[focus] / OBJECT_WORK[focus]))}${'░'.repeat(10 - Math.floor(10 * b.objectWork[focus] / OBJECT_WORK[focus]))}] ${Math.floor(b.objectWork[focus])}/${OBJECT_WORK[focus]} т`
+      : ready ? `${names[ready]} освобождён · готов к запуску` : '';
+    this.siteSelect.replaceChildren(...objects.map((id) => new Option(names[id], id)));
+    if (objects.length && objects.includes(b.siteId)) this.siteSelect.value = b.siteId;
+    this.siteSelect.hidden = objects.length < 2;
+    this.siteLaunch.hidden = !ready;
+    if (ready) {
+      const cost = ready === 'borer' ? borerCost(b) : D(ready === 'hoist' ? 40 : 12);
+      const currency = ready === 'borer' ? 'УМЕ' : ready === 'hoist' ? 'лома' : 'цветмета';
+      this.siteLaunch.textContent = `ЗАПУСТИТЬ ${names[ready].toUpperCase()} · ${format(cost)} ${currency}`;
+      this.siteLaunch.disabled = ready === 'borer' ? b.ume.lt(cost) : b.money[ready === 'hoist' ? 'scrap' : 'nonferrous'].lt(cost);
+    }
+    this.routeControls.querySelectorAll<HTMLButtonElement>('button').forEach((button) => {
+      const route = button.dataset.route;
+      button.hidden = route === 'site' ? objects.length === 0 : route === 'seam' && b.equipment.borer === 0;
+      button.classList.toggle('active', route === b.route);
+    });
+    this.benchControls.hidden = !b.equipment.bench;
+    this.benchControls.querySelectorAll<HTMLButtonElement>('button').forEach((button) => button.classList.toggle('active', button.dataset.mode === b.benchMode));
+    if (b.firstUmeGranted && !b.firstUmePresented) {
+      this.reveal.textContent = 'НЕИЗВЕСТНАЯ ЕДИНИЦА → УМЕ ×1';
+      this.revealUntil = performance.now() + 4500;
+      b.firstUmePresented = true;
+      this.camera.find('#e6bf69');
+    }
+    this.reveal.hidden = performance.now() >= this.revealUntil;
+    this.supply.textContent = `Сверху ${fall.toFixed(1)} т/мин → разбор до ${supplyRate(b)} т/мин. `
+      + `В запасе ${format(D(b.heap))} т. Из тонны: 1 труха${b.equipment.bench ? b.benchMode === 'scrap' ? ' и 0,25 лома' : ' и 0,12 цветмета' : ''}. `
+      + `Раскопки ${digRate(b, fall).toFixed(1)} т/мин${pressure(b, fall) > 1 ? ` · напор сверху ×${pressure(b, fall).toFixed(2)}` : ''}; с тонны +${DIG_SCRAP} лома и +${DIG_NONFERROUS} цветмета. `
       + (findMultiplier(b) > 1 ? `Добыча находок ×${findMultiplier(b).toFixed(1)}.` : 'Мусор сверху не уменьшает достигнутую глубину.');
     for (const r of RARITIES) this.money.get(r)!.textContent = format(b.money[r].floor());
     this.ume.textContent = format(b.ume);
+    document.getElementById('bottom-ume')!.hidden = !b.firstUmeGranted;
     this.renderSaving(state);
     for (const c of CONTAINERS) {
       const view = this.crates.get(c.id)!;
@@ -661,11 +748,17 @@ export class BottomPanel {
     }
     this.camera.update(dt, {
       heap: b.heap,
-      fall: fallPerMinute(b.above),
-      dig: digRate(b),
+      fall: fallPerMinute(b.above, state.city.development),
+      dig: digRate(b, fallPerMinute(b.above, state.city.development)),
       equipment: b.equipment,
       auto: b.auto,
       depth: b.dug,
+      object: (() => {
+        const id = activeObject(b)
+          ?? (['hoist', 'bench', 'borer'] as const).find((key) => objectReady(b, key) && !(key === 'borer' ? b.equipment.borer > 0 : b.equipment[key]))
+          ?? (['hoist', 'bench', 'borer'] as const).find((key) => !objectUnlocked(b, key) && b.dug >= (key === 'hoist' ? 250 : key === 'bench' ? 3750 : 10250) && !(key === 'borer' ? b.equipment.borer > 0 : b.equipment[key]));
+        return id ? { id, progress: b.objectWork[id] / OBJECT_WORK[id] } : null;
+      })(),
       stock: CONTAINERS.map((c) => b.stock[c.id]),
     });
   }

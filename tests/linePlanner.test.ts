@@ -205,7 +205,7 @@ describe('v16 construction settings', () => {
     autoLine(back);
     expect(back.sorting.line).toEqual(['magnet', 'optic']);
     expect(back.bottom.scripts).toEqual(['line']);
-    expect(JSON.parse(serialize(back)).v).toBe(20);
+    expect(JSON.parse(serialize(back)).v).toBe(21);
   });
 
   it('round-trips both modes and rejects a non-boolean enabled setting', () => {

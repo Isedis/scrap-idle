@@ -235,11 +235,12 @@ export interface CityState {
   reforms: number;
   /** Permanent development bought for hectares, retained when the town resets. */
   development: number;
+  pitOpened: boolean;
   /** Districts the landfill holds, in the order taken; the landfill itself first. */
   owned: string[];
 }
 
-export const newCity = (): CityState => ({ open: false, points: D(0), total: D(0), reforms: 0, development: 0, owned: ['dump'] });
+export const newCity = (): CityState => ({ open: false, points: D(0), total: D(0), reforms: 0, development: 0, pitOpened: false, owned: ['dump'] });
 
 /** Resorts, counted since the last reform, that open the Town view: a look at what is coming. */
 export const CITY_OPEN_SORTS = 5;
@@ -311,7 +312,7 @@ export const pitReady = (city: CityState) => streetsOwned(city) >= STREETS;
 export function canAnnex(city: CityState, id: string): boolean {
   const d = districtById(id);
   if (city.owned.includes(id) || !d) return false;
-  if (d.type === 'pit' && !pitReady(city)) return false;
+  if (d.type === 'pit' && (city.pitOpened || !pitReady(city))) return false;
   return bordersLandfill(city, id) && city.points.gte(annexCost(city, id));
 }
 
@@ -370,14 +371,14 @@ export interface CityEffects {
   startPoints: Decimal;
 }
 
-const effectsCache = new WeakMap<CityState, { owned: readonly string[]; count: number; development: number; fx: CityEffects }>();
+const effectsCache = new WeakMap<CityState, { owned: readonly string[]; count: number; development: number; pitOpened: boolean; fx: CityEffects }>();
 
 /** What the town gives; worked out again only when territory or development changes, as income asks all the time. */
 export function cityEffects(city: CityState): CityEffects {
   const hit = effectsCache.get(city);
-  if (hit && hit.owned === city.owned && hit.count === city.owned.length && hit.development === city.development) return hit.fx;
+  if (hit && hit.owned === city.owned && hit.count === city.owned.length && hit.development === city.development && hit.pitOpened === city.pitOpened) return hit.fx;
   const fx = computeEffects(city);
-  effectsCache.set(city, { owned: city.owned, count: city.owned.length, development: city.development, fx });
+  effectsCache.set(city, { owned: city.owned, count: city.owned.length, development: city.development, pitOpened: city.pitOpened, fx });
   return fx;
 }
 
@@ -388,7 +389,7 @@ function computeEffects(city: CityState): CityEffects {
   const churches = power(city, 'church');
   const rivers = power(city, 'river');
   return {
-    income: mul('live', 0.5).mul(city.owned.includes('pit') ? 100 : 1).mul(developmentIncome(city)),
+    income: mul('live', 0.5).mul(city.owned.includes('pit') || city.pitOpened ? 100 : 1).mul(developmentIncome(city)),
     recycled: mul('prom', 1),
     fractions: mul('market', 0.5),
     schools: city.owned.filter((id) => districtById(id)!.type === 'school').length,

@@ -183,7 +183,7 @@ export class TownPlan {
     drawCityGrowth(ctx, w, shapes, city, development, this.t, (type,x,y,size)=>this.glyph(type,x,y,size,1));
     this.drawFog(shapes, seen, pitIndex);
     // The pit goes over the fog: everyone in town knows where it is.
-    this.abyss(shapes[pitIndex], S([DISTRICTS[pitIndex].x, DISTRICTS[pitIndex].y]), city.owned.includes('pit'));
+    this.abyss(shapes[pitIndex], S([DISTRICTS[pitIndex].x, DISTRICTS[pitIndex].y]), city.owned.includes('pit') || city.pitOpened);
 
     drawPitIntake(ctx, w, city, development, this.t);
 
@@ -203,7 +203,7 @@ export class TownPlan {
       const owned = city.owned.includes(d.id);
       const [cx, cy] = S([d.x, d.y]);
       const size = w * 0.05;
-      if (!owned && seen[i] && (d.type !== 'pit' || pitReady(city))) {
+      if (!owned && seen[i] && (d.type !== 'pit' || (pitReady(city) && !city.pitOpened))) {
         this.path(cell);
         ctx.lineWidth = 1.6;
         ctx.strokeStyle = AMBER;

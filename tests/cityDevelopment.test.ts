@@ -87,7 +87,7 @@ describe('permanent city development', () => {
     expect(s.city.open).toBe(false);
     expect(s.city.points.eq(0)).toBe(true);
     expect(s.city.development).toBe(8);
-    expect(cityEffects(s.city).income.eq(developmentIncome(s.city))).toBe(true);
+    expect(cityEffects(s.city).income.eq(developmentIncome(s.city).mul(100))).toBe(true);
     expect(developCity(s.city)).toBe(false);
   });
 
@@ -99,7 +99,7 @@ describe('permanent city development', () => {
     expect(s.city.owned).toContain('pit');
     expect(descend(s)).toBe(true);
     expect(s.city.development).toBe(8);
-    expect(cityEffects(s.city).income.toNumber()).toBeCloseTo(1.1 ** 8);
+    expect(cityEffects(s.city).income.toNumber()).toBeCloseTo(100 * 1.1 ** 8);
   });
 
   it('keeps the old pit requirement independent from the optional upgrade', () => {
@@ -150,7 +150,7 @@ describe('v18 migration and city development saves', () => {
     expect(back.city.development).toBe(0);
     expect(back.city.owned).toEqual(s.city.owned);
     expect(back.city.points.eq(s.city.points)).toBe(true);
-    expect(JSON.parse(serialize(back)).v).toBe(20);
+    expect(JSON.parse(serialize(back)).v).toBe(21);
   });
 
   it('round-trips a developed city and normalises invalid levels', () => {

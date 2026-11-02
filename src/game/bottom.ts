@@ -169,6 +169,7 @@ export const AUTO_OPEN: readonly { cost: number; costIn: Rarity; upTo: Container
 
 /** The old town supplies the first recovery materials after descent. */
 export const START_HEAP = 300;
+export const startHeap = (total: Decimal) => START_HEAP + 50 * Math.min(10, Math.max(0, Math.floor(total.add(1).log10().toNumber() / 10)));
 /** Excavation power before strata resistance and equipment. */
 export const BASE_DIG = 2;
 /**
@@ -177,7 +178,8 @@ export const BASE_DIG = 2;
  * to the runaway upper economy.
  */
 export const FALL_PER_DIGIT = 0.1;
-export const fallPerMinute = (aboveTrash: Decimal) => FALL_PER_DIGIT * Math.max(0, aboveTrash.add(1).log10().toNumber());
+export const fallPerMinute = (aboveTrash: Decimal, development = 0) => Math.min(30,
+  FALL_PER_DIGIT * Math.max(0, aboveTrash.add(1).log10().toNumber()) * (1 + 0.05 * development));
 
 /** Pity: a find of at least this rarity comes no later than after this many openings. */
 export const PITY: readonly [Rarity, number][] = [
@@ -199,6 +201,14 @@ export interface BottomState {
   /** Surface tonnes recovered separately from excavation. */
   supplied: number;
   equipment: { hoist: boolean; bench: boolean; borer: number };
+  route: 'auto' | 'depth' | 'site' | 'seam';
+  siteId: EquipmentId | 'borer';
+  objectWork: Record<EquipmentId | 'borer', number>;
+  benchMode: 'scrap' | 'nonferrous';
+  seamProgress: number;
+  seamFound: number;
+  firstUmeGranted: boolean;
+  firstUmePresented: boolean;
   /** Fraction of a tonne dug toward the next container. */
   dig: number;
   /** Tonnes dug in all: how deep the miner has gone, which epochs he has reached. */
@@ -235,6 +245,14 @@ export const newBottom = (): BottomState => ({
   heap: 0,
   supplied: 0,
   equipment: { hoist: false, bench: false, borer: 0 },
+  route: 'auto',
+  siteId: 'hoist',
+  objectWork: { hoist: 0, bench: 0, borer: 0 },
+  benchMode: 'scrap',
+  seamProgress: 0,
+  seamFound: 0,
+  firstUmeGranted: false,
+  firstUmePresented: false,
   dig: 0,
   dug: 0,
   stock: { sack: 0, crate: 0, suitcase: 0, safe: 0, coffin: 0 },
@@ -271,8 +289,13 @@ export const DIG_NONFERROUS = 0.35;
 const digPower = (b: BottomState) => BASE_DIG * 1.3 ** b.tools.pick
   * (b.equipment.hoist ? 1.25 : 1) * 1.5 ** b.equipment.borer
   * (setPower(b, 'medieval') ? 1 + 0.25 * setPower(b, 'medieval') : 1);
-export const digRate = (b: BottomState) => digPower(b) / (1 + b.dug / STRATUM_DENSITY);
+export const digRate = (b: BottomState, fall = 0) => digPower(b) * pressure(b, fall) / (1 + b.dug / STRATUM_DENSITY);
 export const supplyRate = (b: BottomState) => b.equipment.hoist ? 6 : 2;
+export const pressure = (b: BottomState, fall: number) => 1 + 0.05 * Math.min(5, Math.max(0, fall - supplyRate(b)));
+export const OBJECT_WORK = { hoist: 120, bench: 300, borer: 600 } as const;
+export const objectReady = (b: BottomState, id: EquipmentId | 'borer') => b.objectWork[id] >= OBJECT_WORK[id];
+export const objectUnlocked = (b: BottomState, id: EquipmentId | 'borer') => b.dug >= (id === 'borer' ? 11000 : EQUIPMENT.find((e) => e.id === id)!.depth);
+export const objectBought = (b: BottomState, id: EquipmentId | 'borer') => id === 'borer' ? b.equipment.borer > 0 : b.equipment[id];
 /** Completed deep sectors improve every find, without requiring a full collection. */
 export const DEEP_SECTOR = 11000;
 export const deepSectors = (b: BottomState) => Math.max(0, Math.floor(b.dug / DEEP_SECTOR) - 1);
@@ -286,7 +309,7 @@ export type EquipmentId = typeof EQUIPMENT[number]['id'];
 
 export function buyEquipment(b: BottomState, id: EquipmentId): boolean {
   const e = EQUIPMENT.find((e) => e.id === id)!;
-  if (!b.open || b.dug < e.depth || b.equipment[id] || b.money[e.costIn].lt(e.cost)) return false;
+  if (!b.open || !objectUnlocked(b, id) || !objectReady(b, id) || b.equipment[id] || b.money[e.costIn].lt(e.cost)) return false;
   b.money[e.costIn] = b.money[e.costIn].sub(e.cost);
   b.equipment[id] = true;
   if (b.saving === `equipment:${id}`) b.saving = null;
@@ -295,7 +318,7 @@ export function buyEquipment(b: BottomState, id: EquipmentId): boolean {
 
 export const borerCost = (b: BottomState) => D(2).pow(b.equipment.borer);
 export function buyBorer(b: BottomState): boolean {
-  if (!b.open || !umeOpen(b) || b.ume.lt(borerCost(b))) return false;
+  if (!b.open || !umeOpen(b) || (b.equipment.borer === 0 && !objectReady(b, 'borer')) || b.ume.lt(borerCost(b))) return false;
   b.ume = b.ume.sub(borerCost(b));
   b.equipment.borer++;
   if (b.saving === 'borer') b.saving = null;
@@ -306,7 +329,7 @@ export function buyBorer(b: BottomState): boolean {
 export function depthTarget(b: BottomState): { name: string; from: number; to: number; reward: string } {
   const next = EPOCHS.findIndex((e) => e.depth > b.dug);
   if (next >= 0) return { name: EPOCHS[next].name, from: EPOCHS[next - 1].depth, to: EPOCHS[next].depth,
-    reward: next === 1 ? 'Новые находки и подъёмник' : next === 2 ? 'Новые находки и разборочный стол' : 'Новые находки и проходчик за УМЕ' };
+    reward: next === 1 ? 'Новые находки и подъёмник' : next === 2 ? 'Новые находки и разборочный стол' : 'Новые находки и неизвестный механизм' };
   const to = (Math.floor(b.dug / DEEP_SECTOR) + 1) * DEEP_SECTOR;
   return { name: `Глубинный пласт ${Math.floor(b.dug / DEEP_SECTOR)}`, from: to - DEEP_SECTOR, to,
     reward: 'Добыча из каждой находки ещё +10% от базовой' };
@@ -335,7 +358,16 @@ function pick<T>(items: readonly T[], weights: readonly number[], r: number): T 
   return items[items.length - 1];
 }
 
-/** Surface recovery supplies common materials; old strata always remain diggable. */
+const OBJECT_ORDER: readonly (EquipmentId | 'borer')[] = ['hoist', 'bench', 'borer'];
+const OBJECT_DEPTH = { hoist: 1000, bench: 4500, borer: 11000 } as const;
+
+export function activeObject(b: BottomState): EquipmentId | 'borer' | null {
+  const available = OBJECT_ORDER.filter((id) => objectUnlocked(b, id) && !objectReady(b, id) && !objectBought(b, id));
+  if (b.route === 'auto') return available[0] ?? null;
+  return b.route === 'site' && available.includes(b.siteId) ? b.siteId : null;
+}
+
+/** Surface recovery and exact excavation across site/depth milestones. */
 export function bottomTick(b: BottomState, seconds: number, fall: number, rand: () => number): number {
   if (!b.open || !Number.isFinite(seconds) || seconds <= 0) return 0;
   const minutes = seconds / 60;
@@ -344,19 +376,61 @@ export function bottomTick(b: BottomState, seconds: number, fall: number, rand: 
   b.heap = Math.max(0, b.heap - recovered);
   b.supplied += recovered;
   b.money.dust = b.money.dust.add(recovered);
-  if (b.equipment.bench) b.money.scrap = b.money.scrap.add(recovered * 0.25);
+  if (b.equipment.bench) {
+    if (b.benchMode === 'scrap') b.money.scrap = b.money.scrap.add(recovered * 0.25);
+    else b.money.nonferrous = b.money.nonferrous.add(recovered * 0.12);
+  }
 
-  // Integrate the increasing resistance exactly, independent of tick size.
   const density = STRATUM_DENSITY;
-  const start = 1 + b.dug / density;
-  const work = digPower(b) * minutes;
-  const end = Math.sqrt(start * start + 2 * work / density);
-  const dug = 2 * work / (start + end);
-  // Ordinary materials are recovered from every tonne, independently of rarity rolls.
-  b.money.scrap = b.money.scrap.add(dug * DIG_SCRAP);
-  b.money.nonferrous = b.money.nonferrous.add(dug * DIG_NONFERROUS);
-  b.dug += dug;
-  b.dig += dug;
+  let left = minutes;
+  let excavated = 0;
+  for (let guard = 0; left > 1e-10 && guard < 20; guard++) {
+    if (b.dug >= 11000 && !b.firstUmeGranted) {
+      b.ume = b.ume.add(1);
+      b.firstUmeGranted = true;
+    }
+    const site = activeObject(b);
+    const seam = b.route === 'seam' && b.equipment.borer > 0;
+    const depthShare = seam ? 0 : site ? b.equipment.hoist ? 0.25 : 0 : 1;
+    const sideShare = 1 - depthShare;
+    const power = digPower(b) * pressure(b, fall);
+    const k = 1 + b.dug / density;
+    const timeForDepth = (delta: number) => (k * delta + delta * delta / (2 * density)) / (power * depthShare);
+    const nextDepth = OBJECT_ORDER.map((id) => OBJECT_DEPTH[id]).find((d) => d > b.dug + 1e-8);
+    let step = left;
+    if (depthShare && nextDepth !== undefined) step = Math.min(step, timeForDepth(nextDepth - b.dug));
+    if (site) {
+      const remaining = OBJECT_WORK[site] - b.objectWork[site];
+      const needed = depthShare ? timeForDepth(remaining * depthShare / sideShare) : remaining * k / (power * sideShare);
+      step = Math.min(step, needed);
+    }
+    if (step <= 1e-12) break;
+    const depth = depthShare
+      ? 2 * power * depthShare * step / (k + Math.sqrt(k * k + 2 * power * depthShare * step / density)) : 0;
+    const side = depthShare ? depth * sideShare / depthShare : power * sideShare * step / k;
+    b.dug += depth;
+    excavated += depth + side;
+    if (site) {
+      b.objectWork[site] = Math.min(OBJECT_WORK[site], b.objectWork[site] + side);
+      if (OBJECT_WORK[site] - b.objectWork[site] < 1e-7) b.objectWork[site] = OBJECT_WORK[site];
+    }
+    if (seam) {
+      const total = b.seamProgress + side;
+      const earned = Math.floor(total / 20);
+      b.seamProgress = total - earned * 20;
+      b.seamFound += earned;
+      b.money.anomaly = b.money.anomaly.add(earned);
+    }
+    left -= step;
+    if (nextDepth !== undefined && Math.abs(b.dug - nextDepth) < 1e-7) b.dug = nextDepth;
+  }
+  if (b.dug >= 11000 && !b.firstUmeGranted) {
+    b.ume = b.ume.add(1);
+    b.firstUmeGranted = true;
+  }
+  b.money.scrap = b.money.scrap.add(excavated * DIG_SCRAP);
+  b.money.nonferrous = b.money.nonferrous.add(excavated * DIG_NONFERROUS);
+  b.dig += excavated;
   let n = 0;
   const odds = containerOdds(b);
   while (b.dig >= 1) {
@@ -528,12 +602,12 @@ export function savingGoals(b: BottomState): SavingGoal[] {
     id: `tool:${t.id}`, name: `${t.name} · ур. ${b.tools[t.id] + 1}`, cost: toolCost(t, b.tools[t.id]), costIn: t.costIn, unlocked: true,
   }));
   for (const e of EQUIPMENT) if (!b.equipment[e.id]) goals.push({ id: `equipment:${e.id}`, name: e.name,
-    cost: D(e.cost), costIn: e.costIn, unlocked: b.dug >= e.depth });
+    cost: D(e.cost), costIn: e.costIn, unlocked: objectUnlocked(b, e.id) && objectReady(b, e.id) });
   const auto = AUTO_OPEN[b.auto];
   if (auto) goals.push({ id: 'auto', name: `Автовскрытие · ур. ${b.auto + 1}`, cost: D(auto.cost), costIn: auto.costIn, unlocked: true });
   for (const sc of ABOVE_SCRIPTS) if (!b.scripts.includes(sc.id)) goals.push({ id: `script:${sc.id}`, name: `Скрипт: ${sc.id}`,
     cost: D(sc.cost), costIn: sc.costIn, unlocked: true });
-  goals.push({ id: 'borer', name: `Проходчик · ур. ${b.equipment.borer + 1}`, cost: borerCost(b), costIn: 'ume', unlocked: umeOpen(b) });
+  if (b.firstUmeGranted) goals.push({ id: 'borer', name: `Проходчик · ур. ${b.equipment.borer + 1}`, cost: borerCost(b), costIn: 'ume', unlocked: umeOpen(b) && (b.equipment.borer > 0 || objectReady(b, 'borer')) });
   return goals;
 }
 

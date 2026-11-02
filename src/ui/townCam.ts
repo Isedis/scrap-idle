@@ -12,6 +12,7 @@ export interface TownView {
   /** Share of the people still living in town, 0..1: fewer windows lit. */
   people: number;
   development: number;
+  pitOpened: boolean;
 }
 
 /** A district as the camera sees it: where it stands in the picture and how big. */
@@ -209,7 +210,7 @@ export class TownCam extends Camera<TownView> {
     for (const sp of this.spots) {
       if (sp.type === 'river') continue;
       if (sp.type === 'pit') {
-        if (v.development === 0) this.pit(sp, v.owned.includes('pit'), inhaling);
+        if (v.development === 0) this.pit(sp, v.owned.includes('pit') || v.pitOpened, inhaling);
         continue;
       }
       const owned = v.owned.includes(sp.id);
@@ -221,7 +222,7 @@ export class TownCam extends Camera<TownView> {
       }
     }
     drawTownGrowthLinks(ctx, this.spots, v.owned, v.development, growthTime);
-    if (v.development > 0) this.pit(pit, v.owned.includes('pit'), inhaling);
+    if (v.development > 0) this.pit(pit, v.owned.includes('pit') || v.pitOpened, inhaling);
     drawTownGrowthIntake(ctx, this.spots, v.owned, v.development, growthTime);
     ctx.globalCompositeOperation = 'lighter';
     const rim = ctx.createRadialGradient(pit.x, pit.y, 0, pit.x, pit.y, w * 0.4);

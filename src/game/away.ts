@@ -14,6 +14,7 @@ export interface AwaySnapshot {
   threat: number;
   fractions: Decimal;
   news: number;
+  bottom: { firstUme: boolean; work: { hoist: number; bench: number; borer: number }; seamFound: number };
 }
 
 export interface AwayReport {
@@ -34,22 +35,29 @@ export interface AwayReport {
   balance: { trash: Decimal; recycled: Decimal; fractions: Decimal };
   income: Decimal;
   hearing: 'idle' | 'walk' | 'check' | 'caught';
+  bottom: { firstUme: boolean; site: string; seamFound: number };
 }
 
 const sumFractions = (s: GameState) => s.sorting.total;
 
 export function awaySnapshot(s: GameState): AwaySnapshot {
-  return { trash: s.trash, totalTrash: s.totalTrash, threat: s.threat.level, fractions: sumFractions(s), news: s.sorting.news.length };
+  return { trash: s.trash, totalTrash: s.totalTrash, threat: s.threat.level, fractions: sumFractions(s), news: s.sorting.news.length,
+    bottom: { firstUme: s.bottom.firstUmeGranted, work: { ...s.bottom.objectWork }, seamFound: s.bottom.seamFound } };
 }
 
 export function awayReport(before: AwaySnapshot, s: GameState, seconds: number): AwayReport {
   const news: Inspection[] = s.sorting.news.slice(before.news);
+  const site = (['hoist', 'bench', 'borer'] as const).find((id) => s.bottom.objectWork[id] > before.bottom.work[id] + 1e-6);
+  const siteName = { hoist: 'Подъёмник', bench: 'Разборочный стол', borer: 'Проходчик' };
   return {
     seconds,
     automation: offlineActivity(s),
     balance: { trash: s.trash, recycled: s.recycle.points, fractions: FRACS.reduce((sum, f) => sum.add(s.sorting.fractions[f]), new Decimal(0)) },
     income: ratePerSecond(s),
     hearing: s.hearing.phase,
+    bottom: { firstUme: !before.bottom.firstUme && s.bottom.firstUmeGranted,
+      site: site ? `${siteName[site]}: ${Math.floor(s.bottom.objectWork[site])} / ${site === 'hoist' ? 120 : site === 'bench' ? 300 : 600} т${s.bottom.objectWork[site] >= (site === 'hoist' ? 120 : site === 'bench' ? 300 : 600) ? ' · можно запустить' : ''}` : '',
+      seamFound: Math.max(0, s.bottom.seamFound - before.bottom.seamFound) },
     efficiency: offlineRate(s),
     trash: s.totalTrash.sub(before.totalTrash).max(0),
     threat: s.threat.level,

@@ -5,6 +5,7 @@ import {
   MELT,
   RARITIES,
   START_HEAP,
+  startHeap,
   autoOpen,
   CONTAINERS,
   containerOdds,
@@ -53,14 +54,64 @@ describe('the bottom of the pit', () => {
     expect(START_HEAP).toBeGreaterThan(0);
   });
 
+  it('uses pre-descent production for the one-time starting heap', () => {
+    expect(startHeap(D(0))).toBe(300);
+    expect(startHeap(D('1e40'))).toBe(500);
+    expect(startHeap(D('1e200'))).toBe(800);
+  });
+
+  it('digs a side object for ordinary materials without advancing depth', () => {
+    const b = newBottom();
+    b.open = true; b.dug = 1000;
+    bottomTick(b, 600, 0, () => 0);
+    expect(b.dug).toBe(1000);
+    expect(b.objectWork.hoist).toBeGreaterThan(17);
+    expect(b.money.scrap.toNumber()).toBeCloseTo(b.objectWork.hoist * 0.5);
+    expect(b.stock.sack).toBe(Math.floor(b.objectWork.hoist));
+  });
+
+  it('grants the first UME exactly once at real depth 11000', () => {
+    const b = newBottom();
+    b.open = true; b.dug = 10999;
+    b.route = 'depth';
+    bottomTick(b, 120, 0, () => 0);
+    expect(b.dug).toBeGreaterThan(11000);
+    expect(b.ume.toNumber()).toBe(1);
+    expect(b.firstUmeGranted).toBe(true);
+    bottomTick(b, 120, 0, () => 0);
+    expect(b.ume.toNumber()).toBe(1);
+  });
+
+  it('makes the seam a guaranteed source of anomalies after starting the borer', () => {
+    const b = newBottom();
+    b.open = true; b.dug = 11000; b.equipment.borer = 1;
+    b.route = 'seam';
+    bottomTick(b, 1800, 0, () => 0);
+    expect(b.dug).toBe(11000);
+    expect(b.money.anomaly.toNumber()).toBe(Math.floor((b.dig + b.stock.sack) / 20));
+    expect(b.money.anomaly.toNumber()).toBeGreaterThan(0);
+  });
+
+  it('splits long excavation at object boundaries like short ticks do', () => {
+    const a = newBottom(); const b = newBottom();
+    a.open = b.open = true;
+    a.dug = b.dug = 998;
+    bottomTick(a, 5400, 0, () => 0);
+    for (let i = 0; i < 90; i++) bottomTick(b, 60, 0, () => 0);
+    expect(a.objectWork.hoist).toBe(120);
+    expect(a.objectWork.hoist).toBeCloseTo(b.objectWork.hoist, 7);
+    expect(a.dug).toBeCloseTo(b.dug, 6);
+    expect(a.stock).toEqual(b.stock);
+  });
+
   it('separates fresh waste recovery from excavation and never buries depth', () => {
     const a = newBottom(), b = newBottom();
     a.open = b.open = true;
     a.heap = 1;
     bottomTick(a, 60, 0, () => 0);
     bottomTick(b, 60, 60, () => 0);
-    expect(a.dug).toBeCloseTo(b.dug, 10);
-    expect(a.stock).toEqual(b.stock);
+    expect(b.dug).toBeGreaterThan(a.dug);
+    expect(b.stock.sack).toBeGreaterThan(a.stock.sack);
     expect(a.money.dust.toNumber()).toBe(1);
     expect(b.money.dust.toNumber()).toBe(2);
     expect(b.heap).toBe(58);
@@ -88,6 +139,7 @@ describe('the bottom of the pit', () => {
     b.money.scrap = D(40);
     expect(buyEquipment(b, 'hoist')).toBe(false);
     b.dug = EQUIPMENT[0].depth;
+    b.objectWork.hoist = 120;
     const rate = digRate(b);
     expect(buyEquipment(b, 'hoist')).toBe(true);
     expect(digRate(b)).toBeCloseTo(rate * 1.25);
@@ -96,6 +148,7 @@ describe('the bottom of the pit', () => {
     b.ume = D(3);
     expect(buyBorer(b)).toBe(false);
     b.dug = 11000;
+    b.objectWork.borer = 600;
     const before = digRate(b);
     expect(buyBorer(b)).toBe(true);
     expect(b.ume.toNumber()).toBe(2);
@@ -164,6 +217,7 @@ describe('the bottom of the pit', () => {
   it('reserves the chosen upgrade while free containers and paid surplus keep opening', () => {
     const b = newBottom();
     b.open = true; b.auto = 2; b.saving = 'equipment:hoist'; b.dug = 1000;
+    b.objectWork.hoist = 120;
     b.money.scrap = D(42); b.stock.crate = 10; b.stock.sack = 1;
     // High luck makes bonus scrap negligible; a relic is returned in each opening.
     b.tools.luck = 15;
@@ -269,7 +323,7 @@ describe('the descent and the save', () => {
     s.bottom.equipment = { hoist: true, bench: true, borer: 2 };
     s.bottom.supplied = 50;
     s.city.owned.push('pit');
-    expect(descend(s)).toBe(true);
+    expect(descend(s)).toBe(false);
     expect(s.bottom.dug).toBe(depth);
     expect(s.bottom.supplied).toBe(50);
     expect(s.bottom.equipment).toEqual({ hoist: true, bench: true, borer: 2 });
@@ -286,6 +340,7 @@ describe('the descent and the save', () => {
     old.v = 18;
     delete old.layers.bottom.supplied;
     delete old.layers.bottom.equipment;
+    for (const key of ['route', 'siteId', 'objectWork', 'benchMode', 'seamProgress', 'seamFound', 'firstUmeGranted', 'firstUmePresented']) delete old.layers.bottom[key];
     const back = deserialize(JSON.stringify(old))!;
     expect(back.bottom.dug).toBe(12000);
     expect(back.bottom.heap).toBe(45);
@@ -295,7 +350,23 @@ describe('the descent and the save', () => {
     expect(back.bottom.money.nonferrous.toNumber()).toBe(17);
     expect(back.bottom.supplied).toBe(0);
     expect(back.bottom.equipment).toEqual({ hoist: false, bench: false, borer: 0 });
-    expect(JSON.parse(serialize(back)).v).toBe(20);
+    expect(JSON.parse(serialize(back)).v).toBe(21);
+  });
+
+  it('gives an old deep save its first UME once without replaying old excavation', async () => {
+    const { newGame } = await import('../src/game/state');
+    const { serialize, deserialize } = await import('../src/game/save');
+    const state = newGame(0);
+    state.bottom.open = true;
+    state.bottom.dug = 11000;
+    const old = JSON.parse(serialize(state));
+    old.v = 20;
+    for (const key of ['route', 'siteId', 'objectWork', 'benchMode', 'seamProgress', 'seamFound', 'firstUmeGranted', 'firstUmePresented']) delete old.layers.bottom[key];
+    const back = deserialize(JSON.stringify(old))!;
+    expect(back.bottom.ume.toNumber()).toBe(1);
+    expect(back.bottom.objectWork.borer).toBe(600);
+    expect(back.bottom.firstUmePresented).toBe(false);
+    expect(deserialize(serialize(back))!.bottom.ume.toNumber()).toBe(1);
   });
 
   it('migrates v19 without changing currencies, and persists or sanitises the chosen goal', async () => {

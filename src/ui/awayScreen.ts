@@ -47,6 +47,8 @@ export class AwayScreen {
     if (r.automation.recycled.gt(0)) received.append(row('Вторсырья за переработки', `+${format(r.automation.recycled)} ВС`));
     if (r.fractions.gt(0)) received.append(row('Фракций', `+${format(r.fractions.floor())}`));
     if (r.finds.length) received.append(row('Уникальных находок', String(r.finds.length)));
+    if (r.bottom.firstUme) received.append(row('Открыта УМЕ', '×1', 'away-primary'));
+    if (r.bottom.seamFound) received.append(row('Аномалий из жилы', `+${r.bottom.seamFound}`));
     received.append(el('p', 'away-explain', 'Получено за отсутствие, включая потраченное автоматикой.'));
 
     const work = section('02 / СДЕЛАНО АВТОМАТИКОЙ');
@@ -85,6 +87,9 @@ export class AwayScreen {
     if (r.automation.resorts) resets.push(`Пересортировок: ${r.automation.resorts}`);
     if (resets.length) summary.append(el('p', 'away-brief-note', resets.join(' · ')));
     if (r.finds.length) summary.append(el('p', 'away-brief-note', `На столе новые находки: ${r.finds.length}.`));
+    if (r.bottom.firstUme) summary.append(el('p', 'away-brief-note', 'В шахте открыта первая УМЕ ×1.'));
+    if (r.bottom.site) summary.append(el('p', 'away-brief-note', r.bottom.site));
+    if (r.bottom.seamFound) summary.append(el('p', 'away-brief-note', `Жила: +${r.bottom.seamFound} аномалий.`));
     const lines: HTMLElement[] = [awayVignette(r), summary];
     if (r.threat >= 0.7 || r.hearing !== 'idle') lines.push(el('p', 'away-condition bad', danger));
     lines.push(details);
