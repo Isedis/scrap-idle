@@ -233,16 +233,64 @@ export interface CityState {
   /** Hectares over the whole game. */
   total: Decimal;
   reforms: number;
+  /** Permanent development bought for hectares, retained when the town resets. */
+  development: number;
   /** Districts the landfill holds, in the order taken; the landfill itself first. */
   owned: string[];
 }
 
-export const newCity = (): CityState => ({ open: false, points: D(0), total: D(0), reforms: 0, owned: ['dump'] });
+export const newCity = (): CityState => ({ open: false, points: D(0), total: D(0), reforms: 0, development: 0, owned: ['dump'] });
 
 /** Resorts, counted since the last reform, that open the Town view: a look at what is coming. */
 export const CITY_OPEN_SORTS = 5;
 /** Resorts the reform itself needs. */
 export const REFORM_SORTS = 7;
+
+/** Development is optional: it never gates district annexation or the descent. */
+export const DEVELOPMENT_BASE_COST = 25;
+export const DEVELOPMENT_COST_STEP = 1.7;
+export const DEVELOPMENT_INCOME_STEP = 1.1;
+export const developmentCost = (city: CityState) => D(DEVELOPMENT_BASE_COST).mul(Decimal.pow(DEVELOPMENT_COST_STEP, city.development)).ceil();
+export const developmentIncome = (city: CityState) => Decimal.pow(DEVELOPMENT_INCOME_STEP, city.development);
+export const developmentOpen = (city: CityState) => city.open && (city.owned.length >= 4 || city.development > 0);
+export const canDevelop = (city: CityState) => developmentOpen(city) && Number.isSafeInteger(city.development + 1) && city.points.gte(developmentCost(city));
+export function developCity(city: CityState): boolean {
+  if (!canDevelop(city)) return false;
+  city.points = city.points.sub(developmentCost(city));
+  city.development += 1;
+  return true;
+}
+
+export function developmentStage(level: number): string {
+  if (level < 1) return 'Мусорные площадки';
+  if (level < 4) return 'Первые сооружения';
+  if (level < 8) return 'Сборные ленты';
+  if (level < 16) return 'Рабочие цеха';
+  if (level < 32) return 'Магистрали к яме';
+  return 'Многоярусный город';
+}
+
+export interface PitRoute { from: string; to: string; load: number }
+/** Each connected owned district has one downstream neighbour; the pit is the only sink. */
+export function cityPitRoutes(owned: readonly string[]): readonly PitRoute[] {
+  const active = new Set(owned);
+  const visited = new Set(['pit']);
+  const order = ['pit'];
+  const parent = new Map<string, string>();
+  for (let i = 0; i < order.length; i++) {
+    const id = order[i];
+    for (const next of plan().neighbours.get(id) ?? []) {
+      if (!active.has(next) || visited.has(next)) continue;
+      visited.add(next); order.push(next); parent.set(next, id);
+    }
+  }
+  const loads = new Map(order.map((id) => [id, 1]));
+  for (const id of [...order].reverse()) {
+    const into = parent.get(id);
+    if (into) loads.set(into, (loads.get(into) ?? 0) + (loads.get(id) ?? 1));
+  }
+  return [...parent].map(([from, to]) => ({ from, to, load: loads.get(from) ?? 1 }));
+}
 
 /**
  * What the next district costs: gently dearer each time, 3 ha for the first, about 430
@@ -322,14 +370,14 @@ export interface CityEffects {
   startPoints: Decimal;
 }
 
-const effectsCache = new WeakMap<CityState, { owned: number; fx: CityEffects }>();
+const effectsCache = new WeakMap<CityState, { owned: readonly string[]; count: number; development: number; fx: CityEffects }>();
 
-/** What the town gives; worked out again only when a district is taken, as income asks all the time. */
+/** What the town gives; worked out again only when territory or development changes, as income asks all the time. */
 export function cityEffects(city: CityState): CityEffects {
   const hit = effectsCache.get(city);
-  if (hit && hit.owned === city.owned.length) return hit.fx;
+  if (hit && hit.owned === city.owned && hit.count === city.owned.length && hit.development === city.development) return hit.fx;
   const fx = computeEffects(city);
-  effectsCache.set(city, { owned: city.owned.length, fx });
+  effectsCache.set(city, { owned: city.owned, count: city.owned.length, development: city.development, fx });
   return fx;
 }
 
@@ -340,7 +388,7 @@ function computeEffects(city: CityState): CityEffects {
   const churches = power(city, 'church');
   const rivers = power(city, 'river');
   return {
-    income: mul('live', 0.5).mul(city.owned.includes('pit') ? 100 : 1),
+    income: mul('live', 0.5).mul(city.owned.includes('pit') ? 100 : 1).mul(developmentIncome(city)),
     recycled: mul('prom', 1),
     fractions: mul('market', 0.5),
     schools: city.owned.filter((id) => districtById(id)!.type === 'school').length,

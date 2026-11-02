@@ -1,5 +1,5 @@
 {
- "v": 11,
+ "v": 18,
  "trash": "0",
  "totalTrash": "0",
  "owned": {
@@ -44,6 +44,7 @@
    "arrival": 0,
    "inspected": 0,
    "found": [],
+   "echoes": {},
    "cycleSeconds": 0
   },
   "city": {
@@ -51,9 +52,43 @@
    "points": "0",
    "total": "0",
    "reforms": 0,
+   "development": 0,
    "owned": [
     "dump"
    ]
+  },
+  "bottom": {
+   "open": false,
+   "heap": 0,
+   "dig": 0,
+   "dug": 0,
+   "stock": {
+    "sack": 0,
+    "crate": 0,
+    "suitcase": 0,
+    "safe": 0,
+    "coffin": 0
+   },
+   "money": {
+    "dust": "0",
+    "scrap": "0",
+    "nonferrous": "0",
+    "antique": "0",
+    "relic": "0",
+    "anomaly": "0"
+   },
+   "tools": {
+    "pick": 0,
+    "lamp": 0,
+    "luck": 0
+   },
+   "auto": 0,
+   "dry": {},
+   "found": {},
+   "opened": 0,
+   "ume": "0",
+   "above": "0",
+   "scripts": []
   }
  },
  "autobuy": true,
@@ -64,6 +99,8 @@
   "bravest": 0
  },
  "story": {
+  "cityLetters": 0,
+  "cityDocuments": false,
   "cases": [],
   "notes": 0,
   "voices": [],
@@ -78,7 +115,7 @@
  "achievements": [],
  "autoRecycle": {
   "on": false,
-  "factor": 1
+  "factor": 0.1
  },
  "scripts": {
   "bought": [],
@@ -98,12 +135,15 @@
   "sortOn": false,
   "treeOn": true,
   "lineOn": true,
+  "lineBuild": true,
   "sortMode": "share",
   "sortShare": 0.25,
   "sortMinutes": 60
  },
  "hearing": {
   "noise": 1,
+  "noiseAuto": true,
+  "resumeNoise": null,
   "meter": 0,
   "phase": "idle",
   "left": 0,

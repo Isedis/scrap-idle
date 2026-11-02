@@ -221,7 +221,7 @@ export function incomeBreakdown(state: GameState): { base: Decimal; parts: Incom
     { label: 'Достижения', mult: D(achievementMult(state.achievements)), note: '+1% за каждое' },
     { label: 'Пересортировки', mult: Decimal.pow(SORT_INCOME, so.sorts).mul(rankIncome(so.sorts)), note: '×2 за каждую и разряды' },
     { label: 'Фракции', mult: fractionsIncome(so.total), note: 'все фракции за игру' },
-    { label: 'Город', mult: cityEffects(state.city).income, note: 'жилые кварталы и яма' },
+    { label: 'Город', mult: cityEffects(state.city).income, note: 'кварталы, яма и постоянное развитие' },
     { label: 'Шум цеха', mult: D(noiseMult(state.hearing, so.open)), note: 'громче — больше, но оно слышит' },
     { label: 'Рецепты и находки', mult: D((hasRecipe(so, 'e1') ? 3 : 1) * uniqueMult(so, 'income')), note: 'сортировка' },
   ];
@@ -980,7 +980,7 @@ export function descend(state: GameState): boolean {
   state.sorting = sorting;
   state.recycle = newLayer();
   rememberCity(state.story, state.city);
-  state.city = newCity();
+  state.city = { ...newCity(), development: state.city.development };
   state.scripts = newScripts();
   state.autoRecycle = { on: false, factor: AUTO_FACTOR_DEFAULT };
   state.tracks = {};

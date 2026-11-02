@@ -1,3 +1,4 @@
+import { drawCityGrowth, drawPitIntake } from './cityGrowth';
 import { DISTRICTS, PLAN_H, annexCost, pitReady, plan, visible, type CityState, type DistrictType, type Point } from '../game/city';
 import { format } from '../game/num';
 import { el } from './dom';
@@ -85,6 +86,7 @@ export class TownPlan {
   private w = 0;
   private h = 0;
   private t = 0;
+  private motion = window.matchMedia('(prefers-reduced-motion: reduce)');
   private fogCanvas: HTMLCanvasElement | null = null;
   private noise: HTMLCanvasElement | null = null;
   selected = 'dump';
@@ -121,9 +123,10 @@ export class TownPlan {
 
   /** Every frame while the plan is on screen. */
   draw(dt: number, city: CityState): void {
+    const development = city.development;
     if (!this.w) this.resize();
     if (!this.w) return;
-    this.t += dt;
+    this.t += this.motion.matches ? 0 : dt;
     const { ctx, w, h } = this;
     const { cells } = plan();
     const S = (p: Point): Point => [p[0] * w, p[1] * w];
@@ -161,20 +164,27 @@ export class TownPlan {
       ctx.clip();
       const [cx, cy] = S([d.x, d.y]);
       if (d.type === 'river') this.water(cell);
-      if (owned) this.heap(cell, i, d.type === 'dump');
+      if (owned) {
+        ctx.globalAlpha = development > 0 ? .55 : 1;
+        this.heap(cell, i, d.type === 'dump', development);
+        ctx.globalAlpha = 1;
+      }
       else this.glyph(d.type, cx, cy, w * 0.05, 1);
       ctx.restore();
       this.path(cell);
       ctx.lineWidth = 1;
-      ctx.strokeStyle = owned ? GLOW : DIM;
-      ctx.globalAlpha = owned ? 0.8 : 0.6;
+      ctx.strokeStyle = owned ? development > 0 ? '#52705b' : GLOW : DIM;
+      ctx.globalAlpha = owned ? development > 0 ? .65 : .8 : .6;
       ctx.stroke();
       ctx.globalAlpha = 1;
     });
 
+    drawCityGrowth(ctx, w, shapes, city, development, this.t);
     this.drawFog(shapes, seen, pitIndex);
     // The pit goes over the fog: everyone in town knows where it is.
     this.abyss(shapes[pitIndex], S([DISTRICTS[pitIndex].x, DISTRICTS[pitIndex].y]), city.owned.includes('pit'));
+
+    drawPitIntake(ctx, w, city, development, this.t);
 
     // Owned neighbours contributing to the selected district's cluster.
     const selected = DISTRICTS.find(d => d.id === this.selected)!;
@@ -203,8 +213,8 @@ export class TownPlan {
       }
       if (d.id === this.selected) {
         this.path(cell);
-        ctx.lineWidth = 2.4;
-        ctx.strokeStyle = owned ? GLOW : seen[i] || d.type === 'pit' ? AMBER : 'rgb(170 190 178 / 0.7)';
+        ctx.lineWidth = development > 0 ? 1.5 : 2.4;
+        ctx.strokeStyle = owned ? development > 0 ? '#91ad8b' : GLOW : seen[i] || d.type === 'pit' ? AMBER : 'rgb(170 190 178 / 0.7)';
         ctx.stroke();
       }
     });
@@ -428,7 +438,7 @@ export class TownPlan {
   }
 
   /** The landfill's stain over a district: dark, piled, junk in it; now and then a red light. */
-  private heap(cell: Point[], seedBase: number, home: boolean): void {
+  private heap(cell: Point[], seedBase: number, home: boolean, development = 0): void {
     const { ctx } = this;
     const xs = cell.map((p) => p[0]);
     const ys = cell.map((p) => p[1]);
@@ -441,7 +451,7 @@ export class TownPlan {
     let seed = 11 + seedBase * 97;
     const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     // Piles over what was there, lit along their tops.
-    for (let k = 0; k < 7; k++) {
+    for (let k = 0; k < (development > 0 ? 3 : 7); k++) {
       const px = x0 + r() * bw;
       const py = y0 + r() * bh;
       const rx = 7 + r() * 14;
@@ -458,9 +468,9 @@ export class TownPlan {
       ctx.stroke();
     }
     // Junk.
-    for (let k = 0; k < 26; k++) {
+    for (let k = 0; k < (development > 0 ? 7 : 26); k++) {
       ctx.fillStyle = ['#6a9f74', '#4f8a60', '#9fe8a8'][k % 3];
-      ctx.globalAlpha = 0.7;
+      ctx.globalAlpha = development > 0 ? .3 : .7;
       ctx.fillRect(x0 + r() * bw, y0 + r() * bh, 1.5 + r() * 3, 1.5 + r() * 2);
     }
     ctx.globalAlpha = 1;

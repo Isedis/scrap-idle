@@ -66,5 +66,8 @@ describe.runIf(process.env.FIXTURES)('save fixtures', () => {
     late.city.total = D(20000);
     late.city.owned = ['dump', ...DISTRICTS.filter((d) => d.type !== 'pit' && d.type !== 'dump').slice(0, 44).map((d) => d.id)];
     out('city-late', late);
+    const developed = copy(late);
+    developed.city.development = 8;
+    out('city-developed', developed);
   }, 30 * 60 * 1000);
 });

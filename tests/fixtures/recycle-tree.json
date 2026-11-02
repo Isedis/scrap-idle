@@ -1,7 +1,7 @@
 {
- "v": 11,
+ "v": 18,
  "trash": "10000",
- "totalTrash": "19946657146925.703",
+ "totalTrash": "19990650972791.63",
  "owned": {
   "collector": 10
  },
@@ -19,8 +19,8 @@
  "upgrades": [],
  "seenUpgrades": [
   "collector-1",
-  "cart-1",
   "collector-2",
+  "cart-1",
   "night-shift",
   "collector-3",
   "truck-1",
@@ -38,8 +38,8 @@
   "sorter-2",
   "plant-1",
   "sorter-3",
-  "state-order",
   "truck-4",
+  "state-order",
   "cart-4",
   "press-2",
   "landfill-1",
@@ -54,7 +54,9 @@
   "orbital-1",
   "landfill-2",
   "scrap-exchange",
-  "landfill-3"
+  "landfill-3",
+  "plant-4",
+  "waste-fuel"
  ],
  "buyMode": "one",
  "runTrash": "0",
@@ -72,7 +74,7 @@
     "s2",
     "p2"
    ],
-   "bestSeconds": 442.9877566817326,
+   "bestSeconds": 441.2956278949385,
    "repeats": {}
   },
   "sorting": {
@@ -97,6 +99,7 @@
    "arrival": 0,
    "inspected": 0,
    "found": [],
+   "echoes": {},
    "cycleSeconds": 0
   },
   "city": {
@@ -104,9 +107,43 @@
    "points": "0",
    "total": "0",
    "reforms": 0,
+   "development": 0,
    "owned": [
     "dump"
    ]
+  },
+  "bottom": {
+   "open": false,
+   "heap": 0,
+   "dig": 0,
+   "dug": 0,
+   "stock": {
+    "sack": 0,
+    "crate": 0,
+    "suitcase": 0,
+    "safe": 0,
+    "coffin": 0
+   },
+   "money": {
+    "dust": "0",
+    "scrap": "0",
+    "nonferrous": "0",
+    "antique": "0",
+    "relic": "0",
+    "anomaly": "0"
+   },
+   "tools": {
+    "pick": 0,
+    "lamp": 0,
+    "luck": 0
+   },
+   "auto": 0,
+   "dry": {},
+   "found": {},
+   "opened": 0,
+   "ume": "0",
+   "above": "0",
+   "scripts": []
   }
  },
  "autobuy": true,
@@ -114,9 +151,11 @@
   "level": 0,
   "losses": 0,
   "lights": 7,
-  "bravest": 0.5195954155673675
+  "bravest": 0.5164476289467189
  },
  "story": {
+  "cityLetters": 0,
+  "cityDocuments": false,
   "cases": [],
   "notes": 0,
   "voices": [],
@@ -131,7 +170,7 @@
  "achievements": [],
  "autoRecycle": {
   "on": false,
-  "factor": 1
+  "factor": 0.1
  },
  "scripts": {
   "bought": [],
@@ -151,12 +190,15 @@
   "sortOn": false,
   "treeOn": true,
   "lineOn": true,
+  "lineBuild": true,
   "sortMode": "share",
   "sortShare": 0.25,
   "sortMinutes": 60
  },
  "hearing": {
   "noise": 1,
+  "noiseAuto": true,
+  "resumeNoise": null,
   "meter": 0,
   "phase": "idle",
   "left": 0,

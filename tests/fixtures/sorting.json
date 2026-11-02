@@ -1,7 +1,7 @@
 {
- "v": 11,
+ "v": 18,
  "trash": "0",
- "totalTrash": "3.538485498343104e26",
+ "totalTrash": "3.7449063122822035e26",
  "owned": {
   "collector": 1
  },
@@ -11,8 +11,8 @@
  "upgrades": [],
  "seenUpgrades": [
   "collector-1",
-  "cart-1",
   "collector-2",
+  "cart-1",
   "night-shift",
   "collector-3",
   "truck-1",
@@ -30,8 +30,8 @@
   "sorter-2",
   "plant-1",
   "sorter-3",
-  "state-order",
   "truck-4",
+  "state-order",
   "cart-4",
   "press-2",
   "landfill-1",
@@ -47,17 +47,17 @@
   "landfill-2",
   "scrap-exchange",
   "landfill-3",
+  "plant-4",
   "waste-fuel",
   "incinerator-2",
+  "incinerator-3",
   "galactic-tender",
   "singularity-1",
-  "incinerator-3",
-  "plant-4",
   "landfill-4",
   "orbital-2",
-  "orbital-3",
   "orbital-drop",
   "singularity-2",
+  "orbital-3",
   "singularity-3",
   "incinerator-4",
   "orbital-4",
@@ -78,18 +78,18 @@
     "a4",
     "a5"
    ],
-   "bestSeconds": 6.218110006663895,
+   "bestSeconds": 4.401397367347106,
    "repeats": {}
   },
   "sorting": {
    "open": true,
    "fractions": {
-    "plastic": "26",
+    "plastic": "22",
     "metal": "0",
     "glass": "0",
-    "paper": "12"
+    "paper": "10"
    },
-   "total": "106",
+   "total": "100",
    "sorts": 1,
    "line": [
     "optic",
@@ -112,6 +112,7 @@
    "arrival": 0,
    "inspected": 0,
    "found": [],
+   "echoes": {},
    "cycleSeconds": 0
   },
   "city": {
@@ -119,19 +120,55 @@
    "points": "0",
    "total": "0",
    "reforms": 0,
+   "development": 0,
    "owned": [
     "dump"
    ]
+  },
+  "bottom": {
+   "open": false,
+   "heap": 0,
+   "dig": 0,
+   "dug": 0,
+   "stock": {
+    "sack": 0,
+    "crate": 0,
+    "suitcase": 0,
+    "safe": 0,
+    "coffin": 0
+   },
+   "money": {
+    "dust": "0",
+    "scrap": "0",
+    "nonferrous": "0",
+    "antique": "0",
+    "relic": "0",
+    "anomaly": "0"
+   },
+   "tools": {
+    "pick": 0,
+    "lamp": 0,
+    "luck": 0
+   },
+   "auto": 0,
+   "dry": {},
+   "found": {},
+   "opened": 0,
+   "ume": "0",
+   "above": "0",
+   "scripts": []
   }
  },
  "autobuy": true,
  "threat": {
   "level": 0,
   "losses": 0,
-  "lights": 13,
-  "bravest": 0.5195954155673675
+  "lights": 10,
+  "bravest": 0.5164476289467189
  },
  "story": {
+  "cityLetters": 0,
+  "cityDocuments": false,
   "cases": [],
   "notes": 0,
   "voices": [],
@@ -142,11 +179,11 @@
   "seq": 0
  },
  "tracks": {},
- "compacted": 160,
+ "compacted": 159,
  "achievements": [],
  "autoRecycle": {
   "on": false,
-  "factor": 1
+  "factor": 0.1
  },
  "scripts": {
   "bought": [],
@@ -166,12 +203,15 @@
   "sortOn": false,
   "treeOn": true,
   "lineOn": true,
+  "lineBuild": true,
   "sortMode": "share",
   "sortShare": 0.25,
   "sortMinutes": 60
  },
  "hearing": {
   "noise": 1,
+  "noiseAuto": true,
+  "resumeNoise": null,
   "meter": 0,
   "phase": "idle",
   "left": 0,

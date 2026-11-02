@@ -1901,3 +1901,9 @@ button.j-rec:disabled { opacity: 0.5; cursor: default; }
 #app:not(.classic-ui) .dump-panel { gap: 0; }
 #app:not(.classic-ui) .dump-panel > .panel-head { margin-block: 8px; }
 #app:not(.classic-ui) .dump-panel .mode { border-left: 0; }
+
+/* Permanent city development: one action beside the plan, without a grid of upgrades. */
+.c-development { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 8px; min-width: 0; }
+.c-development .c-card-title { font-size: 12px; overflow-wrap: anywhere; }
+.c-development .c-card-text { color: var(--mid); font-size: 11px; line-height: 1.6; }
+.c-development-buy { min-height: 44px; width: 100%; font-size: 12px; white-space: normal; }

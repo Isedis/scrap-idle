@@ -369,6 +369,7 @@ export class App {
       () => this.doReform(),
       () => this.doDescend(),
       () => { this.show('journal'); this.journalPanel.openCityArchive(this.getState()); },
+      () => { this.sound.click(); this.render(); },
     );
     this.bottomPanel = new BottomPanel(this.getState, (message, loud) => {
       if (message) this.sound.click();
@@ -933,7 +934,7 @@ export class App {
   /** The town: its button on the switch once it opens, and the view when it is on screen. */
   private renderCity(state: GameState): void {
     const city = state.city;
-    this.layerButtons.get('city')!.hidden = !city.open;
+    this.layerButtons.get('city')!.hidden = !city.open && city.development === 0;
     if (city.open && !this.knownCityOpen) {
       this.knownCityOpen = true;
       if (city.reforms === 0 && city.owned.length === 1) {

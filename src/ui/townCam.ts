@@ -1,3 +1,4 @@
+import { drawDevelopedSpot, drawTownGrowthLinks, drawTownGrowthIntake } from './cityGrowth';
 import { DISTRICTS, districtById, plan, type DistrictType } from '../game/city';
 import { Camera } from './camera';
 import { C } from './scene';
@@ -10,6 +11,7 @@ export interface TownView {
   selected: string;
   /** Share of the people still living in town, 0..1: fewer windows lit. */
   people: number;
+  development: number;
 }
 
 /** A district as the camera sees it: where it stands in the picture and how big. */
@@ -200,6 +202,10 @@ export class TownCam extends Camera<TownView> {
 
     for (const sp of this.spots) if (sp.type === 'river') this.water(sp);
 
+    const growthTime = this.reducedMotion ? 0 : this.t;
+    drawTownGrowthLinks(ctx, this.spots, v.owned, v.development, growthTime);
+    for (const sp of this.spots) if (sp.type === 'river' && v.owned.includes(sp.id)) drawDevelopedSpot(ctx, sp, v.development);
+
     // The districts, far to near; the pit's red light on everything around it.
     for (const sp of this.spots) {
       if (sp.type === 'river') continue;
@@ -210,8 +216,12 @@ export class TownCam extends Camera<TownView> {
       const owned = v.owned.includes(sp.id);
       const burial = this.burials.find((b) => b.id === sp.id);
       if (!owned || burial) this.district(sp, dark, v.people, inhaling, pit);
-      if (owned) this.heap(sp, burial ? Math.min(1, burial.t / (BURY * 0.75)) : 1, burial?.t ?? BURY);
+      if (owned) {
+        this.heap(sp, burial ? Math.min(1, burial.t / (BURY * 0.75)) : 1, burial?.t ?? BURY);
+        drawDevelopedSpot(ctx, sp, v.development);
+      }
     }
+    drawTownGrowthIntake(ctx, this.spots, v.owned, v.development, growthTime);
     ctx.globalCompositeOperation = 'lighter';
     const rim = ctx.createRadialGradient(pit.x, pit.y, 0, pit.x, pit.y, w * 0.4);
     rim.addColorStop(0, `rgb(120 25 15 / ${0.28 + inhaling * 0.35})`);
