@@ -1,5 +1,5 @@
 import { format, type Decimal } from '../game/num';
-import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, productionPlan, buyMachine, connectHorizon, buildTargets, assemblyFlow, assemblyForecast, chooseHallRecipe, type Machine, type BuildMode } from '../game/horizon';
+import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, productionPlan, buyMachine, connectHorizon, buildTargets, assemblyFlow, assemblyForecast, chooseHallRecipe, setRouting, installDispatcher, routingShares, type Machine, type BuildMode } from '../game/horizon';
 import type { GameState } from '../game/state';
 import { el } from './dom';
 import { HorizonCam } from './horizonCam';
@@ -43,6 +43,10 @@ export class HorizonPanel {
   private dispatchFinish=el('p','h-note');
   private gate = el('button', 'btn h-gate', 'ОТКРЫТЬ · 1 УМЕ');
   private note = el('div', 'h-note');
+  private routing=el('div','h-routing');
+  private routeNote=el('p','h-note');
+  private routeButtons=new Map<string,HTMLButtonElement>();
+  private install=el('button','btn','УСТАНОВИТЬ ДИСПЕТЧЕР · 200 КМ');
   private recipe=el('div','h-recipe');
   private recipeText=el('p','h-note');
   private recipeButtons=new Map<'heavy'|'precise',{root:HTMLElement;button:HTMLButtonElement}>();
@@ -74,6 +78,9 @@ export class HorizonPanel {
       const root=el('div','h-recipe-option'),button=el('button','btn',label);button.type='button';button.addEventListener('click',()=>{if(chooseHallRecipe(this.getState().horizon,id))this.onChange();});
       root.append(el('p','h-note',description),button);this.recipeButtons.set(id,{root,button});this.recipe.append(root);
     }
+    this.routing.append(el('h3','','РАСПРЕДЕЛЕНИЕ ПОДАЧИ'),el('p','h-note','Левый участок после сборки даёт выпуск +15%, правый — монтаж +20%. Город усиливает общую пропускную способность.'),this.routeNote);
+    for(const [route,label] of [['even','ПОРОВНУ'],['left','ЛЕВЫЙ 80%'],['right','ПРАВЫЙ 80%'],['auto','АВТО']] as const){const button=el('button','btn',label);button.type='button';button.dataset.routing=route;button.addEventListener('click',()=>{if(setRouting(this.getState().horizon,route))this.onChange();});this.routeButtons.set(route,button);this.routing.append(button);}
+    this.install.type='button';this.install.addEventListener('click',()=>{if(installDispatcher(this.getState().horizon))this.onChange();});this.routing.append(this.install);
     for (const [id, label] of [['growth','РОСТ'],['balance','БАЛАНС'],['assembly','СБОРКА']] as [BuildMode,string][]) {
       const b=el('button','btn',label);b.type='button';b.dataset.mode=id;
       b.addEventListener('click',()=>{this.getState().horizon.mode=id;this.onChange();});this.modes.append(b);
@@ -126,7 +133,7 @@ export class HorizonPanel {
     connections.append(this.connections,el('p','s-why','10 восстановленных улиц дают транспорту +10%, пока город сохраняет их. Подключения необязательны.'));
     this.history.setAttribute('aria-label','Камеры пройденных залов');this.history.addEventListener('change',()=>{this.viewedHall=Number(this.history.value);this.onChange();});
     const targets=el('details','h-targets');targets.append(el('summary','','Осмотреть узлы'),this.nodes);
-    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.recipe,this.note,this.nodeText,this.inspection,this.modes,this.allocation,this.allocationNote,this.dispatcher,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
+    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.recipe,this.routing,this.note,this.nodeText,this.inspection,this.modes,this.allocation,this.allocationNote,this.dispatcher,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
     this.root.append(this.entry,this.firstHall.root,this.content);
   }
   render(s: GameState): void {
@@ -141,6 +148,9 @@ export class HorizonPanel {
     this.wallet.textContent=`${format(h.points)} КМ · +${format(r.production)} КМ/мин`;
     this.ume.textContent=`УМЕ ${format(s.bottom.ume)}`;this.umeOrder.render(s);
     this.title.textContent=hall?`${h.opened+1}/5 · ${hall.name}`:'Глава завершена · сопряжение';
+    const network=h.opened===2&&h.routing!=='legacy';this.routing.hidden=!network;
+    if(network){const shares=routingShares(h,s.city,targets);this.routeNote.textContent=targets.length&&assemblyFlow(h,s.city).gt(0)?`Поток: ${targets.map((id,i)=>`${hall.nodes[id].name} ${Math.round(shares[i]*100)}%`).join(' · ')}.${h.routing==='auto'?' Диспетчер выбирает приоритет по ограничению выпуска и монтажа.':''}`:'Подача на паузе или монтаж завершён.';
+      this.routeButtons.forEach((b,id)=>{b.disabled=id==='auto'&&!h.dispatcher;b.classList.toggle('active',h.routing===id);b.setAttribute('aria-pressed',String(h.routing===id));});this.install.hidden=h.dispatcher;this.install.disabled=!nodeDone(h,0)||h.points.lt(200);}
     this.recipe.hidden=h.opened!==1;
     this.recipeText.textContent=h.recipe===null?'Выберите, что собирать первым. От этого зависит монтаж и постоянное усиление следующих залов.':h.recipe==='heavy'?'Крупные узлы: платформа требует на 20% меньше КМ, монтаж усиливает шахта. После запуска транспорт +20%, монтаж +10%.':h.recipe==='precise'?'Точные узлы: силовая линия требует на 30% меньше КМ, монтаж усиливает сортировка. После запуска переработка +20%, выпуск +8%.':'Прежний проект сохранён вместе со вложенным монтажом.';
     for(const [id,row] of this.recipeButtons){row.root.hidden=h.recipe!==null&&h.recipe!==id;row.button.disabled=h.recipe!==null;row.button.classList.toggle('active',h.recipe===id);}
@@ -163,12 +173,12 @@ export class HorizonPanel {
       this.assign.textContent=h.pinned&&h.selected===id?'НАЗНАЧЕНО · ПОТОМ АВТООЧЕРЕДЬ':'СТРОИТЬ СЛЕДУЮЩИМ';
     }
     this.modes.querySelectorAll('button').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.mode===h.mode));
-    this.allocation.hidden=h.opened<2||h.opened>=5;
+    this.allocation.hidden=h.opened<2||h.opened>=5||network;
     this.allocation.querySelectorAll('button').forEach(b=>{
       const active=b.dataset.parallel===String(h.parallel);b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));
     });
     const flow=assemblyFlow(h,s.city);
-    this.allocationNote.hidden=!hall;
+    this.allocationNote.hidden=!hall||network;
     this.allocationNote.textContent=flow.gt(0)
       ? `Общий монтаж: ${format(flow)} КМ/мин · ${targets.length===2?`два узла по ${format(flow.div(2))}`:'весь поток одному узлу'}.${h.pinned?' Ручная задача до завершения, затем автоочередь.':h.opened>=2&&h.parallel&&targets.length===1?' Сейчас доступен только один узел.':''}`
       : gateReady(h)?'Весь монтаж завершён.':'Мощность монтажа сейчас не расходуется.';
@@ -201,7 +211,7 @@ export class HorizonPanel {
   frame(dt:number,s:GameState):void {
     if(!s.horizon.open)return;
     if(s.horizon.opened===0&&s.horizon.firstHall){this.firstHall.frame(s);return;}
-    this.camera.update(dt,{state:s.horizon,hall:this.viewedHall>=0?this.viewedHall:s.horizon.opened,selected:this.inspected??buildTargets(s.horizon)[0]??s.horizon.selected});
+    this.camera.update(dt,{state:s.horizon,hall:this.viewedHall>=0?this.viewedHall:s.horizon.opened,selected:this.inspected??buildTargets(s.horizon)[0]??s.horizon.selected,shares:routingShares(s.horizon,s.city)});
   }
   focusAssemblyControls(): void {
     const h=this.getState().horizon;

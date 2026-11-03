@@ -9,7 +9,7 @@ export const NODE_POSITIONS = [
   [[180,185],[180,123],[290,121],[180,62]],
   [[180,195],[75,134],[285,134],[180,82],[180,50]],
 ];
-interface HorizonView { state: HorizonState; hall: number; selected: number }
+interface HorizonView { state: HorizonState; hall: number; selected: number; shares?:number[] }
 export class HorizonCam extends Camera<HorizonView> {
   private opening = 0;
   private previous = 0;
@@ -108,6 +108,16 @@ export class HorizonCam extends Camera<HorizonView> {
     if(index===4){for(const x of [46,302]){box(x,46,11,153,'#39563d');line(x,80,x<180?112:248,55,'#587551',4);}}
     if(index>0){box(27,178,18,24,'#010704');line(26,176,46,176,'#829275',2);line(26,176,26,202,'#526e50',2);line(46,176,46,202,'#526e50',2);}
     if(index===2){line(69,132,95,166,'#426245',3);line(291,132,265,166,'#426245',3);line(95,166,265,166,'#36563e',3);}
+    if(index===2&&v.state.routing!=='legacy'){
+      const active=buildTargets(v.state),moving=v.state.mode!=='growth'&&v.state.autoBuild;
+      for(const [id,x] of [[1,74],[2,286]]){
+        const finished=archived||v.state.work[id]?.gte(nodeCost(v.state,id));
+        line(180,195,x,143,finished?'#7fa77a':'#3b6648',5);
+        if(moving&&active.includes(id)&&!this.reducedMotion){for(let n=0;n<3;n++){const share=v.shares?.[active.indexOf(id)]??.5;const t=(this.t*(.06+.3*share)+n/3)%1;box(180+(x-180)*t,195-52*t,5,3,'#a4be8e');}}
+        box(x-14,138,28,20,finished?'#597b52':'#203e2b');box(x-8,143,16,4,finished?'#b0c49c':'#4a7050');
+      }
+      if(v.state.dispatcher){box(164,170,32,19,'#254c36');for(let i=0;i<3;i++)box(170+i*7,176,4,4,'#a3c8a0');}
+    }
     // The next layer is only a distant physical connection, never an actionable fake gate.
     if(v.state.opened===5 && v.hall>=4 && this.opening===0){ctx.strokeStyle='#81927a';ctx.lineWidth=2;ctx.beginPath();ctx.arc(180,124,24,0,Math.PI*2);ctx.stroke();line(180,100,180,148,'#657d67');}
     box(0,222,360,18,'#041009');ctx.font='8px monospace';ctx.fillStyle='#8ca583';ctx.textAlign='left';ctx.fillText(this.opening>0?'ПРОХОД ПОДГОТОВЛЕН':archived?'ЗАТВОР ОТКРЫТ':HALLS[index].name.toUpperCase(),12,234);ctx.textAlign='right';ctx.fillText(`${index+1} / 5`,347,234);
