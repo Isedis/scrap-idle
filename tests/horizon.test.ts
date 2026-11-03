@@ -6,7 +6,7 @@ import { melt, pressure, supplyRate } from '../src/game/bottom';
 import { HALLS, newHorizon, enterHorizon as enterLiveHorizon, canEnterHorizon, openGate, nodeCost, horizonRates, horizonTick, buyMachine, gateReady, buildTargets, nodeDone, productionPlan } from '../src/game/horizon';
 
 // Preserve regression coverage of the original assembly equations used by later halls.
-const enterHorizon:typeof enterLiveHorizon=(h,b)=>{const ok=enterLiveHorizon(h,b);if(ok){h.firstHall=null;h.points=D(20);h.autoBuild=true;}return ok;};
+const enterHorizon:typeof enterLiveHorizon=(h,b)=>{const ok=enterLiveHorizon(h,b);if(ok){h.firstHall=null;h.points=D(20);h.autoBuild=true;h.recipe='legacy';}return ok;};
 const readyState=()=>{const s=newGame(0);s.bottom.open=true;s.bottom.dug=22000;s.bottom.equipment.borer=1;s.bottom.umeMade=D(1);s.bottom.ume=D(5);return s;};
 describe('legacy assembly equations and later horizon halls',()=>{
   it('prices both production links when one purchase alone cannot increase output',()=>{

@@ -1,5 +1,5 @@
 import { format, type Decimal } from '../game/num';
-import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, productionPlan, buyMachine, connectHorizon, buildTargets, assemblyFlow, assemblyForecast, type Machine, type BuildMode } from '../game/horizon';
+import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, productionPlan, buyMachine, connectHorizon, buildTargets, assemblyFlow, assemblyForecast, chooseHallRecipe, type Machine, type BuildMode } from '../game/horizon';
 import type { GameState } from '../game/state';
 import { el } from './dom';
 import { HorizonCam } from './horizonCam';
@@ -43,6 +43,9 @@ export class HorizonPanel {
   private dispatchFinish=el('p','h-note');
   private gate = el('button', 'btn h-gate', 'ОТКРЫТЬ · 1 УМЕ');
   private note = el('div', 'h-note');
+  private recipe=el('div','h-recipe');
+  private recipeText=el('p','h-note');
+  private recipeButtons=new Map<'heavy'|'precise',{root:HTMLElement;button:HTMLButtonElement}>();
   private history = el('select', 'h-select');
   private lock = el('select', 'h-select');
   private production = el('div', 'h-machines');
@@ -66,6 +69,11 @@ export class HorizonPanel {
     });
     this.enter.type = 'button'; this.enter.addEventListener('click', () => { const s = this.getState(); if (enterHorizon(s.horizon, s.bottom, profileOf(s))) this.onChange(); });
     this.entry.append(el('h2', 'panel-title', 'Металлический стык'), this.entryText, this.enter);
+    this.recipe.append(el('h3','','ПРОФИЛЬ СБОРКИ'),this.recipeText);
+    for(const [id,label,description] of [['heavy','КРУПНЫЕ УЗЛЫ','Шахта ускоряет монтаж. Платформа −20% КМ. После зала транспорт +20%, монтаж +10%.'],['precise','ТОЧНЫЕ УЗЛЫ','Сортировка ускоряет монтаж. Силовая линия −30% КМ. После зала переработка +20%, выпуск +8%.']] as const){
+      const root=el('div','h-recipe-option'),button=el('button','btn',label);button.type='button';button.addEventListener('click',()=>{if(chooseHallRecipe(this.getState().horizon,id))this.onChange();});
+      root.append(el('p','h-note',description),button);this.recipeButtons.set(id,{root,button});this.recipe.append(root);
+    }
     for (const [id, label] of [['growth','РОСТ'],['balance','БАЛАНС'],['assembly','СБОРКА']] as [BuildMode,string][]) {
       const b=el('button','btn',label);b.type='button';b.dataset.mode=id;
       b.addEventListener('click',()=>{this.getState().horizon.mode=id;this.onChange();});this.modes.append(b);
@@ -118,7 +126,7 @@ export class HorizonPanel {
     connections.append(this.connections,el('p','s-why','10 восстановленных улиц дают транспорту +10%, пока город сохраняет их. Подключения необязательны.'));
     this.history.setAttribute('aria-label','Камеры пройденных залов');this.history.addEventListener('change',()=>{this.viewedHall=Number(this.history.value);this.onChange();});
     const targets=el('details','h-targets');targets.append(el('summary','','Осмотреть узлы'),this.nodes);
-    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.note,this.nodeText,this.inspection,this.modes,this.allocation,this.allocationNote,this.dispatcher,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
+    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.recipe,this.note,this.nodeText,this.inspection,this.modes,this.allocation,this.allocationNote,this.dispatcher,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
     this.root.append(this.entry,this.firstHall.root,this.content);
   }
   render(s: GameState): void {
@@ -133,6 +141,9 @@ export class HorizonPanel {
     this.wallet.textContent=`${format(h.points)} КМ · +${format(r.production)} КМ/мин`;
     this.ume.textContent=`УМЕ ${format(s.bottom.ume)}`;this.umeOrder.render(s);
     this.title.textContent=hall?`${h.opened+1}/5 · ${hall.name}`:'Глава завершена · сопряжение';
+    this.recipe.hidden=h.opened!==1;
+    this.recipeText.textContent=h.recipe===null?'Выберите, что собирать первым. От этого зависит монтаж и постоянное усиление следующих залов.':h.recipe==='heavy'?'Крупные узлы: платформа требует на 20% меньше КМ, монтаж усиливает шахта. После запуска транспорт +20%, монтаж +10%.':h.recipe==='precise'?'Точные узлы: силовая линия требует на 30% меньше КМ, монтаж усиливает сортировка. После запуска переработка +20%, выпуск +8%.':'Прежний проект сохранён вместе со вложенным монтажом.';
+    for(const [id,row] of this.recipeButtons){row.root.hidden=h.recipe!==null&&h.recipe!==id;row.button.disabled=h.recipe!==null;row.button.classList.toggle('active',h.recipe===id);}
     this.note.textContent=hall?`${hall.reward} · ${h.pinned?'ручная цель':h.autoBuild?'автомонтаж':'выбор цели вручную'}`:'За главным створом — неподключённая система. Следующая глава ещё не открыта. Производство и прежние залы сохранены.';
     if(this.renderedHall!==h.opened){
       this.renderedHall=h.opened;this.inspected=null;this.nodes.replaceChildren();this.currentButtons=[];
@@ -143,7 +154,7 @@ export class HorizonPanel {
       b.textContent=`${hall.nodes[i].name} · ${done?'ГОТОВО':active?`${percent}%`:'нужны предыдущие узлы'}`;
       b.classList.toggle('active',targets.includes(i)&&h.mode!=='growth');b.setAttribute('aria-pressed',String(this.inspected===i));
     });
-    this.nodeText.textContent=!hall?'Все пять залов открыты.':gateReady(h)?'Монтаж завершён. Можно открыть затвор.':h.mode==='growth'?'Монтаж на паузе: режим «Рост» копит весь выпуск КМ.':!h.autoBuild?'Монтаж выключен. Назначьте узел или включите автомонтаж.':`Сейчас строится: ${targets.map(i=>`${hall.nodes[i].name} · ${format(h.work[i])}/${format(nodeCost(h,i))} КМ`).join('; ')}. ${h.mode==='balance'?'До половины выпуска идёт на сборку.':'Сборка использует выпуск и запас КМ.'}`;
+    this.nodeText.textContent=!hall?'Все пять залов открыты.':h.opened===1&&h.recipe===null?'Монтаж ждёт выбора профиля. Оба варианта сохраняют КМ и открытые возможности.':gateReady(h)?'Монтаж завершён. Можно открыть затвор.':h.mode==='growth'?'Монтаж на паузе: режим «Рост» копит весь выпуск КМ.':!h.autoBuild?'Монтаж выключен. Назначьте узел или включите автомонтаж.':`Сейчас строится: ${targets.map(i=>`${hall.nodes[i].name} · ${format(h.work[i])}/${format(nodeCost(h,i))} КМ`).join('; ')}. ${h.mode==='balance'?'До половины выпуска идёт на сборку.':'Сборка использует выпуск и запас КМ.'}`;
     const id=this.inspected,selected=id===null?null:hall?.nodes[id];
     this.inspection.hidden=!selected;
     if(selected&&id!==null){

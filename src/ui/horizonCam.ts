@@ -91,6 +91,20 @@ export class HorizonCam extends Camera<HorizonView> {
     const phase=this.reducedMotion||!assembling ? .5 :(this.t*.08)%1;
     const tx=52+phase*32;box(tx,190,17,9,'#6b8060');box(tx+3,199,4,3,'#314c35');box(tx+12,199,4,3,'#314c35');line(tx+8,190,tx+14,177,'#899a77',2);
     if(index===1){line(96,194,96,88,'#5d7556',2);line(264,194,264,88,'#5d7556',2);box(139,153,82,5,'#45654b');}
+    if(index===1&&v.state.recipe==='heavy'){
+      // A load-bearing bridge grows from the platform as its work is completed.
+      const built=archived?1:Math.min(1,v.state.work[1]?.div(nodeCost(v.state,1)).toNumber()??0);
+      box(83,128,198*built,8,'#465f48');line(83,127,83+198*built,127,'#a2ad85',2);
+      for(const x of [91,260]){box(x,130,9,64*built,'#314e39');line(x+4,132,x+4,190,'#78936e');}
+      if(built>.45){line(181,129,181,158,'#9da98b',2);box(164,158,34,18,'#456147');}
+    }
+    if(index===1&&v.state.recipe==='precise'){
+      // The instrument rail and calibrated contacts depend on the power-line work.
+      const built=archived?1:Math.min(1,v.state.work[2]?.div(nodeCost(v.state,2)).toNumber()??0);
+      box(74,102,212*built,5,'#4a6955');
+      for(let i=0;i<7;i++)if(built>i/7){const x=92+i*28;box(x,107,4,16,'#78a18a');box(x-4,124,12,8,'#18392b');box(x-2,126,8,2,'#aac0a5');}
+      if(built>.65){box(163,150,35,28,'#122c23');for(let i=0;i<3;i++)box(169+i*9,158,5,5,'#96c29e');}
+    }
     if(index===4){for(const x of [46,302]){box(x,46,11,153,'#39563d');line(x,80,x<180?112:248,55,'#587551',4);}}
     if(index>0){box(27,178,18,24,'#010704');line(26,176,46,176,'#829275',2);line(26,176,26,202,'#526e50',2);line(46,176,46,202,'#526e50',2);}
     if(index===2){line(69,132,95,166,'#426245',3);line(291,132,265,166,'#426245',3);line(95,166,265,166,'#36563e',3);}

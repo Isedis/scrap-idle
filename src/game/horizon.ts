@@ -5,6 +5,7 @@ import { newLab, labRates, tickLab, startProject, requestShipment, LAB_ORDER, la
 
 export type Machine = 'transport' | 'processing' | 'assembly';
 export type BuildMode = 'growth' | 'balance' | 'assembly';
+export type HallRecipe = 'heavy' | 'precise' | 'legacy';
 export interface HallNode { name: string; purpose: string; share: number; needs: number[] }
 export interface Hall { name: string; reward: string; nodes: HallNode[] }
 const node = (name: string, purpose: string, share: number, needs: number[] = []): HallNode => ({ name, purpose, share, needs });
@@ -27,6 +28,7 @@ export const HALLS: readonly Hall[] = [
     node('Сопрягающий узел', 'Передаёт импульс главному створу', .15, [3])] },
 ];
 export interface HorizonState {
+  recipe: HallRecipe | null;
   firstHall: LabState | null;
   legacyAutomation: boolean;
   open: boolean; points: Decimal; total: Decimal; opened: number;
@@ -37,7 +39,7 @@ export interface HorizonState {
   umeOrder: boolean;
   nextPurchase: Machine | null; connections: { frame: boolean; conductor: boolean };
 }
-export const newHorizon = (): HorizonState => ({ firstHall:null, legacyAutomation:false, open: false, points: D(0), total: D(0), opened: 0,
+export const newHorizon = (): HorizonState => ({ recipe:null, firstHall:null, legacyAutomation:false, open: false, points: D(0), total: D(0), opened: 0,
   levels: { transport: 0, processing: 0, assembly: 0 }, work: HALLS[0].nodes.map(() => D(0)),
   mode: 'balance', autoBuild: true, autoBuy: false, forecast: false, parallel: true, selected: 0, pinned: false,
   reserveUme: true, umeOrder: false, clock: 0, nextPurchase: null, connections: { frame: false, conductor: false } });
@@ -59,10 +61,14 @@ export function supplyFirstHall(h:HorizonState):boolean {
   return h.open&&h.opened===0&&!!h.firstHall&&requestShipment(h.firstHall);
 }
 export const hallCost = (h: HorizonState) => D(280).mul(Decimal.pow(8, h.opened));
-export const nodeCost = (h: HorizonState, i: number) => hallCost(h).mul(HALLS[h.opened]?.nodes[i]?.share ?? 0);
+export const nodeCost = (h: HorizonState, i: number) => hallCost(h).mul(HALLS[h.opened]?.nodes[i]?.share ?? 0).mul(h.opened===1&&h.recipe==='heavy'&&i===1?.8:h.opened===1&&h.recipe==='precise'&&i===2?.7:1);
+export function chooseHallRecipe(h:HorizonState,recipe:'heavy'|'precise'):boolean {
+  if(!h.open||h.opened!==1||h.recipe!==null||h.work.some(n=>n.gt(0)))return false;
+  h.recipe=recipe;return true;
+}
 export const nodeDone = (h: HorizonState, i: number) => !!HALLS[h.opened]?.nodes[i] && h.work[i].gte(nodeCost(h, i).mul(1 - 1e-12));
-export const nodeAvailable = (h: HorizonState, i: number) => !!HALLS[h.opened]?.nodes[i] && !nodeDone(h, i) && HALLS[h.opened].nodes[i].needs.every(n => nodeDone(h, n));
-export const gateReady = (h: HorizonState) => h.open && h.opened < 5 && (h.opened===0&&h.firstHall?LAB_ORDER.every(id=>h.firstHall!.built[id]):HALLS[h.opened].nodes.every((_, i) => nodeDone(h, i)));
+export const nodeAvailable = (h: HorizonState, i: number) => !(h.opened===1&&h.recipe===null) && !!HALLS[h.opened]?.nodes[i] && !nodeDone(h, i) && HALLS[h.opened].nodes[i].needs.every(n => nodeDone(h, n));
+export const gateReady = (h: HorizonState) => h.open && h.opened < 5 && !(h.opened===1&&h.recipe===null) && (h.opened===0&&h.firstHall?LAB_ORDER.every(id=>h.firstHall!.built[id]):HALLS[h.opened].nodes.every((_, i) => nodeDone(h, i)));
 export const umeReserved = (h: HorizonState) => h.open && h.opened < 5 && h.reserveUme ? 1 : 0;
 export const canOrderUme = (h: HorizonState, b: BottomState) => h.open && h.opened < HALLS.length && b.open && b.umeMade.gte(1) && umeOpen(b) && b.ume.lt(1);
 export function requestUme(h: HorizonState, b: BottomState): boolean {
@@ -94,10 +100,11 @@ export function horizonRates(h: HorizonState, city: CityState) {
   if(h.opened===0&&h.firstHall){const r=labRates(h.firstHall);return {transport:r.rawPerMinute,processing:r.rawPerMinute.mul(r.yieldPerRaw),assembly:D(r.crew),production:r.production};}
   const multiplier = Decimal.pow(2, h.opened);
   const p=h.firstHall?.profile;
-  const transport = D(4).mul(Decimal.pow(1.5, h.levels.transport)).mul(multiplier).mul(streetsOwned(city) >= 10 ? 1.1 : 1).mul(p?1+.8*p.supply:1);
-  const processing = D(4).mul(Decimal.pow(1.5, h.levels.processing)).mul(multiplier).mul(h.connections.conductor ? 1.1 : 1).mul(p?1+.5*p.quality:1);
-  const assembly = D(12).mul(Decimal.pow(1.5, h.levels.assembly)).mul(h.opened >= 4 ? 1.25 : 1).mul(h.connections.frame ? 1.1 : 1).mul(p?1+.35*p.mine:1);
-  return { transport, processing, assembly, production: transport.min(processing) };
+  const transport = D(4).mul(Decimal.pow(1.5, h.levels.transport)).mul(multiplier).mul(streetsOwned(city) >= 10 ? 1.1 : 1).mul(p?1+.8*p.supply:1).mul(h.recipe==='heavy'&&h.opened>=2?1.2:1);
+  const processing = D(4).mul(Decimal.pow(1.5, h.levels.processing)).mul(multiplier).mul(h.connections.conductor ? 1.1 : 1).mul(p?1+.5*p.quality:1).mul(h.recipe==='precise'&&h.opened>=2?1.2:1);
+  const craft=h.opened===1?(h.recipe==='heavy'?1+.6*(p?.mine??0):h.recipe==='precise'?1+.6*(p?.quality??0):1):1;
+  const assembly = D(12).mul(Decimal.pow(1.5, h.levels.assembly)).mul(h.opened >= 4 ? 1.25 : 1).mul(h.connections.frame ? 1.1 : 1).mul(p?1+.35*p.mine:1).mul(craft).mul(h.recipe==='heavy'&&h.opened>=2?1.1:1);
+  return { transport, processing, assembly, production: transport.min(processing).mul(h.recipe==='precise'&&h.opened>=2?1.08:1) };
 }
 export const machineCost = (h: HorizonState, id: Machine) => D(id === 'transport' ? 20 : id === 'processing' ? 30 : 25).mul(Decimal.pow(1.8, h.levels[id])).ceil();
 /** The cheapest next investment that actually increases the bottleneck output. */
@@ -124,6 +131,7 @@ export function connectHorizon(h: HorizonState, b: BottomState, id: 'frame' | 'c
 }
 export function buildTargets(h: HorizonState): number[] {
   if(h.opened===0&&h.firstHall)return [];
+  if(h.opened===1&&h.recipe===null)return [];
   if (!h.autoBuild) return [];
   if (h.pinned && nodeAvailable(h, h.selected)) return [h.selected];
   const ids = (HALLS[h.opened]?.nodes ?? []).map((_, i) => i).filter(i => nodeAvailable(h, i));

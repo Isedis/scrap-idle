@@ -98,7 +98,7 @@ describe('v23 lifetime migration', () => {
     const again=deserialize(serialize(back))!;
     expect(again.city.total.eq(back.city.total)).toBe(true);
     expect(again.city.development).toBe(back.city.development);
-    expect(JSON.parse(serialize(again)).v).toBe(26);
+    expect(JSON.parse(serialize(again)).v).toBe(27);
   });
   it('uses recorded lifetime hectares for saves predating purchased development', () => {
     const raw=JSON.parse(serialize(newGame(0)));raw.v=17;delete raw.layers.city.development;

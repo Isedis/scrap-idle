@@ -3,7 +3,7 @@ import { simulateBottom } from './bottom.sim.test';
 import { newCity } from '../src/game/city';
 import { D } from '../src/game/num';
 import { autoOpen, bottomTick, buyBorer, borerCost, melt } from '../src/game/bottom';
-import { newHorizon, enterHorizon, horizonTick, gateReady, openGate, buildFirstHall, supplyFirstHall } from '../src/game/horizon';
+import { newHorizon, enterHorizon, horizonTick, gateReady, openGate, buildFirstHall, supplyFirstHall, chooseHallRecipe } from '../src/game/horizon';
 import { labRates, projectAvailable } from '../src/game/horizonLab';
 
 describe.runIf(process.env.HORIZON_SIM)('horizon and mine pacing',()=>{
@@ -25,6 +25,7 @@ describe.runIf(process.env.HORIZON_SIM)('horizon and mine pacing',()=>{
           const next=(['press','winch','frame','relay'] as const).find(id=>projectAvailable(f,id));
           if(next&&!f.job)buildFirstHall(h,next);
         }
+        if(h.opened===1&&h.recipe===null)chooseHallRecipe(h,'heavy');
         horizonTick(h,60,city);
         if(gateReady(h)){
           if(openGate(h,b))milestones.push(minute);else waiting++;

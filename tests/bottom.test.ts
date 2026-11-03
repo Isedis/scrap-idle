@@ -350,7 +350,7 @@ describe('the descent and the save', () => {
     expect(back.bottom.money.nonferrous.toNumber()).toBe(17);
     expect(back.bottom.supplied).toBe(0);
     expect(back.bottom.equipment).toEqual({ hoist: false, bench: false, borer: 0 });
-    expect(JSON.parse(serialize(back)).v).toBe(26);
+    expect(JSON.parse(serialize(back)).v).toBe(27);
   });
 
   it('gives an old deep save its first UME once without replaying old excavation', async () => {
