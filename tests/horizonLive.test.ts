@@ -2,7 +2,7 @@ import { describe,it,expect } from 'vitest';
 import { D } from '../src/game/num';
 import { newGame,advance } from '../src/game/state';
 import { serialize,deserialize } from '../src/game/save';
-import { enterHorizon,restartHorizon,buildFirstHall,supplyFirstHall,horizonTick,gateReady,openGate,HALLS,horizonRates,chooseHallRecipe } from '../src/game/horizon';
+import { enterHorizon,restartHorizon,buildFirstHall,supplyFirstHall,horizonTick,gateReady,openGate,HALLS,horizonRates,startCommission,chooseHallRecipe } from '../src/game/horizon';
 import { LAB_ORDER,profileOf } from '../src/game/horizonLab';
 
 function ready(){const s=newGame(0);s.bottom.open=true;s.bottom.dug=22000;s.bottom.equipment.borer=1;s.bottom.umeMade=D(1);s.bottom.ume=D(5);enterHorizon(s.horizon,s.bottom);return s;}
@@ -42,7 +42,7 @@ describe('live receiving gallery and v26 migration',()=>{
   });
   it('keeps the real UME cost and no sixth gate when completing the remaining halls',()=>{
     const s=ready(),h=s.horizon;h.points=D(10000);for(const id of LAB_ORDER){buildFirstHall(h,id);finish(s);}expect(openGate(h,s.bottom)).toBe(true);
-    while(h.opened<5){if(h.opened===1)chooseHallRecipe(h,'precise');h.points=D('1e12');h.levels.assembly=30;h.mode='assembly';horizonTick(h,600,s.city);expect(gateReady(h)).toBe(true);expect(openGate(h,s.bottom)).toBe(true);}
+    while(h.opened<5){if(h.opened===1)chooseHallRecipe(h,'precise');h.points=D('1e12');h.levels.assembly=30;h.mode='assembly';horizonTick(h,600,s.city);if(h.opened===4){for(const kind of ['feed','drive'] as const){expect(startCommission(h,s.city,kind)).toBe(true);horizonTick(h,60,s.city);}}expect(gateReady(h)).toBe(true);expect(openGate(h,s.bottom)).toBe(true);}
     expect(s.bottom.ume.eq(0)).toBe(true);expect(openGate(h,s.bottom)).toBe(false);
   });
   it('matches one long offline interval and short ticks with shipments and a paid build',()=>{

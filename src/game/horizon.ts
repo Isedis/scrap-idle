@@ -28,7 +28,9 @@ export const HALLS: readonly Hall[] = [
     node('Сопрягающий узел', 'Передаёт импульс главному створу', .15, [3])] },
 ];
 export type Routing = 'even'|'left'|'right'|'auto'|'legacy';
+export type CommissionKind='feed'|'drive';
 export interface HorizonState {
+  finalChecks:number; trial:{kind:CommissionKind;left:number;duration:number}|null;
   powerMode:'steady'|'charge'|'legacy'; charge:Decimal; regulator:boolean; powerShots:number;
   routing:Routing; dispatcher:boolean;
   recipe: HallRecipe | null;
@@ -42,7 +44,7 @@ export interface HorizonState {
   umeOrder: boolean;
   nextPurchase: Machine | null; connections: { frame: boolean; conductor: boolean };
 }
-export const newHorizon = (): HorizonState => ({ powerMode:'steady',charge:D(0),regulator:false,powerShots:0,routing:'even',dispatcher:false,recipe:null, firstHall:null, legacyAutomation:false, open: false, points: D(0), total: D(0), opened: 0,
+export const newHorizon = (): HorizonState => ({ finalChecks:0,trial:null,powerMode:'steady',charge:D(0),regulator:false,powerShots:0,routing:'even',dispatcher:false,recipe:null, firstHall:null, legacyAutomation:false, open: false, points: D(0), total: D(0), opened: 0,
   levels: { transport: 0, processing: 0, assembly: 0 }, work: HALLS[0].nodes.map(() => D(0)),
   mode: 'balance', autoBuild: true, autoBuy: false, forecast: false, parallel: true, selected: 0, pinned: false,
   reserveUme: true, umeOrder: false, clock: 0, nextPurchase: null, connections: { frame: false, conductor: false } });
@@ -71,7 +73,8 @@ export function chooseHallRecipe(h:HorizonState,recipe:'heavy'|'precise'):boolea
 }
 export const nodeDone = (h: HorizonState, i: number) => !!HALLS[h.opened]?.nodes[i] && h.work[i].gte(nodeCost(h, i).mul(1 - 1e-12));
 export const nodeAvailable = (h: HorizonState, i: number) => !(h.opened===1&&h.recipe===null) && !!HALLS[h.opened]?.nodes[i] && !nodeDone(h, i) && HALLS[h.opened].nodes[i].needs.every(n => nodeDone(h, n));
-export const gateReady = (h: HorizonState) => h.open && h.opened < 5 && !(h.opened===1&&h.recipe===null) && (h.opened===0&&h.firstHall?LAB_ORDER.every(id=>h.firstHall!.built[id]):HALLS[h.opened].nodes.every((_, i) => nodeDone(h, i)));
+export const assemblyReady = (h: HorizonState) => h.open && h.opened < 5 && !(h.opened===1&&h.recipe===null) && (h.opened===0&&h.firstHall?LAB_ORDER.every(id=>h.firstHall!.built[id]):HALLS[h.opened].nodes.every((_, i) => nodeDone(h, i)));
+export const gateReady=(h:HorizonState)=>assemblyReady(h)&&(h.opened!==4||h.finalChecks===3);
 export const umeReserved = (h: HorizonState) => h.open && h.opened < 5 && h.reserveUme ? 1 : 0;
 export const canOrderUme = (h: HorizonState, b: BottomState) => h.open && h.opened < HALLS.length && b.open && b.umeMade.gte(1) && umeOpen(b) && b.ume.lt(1);
 export function requestUme(h: HorizonState, b: BottomState): boolean {
@@ -182,6 +185,18 @@ export function launchPower(h:HorizonState):boolean {
   h.work[id]=h.work[id].add(work);h.charge=h.charge.sub(work.div(1.5)).max(0);h.powerShots++;return true;
 }
 
+export const commissionCost=(h:HorizonState,city:CityState)=>horizonRates(h,city).production;
+export function canCommission(h:HorizonState,kind:CommissionKind):boolean {
+  if(!h.open||h.opened!==4||h.trial||(h.finalChecks&(kind==='feed'?1:2)))return false;
+  return kind==='feed'?nodeDone(h,1)&&nodeDone(h,2):assemblyReady(h);
+}
+export function startCommission(h:HorizonState,city:CityState,kind:CommissionKind):boolean {
+  const cost=commissionCost(h,city);if(!canCommission(h,kind)||h.points.lt(cost))return false;
+  const p=h.firstHall?.profile;
+  const strength=kind==='feed'?(p?.supply??0)+(p?.quality??0)+(p?.logistics??0):(p?.mine??0)+(h.dispatcher?.25:0)+(h.regulator?.25:0);
+  const duration=60/(1+strength);h.points=h.points.sub(cost);h.trial={kind,left:duration,duration};return true;
+}
+
 function autoPower(h:HorizonState,city:CityState):boolean {
   if(h.opened!==3||!h.regulator||!h.autoBuild||h.mode==='growth'||h.charge.lte(1e-8))return false;
   const remaining=HALLS[3].nodes.reduce((sum,_,i)=>sum.add(nodeCost(h,i).sub(h.work[i]).max(0)),D(0));
@@ -255,6 +270,7 @@ export function horizonTick(h: HorizonState, seconds: number, city: CityState, p
     const charging=chargeRate(h,city),income=r.production.sub(charging);
     const flow = flowAt(h,r);const shares=routingShares(h,city,targets);
     let dt = Math.min(remaining, 60 - h.clock);
+    if(h.trial)dt=Math.min(dt,h.trial.left);
     if(charging.gt(0))dt=Math.min(dt,powerCapacity(h,city).sub(h.charge).div(charging).mul(60).toNumber());
     if(h.opened===3&&h.regulator&&h.autoBuild&&h.mode!=='growth'){
       const rest=HALLS[3].nodes.reduce((sum,_,i)=>sum.add(nodeCost(h,i).sub(h.work[i]).max(0)),D(0));
@@ -277,6 +293,7 @@ export function horizonTick(h: HorizonState, seconds: number, city: CityState, p
     }
     h.points = h.points.add(gained).sub(spent).max(0); h.total = h.total.add(r.production.mul(dt/60));
     if (h.pinned && nodeDone(h, h.selected)) h.pinned = false;
+    if(h.trial){h.trial.left=Math.max(0,h.trial.left-dt);if(h.trial.left<=1e-7){h.finalChecks|=h.trial.kind==='feed'?1:2;h.trial=null;}}
     h.clock += dt; remaining -= dt;
     if (h.clock >= 60 - 1e-8) { h.clock = 0; autoPurchase(h, city); }
   }

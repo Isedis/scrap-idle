@@ -69,12 +69,12 @@ describe('one UME for a gate',()=>{
   it('clears the order on gate opening, including the fifth, and preserves orders through reform',()=>{
     const s=ready(),h=s.horizon,b=s.bottom;requestUme(h,b);
     s.city.open=true;s.sorting.sorts=9;expect(reform(s).gt(0)).toBe(true);expect(h.umeOrder).toBe(true);
-    h.opened=4;h.work=HALLS[4].nodes.map((_,i)=>nodeCost(h,i));b.ume=D(1);
+    h.opened=4;h.finalChecks=3;h.work=HALLS[4].nodes.map((_,i)=>nodeCost(h,i));b.ume=D(1);
     expect(openGate(h,b)).toBe(true);expect(h.umeOrder).toBe(false);expect(requestUme(h,b)).toBe(false);
   });
   it('round-trips a pending order; saves predating v24 never opt in or lose existing progress',()=>{
     const s=ready();requestUme(s.horizon,s.bottom);s.horizon.points=D(123);s.horizon.work[0]=D(12);
-    s.city.total=D(1000);const raw=JSON.parse(serialize(s));expect(raw.v).toBe(29);
+    s.city.total=D(1000);const raw=JSON.parse(serialize(s));expect(raw.v).toBe(30);
     const copy=deserialize(JSON.stringify(raw))!;expect(copy.horizon.umeOrder).toBe(true);
     raw.v=23;
     const old=deserialize(JSON.stringify(raw))!;

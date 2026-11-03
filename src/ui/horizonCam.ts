@@ -130,8 +130,15 @@ export class HorizonCam extends Camera<HorizonView> {
       for(let n=0;n<4;n++){const a=angle+n*Math.PI/2;line(180,124,180+Math.cos(a)*39,124+Math.sin(a)*39,'#78986e',3);}
       if(v.state.regulator){box(280,157,27,26,'#234b32');for(let n=0;n<3;n++)box(285+n*7,165,4,5,'#9fc091');}
     }
-    // The next layer is only a distant physical connection, never an actionable fake gate.
-    if(v.state.opened===5 && v.hall>=4 && this.opening===0){ctx.strokeStyle='#81927a';ctx.lineWidth=2;ctx.beginPath();ctx.arc(180,124,24,0,Math.PI*2);ctx.stroke();line(180,100,180,148,'#657d67');}
+    if(index===4){
+      const running=v.state.opened===5,trial=v.state.trial;
+      const angle=this.reducedMotion?0:this.t*(running?1.4:trial?.kind==='drive'?.8:.1);
+      for(let i=0;i<4;i++){const y=69+i*31,active=running||trial?.kind==='feed';box(59,y,22,15,'#28432e');box(63,y+4,14,5,active?'#9eb78a':'#536e4c');line(82,y+8,155,124,active?'#86a275':'#37553a',2);if(active&&!this.reducedMotion){const t=(this.t*.2+i/4)%1;box(82+73*t,y+8+(116-y)*t,4,3,'#bbca9c');}}
+      ctx.strokeStyle=running?'#b5c68c':'#748f6c';ctx.lineWidth=3;ctx.beginPath();ctx.arc(180,124,27,0,Math.PI*2);ctx.stroke();
+      for(let i=0;i<4;i++){const a=angle+i*Math.PI/2;line(180,124,180+Math.cos(a)*24,124+Math.sin(a)*24,'#9bad80',3);}
+      for(let i=0;i<2;i++){box(166+i*20,161,10,6,v.state.finalChecks&(1<<i)?'#b3cca0':'#374f38');}
+      if(trial){box(156,176,48,3,'#2e4c33');box(156,176,48*(1-trial.left/trial.duration),3,'#c1ad72');}
+    }
     box(0,222,360,18,'#041009');ctx.font='8px monospace';ctx.fillStyle='#8ca583';ctx.textAlign='left';ctx.fillText(this.opening>0?'ПРОХОД ПОДГОТОВЛЕН':archived?'ЗАТВОР ОТКРЫТ':HALLS[index].name.toUpperCase(),12,234);ctx.textAlign='right';ctx.fillText(`${index+1} / 5`,347,234);
     ctx.restore();this.vignette(.28);
   }

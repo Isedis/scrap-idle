@@ -201,7 +201,8 @@ export function sharedMult(state: GameState): Decimal {
     .mul(sortingIncome(state.sorting))
     .mul(noiseMult(state.hearing, state.sorting.open))
     .mul(cityEffects(state.city).income)
-    .mul(aboveIncome(state.bottom));
+    .mul(aboveIncome(state.bottom))
+    .mul(state.horizon.opened>=5?1.25:1);
 }
 
 /** One multiplier in the income, for the breakdown the player can open. */
@@ -227,6 +228,7 @@ export function incomeBreakdown(state: GameState): { base: Decimal; parts: Incom
     { label: 'Достижения', mult: D(achievementMult(state.achievements)), note: '+1% за каждое' },
     { label: 'Пересортировки', mult: Decimal.pow(SORT_INCOME, so.sorts).mul(rankIncome(so.sorts)), note: '×2 за каждую и разряды' },
     { label: 'Фракции', mult: fractionsIncome(so.total), note: 'все фракции за игру' },
+    { label: 'Замкнутый контур', mult: D(state.horizon.opened>=5?1.25:1), note: 'запущенный главный механизм' },
     { label: 'Город', mult: cityEffects(state.city).income, note: 'кварталы, яма и постоянное развитие' },
     { label: 'Шум цеха', mult: D(noiseMult(state.hearing, so.open)), note: 'громче — больше, но оно слышит' },
     { label: 'Рецепты и находки', mult: D((hasRecipe(so, 'e1') ? 3 : 1) * uniqueMult(so, 'income')), note: 'сортировка' },

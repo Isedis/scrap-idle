@@ -2046,3 +2046,7 @@ html, body { overflow: hidden; }
 .h-power h3 { font-size:12px; color:var(--glow); }
 .h-power .btn { width:100%; min-height:44px; margin:5px 0; font-size:11px; white-space:normal; }
 .h-power-bar { display:block; width:100%; height:9px; accent-color:var(--amber); margin:12px 0; }
+
+.h-commission { border-block:1px solid var(--line); padding:12px 0; }
+.h-commission h3 { font-size:12px; color:var(--glow); }
+.h-commission .btn { width:100%; min-height:44px; margin:5px 0; font-size:11px; white-space:normal; }

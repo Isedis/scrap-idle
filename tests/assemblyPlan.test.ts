@@ -6,7 +6,7 @@ import { serialize, deserialize } from '../src/game/save';
 
 function hall(opened=3) {
   const s=newGame(0),h=s.horizon;
-  h.open=true;h.opened=opened;h.recipe='legacy';h.routing='legacy';h.work=HALLS[opened].nodes.map(()=>D(0));h.work[0]=nodeCost(h,0);
+  h.open=true;h.opened=opened;h.recipe='legacy';h.routing='legacy';h.finalChecks=3;h.work=HALLS[opened].nodes.map(()=>D(0));h.work[0]=nodeCost(h,0);
   return s;
 }
 
@@ -83,6 +83,6 @@ describe('assembly allocation and dispatcher forecast',()=>{
     expect(old.horizon.points.eq(123)).toBe(true);expect(old.horizon.work[1].eq(456)).toBe(true);
     old.horizon.parallel=false;
     const back=deserialize(serialize(old))!;expect(back.horizon.parallel).toBe(false);expect(back.horizon.forecast).toBe(true);
-    expect(JSON.parse(serialize(back)).v).toBe(29);expect('smart' in JSON.parse(serialize(back)).layers.horizon).toBe(false);
+    expect(JSON.parse(serialize(back)).v).toBe(30);expect('smart' in JSON.parse(serialize(back)).layers.horizon).toBe(false);
   });
 });

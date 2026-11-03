@@ -6,7 +6,7 @@ import { melt, pressure, supplyRate } from '../src/game/bottom';
 import { HALLS, newHorizon, enterHorizon as enterLiveHorizon, canEnterHorizon, openGate, nodeCost, horizonRates, horizonTick, buyMachine, gateReady, buildTargets, nodeDone, productionPlan } from '../src/game/horizon';
 
 // Preserve regression coverage of the original assembly equations used by later halls.
-const enterHorizon:typeof enterLiveHorizon=(h,b)=>{const ok=enterLiveHorizon(h,b);if(ok){h.firstHall=null;h.points=D(20);h.autoBuild=true;h.recipe='legacy';h.routing='legacy';}return ok;};
+const enterHorizon:typeof enterLiveHorizon=(h,b)=>{const ok=enterLiveHorizon(h,b);if(ok){h.firstHall=null;h.points=D(20);h.autoBuild=true;h.recipe='legacy';h.routing='legacy';h.finalChecks=3;}return ok;};
 const readyState=()=>{const s=newGame(0);s.bottom.open=true;s.bottom.dug=22000;s.bottom.equipment.borer=1;s.bottom.umeMade=D(1);s.bottom.ume=D(5);return s;};
 describe('legacy assembly equations and later horizon halls',()=>{
   it('prices both production links when one purchase alone cannot increase output',()=>{
@@ -70,7 +70,7 @@ describe('legacy assembly equations and later horizon halls',()=>{
     expect(pressure(s.bottom,12)).toBe(before);
   });
   it('shares the assembly budget between parallel targets',()=>{
-    const s=readyState();const h=s.horizon;h.open=true;h.opened=2;h.routing='legacy';h.work=HALLS[2].nodes.map(()=>D(0));h.work[0]=nodeCost(h,0);
+    const s=readyState();const h=s.horizon;h.open=true;h.opened=2;h.routing='legacy';h.finalChecks=3;h.work=HALLS[2].nodes.map(()=>D(0));h.work[0]=nodeCost(h,0);
     horizonTick(h,60,s.city);
     expect(h.work[1].add(h.work[2]).eq(8)).toBe(true);expect(h.work[1].eq(4)).toBe(true);
   });

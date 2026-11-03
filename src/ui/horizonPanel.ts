@@ -1,5 +1,5 @@
 import { format, type Decimal } from '../game/num';
-import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, productionPlan, buyMachine, connectHorizon, buildTargets, assemblyFlow, assemblyForecast, powerCapacity,chargeRate,setPowerMode,installRegulator,launchPower,chooseHallRecipe, setRouting, installDispatcher, routingShares, type Machine, type BuildMode } from '../game/horizon';
+import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, productionPlan, buyMachine, connectHorizon, buildTargets, assemblyFlow, assemblyForecast, assemblyReady,canCommission,startCommission,commissionCost,powerCapacity,chargeRate,setPowerMode,installRegulator,launchPower,chooseHallRecipe, setRouting, installDispatcher, routingShares, type Machine, type BuildMode } from '../game/horizon';
 import type { GameState } from '../game/state';
 import { el } from './dom';
 import { HorizonCam } from './horizonCam';
@@ -43,6 +43,10 @@ export class HorizonPanel {
   private dispatchFinish=el('p','h-note');
   private gate = el('button', 'btn h-gate', 'ОТКРЫТЬ · 1 УМЕ');
   private note = el('div', 'h-note');
+  private commission=el('div','h-commission');
+  private commissionText=el('p','h-note');
+  private commissionBar=el('progress','h-power-bar');
+  private commissionButtons=new Map<'feed'|'drive',HTMLButtonElement>();
   private power=el('div','h-power');
   private powerText=el('p','h-note');
   private powerBar=el('progress','h-power-bar');
@@ -84,6 +88,9 @@ export class HorizonPanel {
       const root=el('div','h-recipe-option'),button=el('button','btn',label);button.type='button';button.addEventListener('click',()=>{if(chooseHallRecipe(this.getState().horizon,id))this.onChange();});
       root.append(el('p','h-note',description),button);this.recipeButtons.set(id,{root,button});this.recipe.append(root);
     }
+    this.commission.append(el('h3','','ПУСКОНАЛАДКА ГЛАВНОГО МЕХАНИЗМА'),el('p','h-note','Подача проверяется после сборки обеих рам, привод — после сопряжения. Каждое испытание оплачивается один раз и идёт само, включая офлайн. Итоговый запуск: доход свалки +25%.'),this.commissionText,this.commissionBar);
+    this.commissionBar.max=1;this.commissionBar.setAttribute('aria-label','Испытание механизма');
+    for(const kind of ['feed','drive'] as const){const b=el('button','btn');b.type='button';b.dataset.commission=kind;b.addEventListener('click',()=>{if(startCommission(this.getState().horizon,this.getState().city,kind))this.onChange();});this.commissionButtons.set(kind,b);this.commission.append(b);}
     this.power.append(el('h3','','СИЛОВОЙ НАКОПИТЕЛЬ'),el('p','h-note','25% выпуска → заряд. 1 ЭН → 1,5 КМ монтажа. УМЕ нужна при открытии зала.'),this.powerText,this.powerBar);
     this.powerBar.max=1;this.powerBar.setAttribute('aria-label','Заряд накопителя');
     for(const [id,label] of [['steady','ПОСТОЯННАЯ РАБОТА'],['charge','НАКОПЛЕНИЕ']] as const){const b=el('button','btn',label);b.type='button';b.dataset.power=id;b.addEventListener('click',()=>{if(setPowerMode(this.getState().horizon,id))this.onChange();});this.powerButtons.set(id,b);this.power.append(b);}
@@ -109,7 +116,7 @@ export class HorizonPanel {
     this.gate.type='button';this.gate.addEventListener('click',()=>{
       const s=this.getState();const old=s.horizon.opened;
       if(gateReady(s.horizon)&&s.bottom.ume.lt(1)){this.visitMine();return;}
-      if(openGate(s.horizon,s.bottom)){this.viewedHall=-1;this.inspected=null;this.camera.opened(old);this.onChange();}
+      if(openGate(s.horizon,s.bottom)){this.viewedHall=-1;this.inspected=null;this.camera.opened(old);this.onChange();this.camera.root.scrollIntoView({block:'start'});}
     });
     this.assign.type='button';this.assign.addEventListener('click',()=>{
       const h=this.getState().horizon;
@@ -144,7 +151,7 @@ export class HorizonPanel {
     connections.append(this.connections,el('p','s-why','10 восстановленных улиц дают транспорту +10%, пока город сохраняет их. Подключения необязательны.'));
     this.history.setAttribute('aria-label','Камеры пройденных залов');this.history.addEventListener('change',()=>{this.viewedHall=Number(this.history.value);this.onChange();});
     const targets=el('details','h-targets');targets.append(el('summary','','Осмотреть узлы'),this.nodes);
-    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.recipe,this.routing,this.power,this.note,this.nodeText,this.inspection,this.modes,this.allocation,this.allocationNote,this.dispatcher,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
+    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.recipe,this.routing,this.power,this.commission,this.note,this.nodeText,this.inspection,this.modes,this.allocation,this.allocationNote,this.dispatcher,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
     this.root.append(this.entry,this.firstHall.root,this.content);
   }
   render(s: GameState): void {
@@ -158,7 +165,11 @@ export class HorizonPanel {
     const r=horizonRates(h,s.city), hall=HALLS[h.opened], targets=buildTargets(h);
     this.wallet.textContent=`${format(h.points)} КМ · +${format(r.production.sub(chargeRate(h,s.city)))} КМ/мин`;
     this.ume.textContent=`УМЕ ${format(s.bottom.ume)}`;this.umeOrder.render(s);
-    this.title.textContent=hall?`${h.opened+1}/5 · ${hall.name}`:'Глава завершена · сопряжение';
+    this.title.textContent=hall?`${h.opened+1}/5 · ${hall.name}`:'Главный механизм запущен';
+    this.commission.hidden=h.opened!==4;
+    if(h.opened===4){this.commissionText.textContent=`ПОДАЧА [${h.finalChecks&1?'OK':'··'}] ─ ПРИВОД [${h.finalChecks&2?'OK':'··'}]${h.trial?` · осталось ${Math.ceil(h.trial.left)} с`:h.finalChecks===3?' · система готова к запуску':''}`;
+      this.commissionBar.hidden=!h.trial;if(h.trial)this.commissionBar.value=1-h.trial.left/h.trial.duration;
+      for(const [kind,b] of this.commissionButtons){const done=!!(h.finalChecks&(kind==='feed'?1:2));b.disabled=!canCommission(h,kind)||h.points.lt(commissionCost(h,s.city));b.textContent=`${kind==='feed'?'ПРОВЕРИТЬ ПОДАЧУ':'ПРОВЕРИТЬ ПРИВОД'} · ${done?'ГОТОВО':h.trial?.kind===kind?'ИДЁТ ИСПЫТАНИЕ':format(commissionCost(h,s.city))+' КМ'}`;}}
     const powered=h.opened===3&&h.powerMode!=='legacy';this.power.hidden=!powered;
     if(powered){const capacity=powerCapacity(h,s.city);this.powerBar.value=h.charge.div(capacity).min(1).toNumber();this.powerText.textContent=`${format(h.charge)} ЭН · ёмкость ${format(capacity)} · заряд +${format(chargeRate(h,s.city))}/мин. ${h.regulator?'Регулятор запускает полный накопитель автоматически при включённом монтаже.':'Ручной запуск расходует заряд на выбранный доступный узел.'}`;this.powerButtons.forEach((b,id)=>{b.classList.toggle('active',h.powerMode===id);b.setAttribute('aria-pressed',String(h.powerMode===id));});this.pulse.disabled=h.charge.lte(1e-8)||gateReady(h);this.regulator.hidden=h.regulator;this.regulator.disabled=!nodeDone(h,0)||h.points.lt(400);}
     const network=h.opened===2&&h.routing!=='legacy';this.routing.hidden=!network;
@@ -167,7 +178,7 @@ export class HorizonPanel {
     this.recipe.hidden=h.opened!==1;
     this.recipeText.textContent=h.recipe===null?'Выберите, что собирать первым. От этого зависит монтаж и постоянное усиление следующих залов.':h.recipe==='heavy'?'Крупные узлы: платформа требует на 20% меньше КМ, монтаж усиливает шахта. После запуска транспорт +20%, монтаж +10%.':h.recipe==='precise'?'Точные узлы: силовая линия требует на 30% меньше КМ, монтаж усиливает сортировка. После запуска переработка +20%, выпуск +8%.':'Прежний проект сохранён вместе со вложенным монтажом.';
     for(const [id,row] of this.recipeButtons){row.root.hidden=h.recipe!==null&&h.recipe!==id;row.button.disabled=h.recipe!==null;row.button.classList.toggle('active',h.recipe===id);}
-    this.note.textContent=hall?`${hall.reward} · ${h.pinned?'ручная цель':h.autoBuild?'автомонтаж':'выбор цели вручную'}`:'За главным створом — неподключённая система. Следующая глава ещё не открыта. Производство и прежние залы сохранены.';
+    this.note.textContent=hall?`${hall.reward} · ${h.pinned?'ручная цель':h.autoBuild?'автомонтаж':'выбор цели вручную'}`:'Замкнутый контур работает. Доход свалки постоянно ×1,25. В камерах можно осмотреть все пять залов. За створом видна следующая часть системы.';
     if(this.renderedHall!==h.opened){
       this.renderedHall=h.opened;this.inspected=null;this.nodes.replaceChildren();this.currentButtons=[];
       hall?.nodes.forEach((n,i)=>{const b=el('button','btn h-node',n.name);b.type='button';b.addEventListener('click',()=>{this.inspected=i;this.onChange();});this.nodes.append(b);this.currentButtons.push(b);});
@@ -177,7 +188,7 @@ export class HorizonPanel {
       b.textContent=`${hall.nodes[i].name} · ${done?'ГОТОВО':active?`${percent}%`:'нужны предыдущие узлы'}`;
       b.classList.toggle('active',targets.includes(i)&&h.mode!=='growth');b.setAttribute('aria-pressed',String(this.inspected===i));
     });
-    this.nodeText.textContent=!hall?'Все пять залов открыты.':h.opened===1&&h.recipe===null?'Монтаж ждёт выбора профиля. Оба варианта сохраняют КМ и открытые возможности.':gateReady(h)?'Монтаж завершён. Можно открыть затвор.':h.mode==='growth'?'Монтаж на паузе: режим «Рост» копит весь выпуск КМ.':!h.autoBuild?'Монтаж выключен. Назначьте узел или включите автомонтаж.':`Сейчас строится: ${targets.map(i=>`${hall.nodes[i].name} · ${format(h.work[i])}/${format(nodeCost(h,i))} КМ`).join('; ')}. ${h.mode==='balance'?'До половины выпуска идёт на сборку.':'Сборка использует выпуск и запас КМ.'}`;
+    this.nodeText.textContent=!hall?'Все пять залов открыты.':h.opened===4&&assemblyReady(h)&&h.finalChecks!==3?'Монтаж готов. Завершите проверки подачи и привода, затем передайте 1 УМЕ для запуска.':h.opened===1&&h.recipe===null?'Монтаж ждёт выбора профиля. Оба варианта сохраняют КМ и открытые возможности.':gateReady(h)?'Монтаж завершён. Можно открыть затвор.':h.mode==='growth'?'Монтаж на паузе: режим «Рост» копит весь выпуск КМ.':!h.autoBuild?'Монтаж выключен. Назначьте узел или включите автомонтаж.':`Сейчас строится: ${targets.map(i=>`${hall.nodes[i].name} · ${format(h.work[i])}/${format(nodeCost(h,i))} КМ`).join('; ')}. ${h.mode==='balance'?'До половины выпуска идёт на сборку.':'Сборка использует выпуск и запас КМ.'}`;
     const id=this.inspected,selected=id===null?null:hall?.nodes[id];
     this.inspection.hidden=!selected;
     if(selected&&id!==null){
@@ -195,7 +206,7 @@ export class HorizonPanel {
     this.allocationNote.textContent=flow.gt(0)
       ? `Общий монтаж: ${format(flow)} КМ/мин · ${targets.length===2?`два узла по ${format(flow.div(2))}`:'весь поток одному узлу'}.${h.pinned?' Ручная задача до завершения, затем автоочередь.':h.opened>=2&&h.parallel&&targets.length===1?' Сейчас доступен только один узел.':''}`
       : gateReady(h)?'Весь монтаж завершён.':'Мощность монтажа сейчас не расходуется.';
-    this.dispatcher.hidden=h.opened<3||h.opened>=5||powered&&h.powerMode==='charge';
+    this.dispatcher.hidden=h.opened<3||h.opened>=5||powered&&h.powerMode==='charge'||h.opened===4&&assemblyReady(h)&&!gateReady(h);
     this.dispatchToggle.textContent=`ДИСПЕТЧЕР · ${h.forecast?'СКРЫТЬ':'ПОКАЗАТЬ'} ПРОГНОЗ`;
     this.dispatchToggle.setAttribute('aria-expanded',String(h.forecast));this.dispatchBody.hidden=!h.forecast;
     if(h.forecast&&h.opened>=3&&hall){
