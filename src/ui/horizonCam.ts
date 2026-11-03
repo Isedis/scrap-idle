@@ -9,9 +9,11 @@ export const NODE_POSITIONS = [
   [[180,185],[180,123],[290,121],[180,62]],
   [[180,195],[75,134],[285,134],[180,82],[180,50]],
 ];
-interface HorizonView { state: HorizonState; hall: number; selected: number; shares?:number[] }
+interface HorizonView { state: HorizonState; hall: number; selected: number; shares?:number[]; powerFill?:number }
 export class HorizonCam extends Camera<HorizonView> {
   private opening = 0;
+  private powerKick=0;
+  private shots=0;
   private previous = 0;
   constructor(onPick: (index: number) => void) {
     super('КАМ-10 · ГОРИЗОНТ', 'Затвор нижнего горизонта: выберите привод в камере');
@@ -28,7 +30,7 @@ export class HorizonCam extends Camera<HorizonView> {
   }
   opened(hall: number): void { this.previous = hall; this.opening = this.reducedMotion ? 0 : 5; }
   reset(): void { this.opening = 0; }
-  protected simulate(dt: number): void { this.opening = Math.max(0, this.opening-dt); }
+  protected simulate(dt: number): void { this.opening = Math.max(0, this.opening-dt);this.powerKick=Math.max(0,this.powerKick-dt);const shots=this.view?.state.powerShots??0;if(shots!==this.shots){if(shots>this.shots&&!this.reducedMotion)this.powerKick=1.2;this.shots=shots;} }
   protected draw(): void {
     const { ctx, w, h } = this; const v = this.view!;
     const index = this.opening > 0 ? this.previous : Math.min(4, v.hall);
@@ -117,6 +119,16 @@ export class HorizonCam extends Camera<HorizonView> {
         box(x-14,138,28,20,finished?'#597b52':'#203e2b');box(x-8,143,16,4,finished?'#b0c49c':'#4a7050');
       }
       if(v.state.dispatcher){box(164,170,32,19,'#254c36');for(let i=0;i<3;i++)box(170+i*7,176,4,4,'#a3c8a0');}
+    }
+    if(index===3&&v.state.powerMode!=='legacy'){
+      const fill=archived?0:v.powerFill??0;
+      box(48,100,25,90,'#183426');line(47,99,74,99,'#7e9270',2);
+      box(53,182-fill*74,15,fill*74,'#b3a46b');for(let n=0;n<5;n++)line(51,111+n*16,69,111+n*16,'#3c5b3e');
+      line(74,178,141,178,this.powerKick>0?'#d1c78b':'#536e4e',3);
+      const angle=this.reducedMotion?0:this.t*(v.state.powerMode==='charge'?.4:1)+this.powerKick*4;
+      ctx.strokeStyle=this.powerKick>0?'#c4bb7e':'#76966b';ctx.lineWidth=4;ctx.beginPath();ctx.arc(180,124,43,0,Math.PI*2);ctx.stroke();
+      for(let n=0;n<4;n++){const a=angle+n*Math.PI/2;line(180,124,180+Math.cos(a)*39,124+Math.sin(a)*39,'#78986e',3);}
+      if(v.state.regulator){box(280,157,27,26,'#234b32');for(let n=0;n<3;n++)box(285+n*7,165,4,5,'#9fc091');}
     }
     // The next layer is only a distant physical connection, never an actionable fake gate.
     if(v.state.opened===5 && v.hall>=4 && this.opening===0){ctx.strokeStyle='#81927a';ctx.lineWidth=2;ctx.beginPath();ctx.arc(180,124,24,0,Math.PI*2);ctx.stroke();line(180,100,180,148,'#657d67');}
