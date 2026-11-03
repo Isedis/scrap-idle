@@ -837,6 +837,8 @@ button { font: inherit; color: inherit; }
 
 .btn:active { background: rgb(125 255 154 / 0.12); }
 
+.horizon-lab-link { display:flex; align-items:center; margin-top:16px; text-decoration:none; }
+
 .btn-row {
   display: grid;
   grid-template-columns: 1fr 1fr;

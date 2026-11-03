@@ -229,6 +229,7 @@ export class App {
   private updateCredit!: HTMLElement;
   private updateStatus!: HTMLElement;
   private updateButton!: HTMLButtonElement;
+  private horizonLabEntry!: HTMLElement;
   /** Set by main: checks for a newer build and reloads into it. */
   onUpdate: () => Promise<'reloading' | 'latest' | 'offline' | 'save-error'> = async () => 'latest';
   private scene!: Scene;
@@ -1180,6 +1181,12 @@ export class App {
     this.updateCredit = el('p', 'note release-credit', __RELEASE_AUTHOR__ === 'Codex' ? `От Codex · ${__RELEASE_SUMMARY__}` : '');
     this.updateCredit.hidden = !this.updateCredit.textContent;
     panel.append(this.updateStatus, this.updateCredit, this.updateButton);
+    this.horizonLabEntry = el('div', '');
+    const labLink = el('a', 'btn horizon-lab-link', 'Испытание новой галереи →');
+    labLink.href = '?horizon-lab=1';
+    this.horizonLabEntry.append(labLink, el('p', 'note', 'Отдельный прогресс. Ресурсы основной игры не расходуются.'));
+    this.horizonLabEntry.hidden = true;
+    panel.append(this.horizonLabEntry);
 
     // The debug button without typing ?debug: a copy started from the home screen has no address bar.
     panel.append(el('h2', 'panel-title', 'Отладка'));
@@ -1540,6 +1547,7 @@ export class App {
 
   render(): void {
     const state = this.getState();
+    this.horizonLabEntry.hidden = !state.horizon.open;
     const health=getSaveHealth();
     const warning=health.error ? `${health.error} → ЭКСПОРТ` : '';
     this.saveWarning.hidden=!warning;
