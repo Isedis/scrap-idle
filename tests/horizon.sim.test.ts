@@ -3,7 +3,8 @@ import { simulateBottom } from './bottom.sim.test';
 import { newCity } from '../src/game/city';
 import { D } from '../src/game/num';
 import { autoOpen, bottomTick, buyBorer, borerCost, melt } from '../src/game/bottom';
-import { newHorizon, enterHorizon, horizonTick, gateReady, openGate } from '../src/game/horizon';
+import { newHorizon, enterHorizon, horizonTick, gateReady, openGate, buildFirstHall, supplyFirstHall } from '../src/game/horizon';
+import { labRates, projectAvailable } from '../src/game/horizonLab';
 
 describe.runIf(process.env.HORIZON_SIM)('horizon and mine pacing',()=>{
   it('builds all five gates while paying their UME and preserving the next opening reserve',()=>{
@@ -18,13 +19,19 @@ describe.runIf(process.env.HORIZON_SIM)('horizon and mine pacing',()=>{
         bottomTick(b,60,30,rand);autoOpen(b,rand);melt(b,'anomaly',1e6);
         // A player may keep upgrading the mine, while leaving the declared gate reserve.
         if(b.ume.gte(borerCost(b).add(1)))buyBorer(b);
+        if(h.opened===0&&h.firstHall){
+          const f=h.firstHall;
+          if(f.raw.lte(labRates(f).capacity.mul(.5)))supplyFirstHall(h);
+          const next=(['press','winch','frame','relay'] as const).find(id=>projectAvailable(f,id));
+          if(next&&!f.job)buildFirstHall(h,next);
+        }
         horizonTick(h,60,city);
         if(gateReady(h)){
           if(openGate(h,b))milestones.push(minute);else waiting++;
         }
       }
       console.log(`seed ${seed}: gates at minutes ${milestones.join(', ')}, UME wait ${waiting} min`);
-      expect(h.opened).toBe(5);expect(milestones[0]).toBeGreaterThan(30);expect(milestones[4]).toBeLessThan(900);
+      expect(h.opened).toBe(5);expect(milestones[0]).toBeGreaterThan(5);expect(milestones[0]).toBeLessThan(45);expect(milestones[4]).toBeLessThan(900);
     }
   });
 });

@@ -1,5 +1,6 @@
 import { HALLS, buildTargets, nodeCost, type HorizonState } from '../game/horizon';
 import { Camera } from './camera';
+import { drawLab } from './horizonLabCam';
 
 export const NODE_POSITIONS = [
   [[180,190],[70,123],[290,123],[180,64]],
@@ -17,6 +18,7 @@ export class HorizonCam extends Camera<HorizonView> {
     this.root.classList.add('horizon-camera'); this.lurks = false;
     this.canvas.addEventListener('click', (e) => {
       if (!this.view || this.opening > 0) return;
+      if(this.view.hall===0&&this.view.state.firstHall)return;
       const rect = this.canvas.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width * 360, y = (e.clientY - rect.top) / rect.height * 240;
       const positions = NODE_POSITIONS[Math.min(4, this.view.hall)];
@@ -30,6 +32,7 @@ export class HorizonCam extends Camera<HorizonView> {
   protected draw(): void {
     const { ctx, w, h } = this; const v = this.view!;
     const index = this.opening > 0 ? this.previous : Math.min(4, v.hall);
+    if(index===0&&v.state.firstHall){drawLab(ctx,v.state.firstHall,w,h,true);return;}
     const archived = index < v.state.opened;
     const progress = Math.max(0, Math.min(1, (5-this.opening)/5));
     ctx.save(); ctx.scale(w/360,h/240);

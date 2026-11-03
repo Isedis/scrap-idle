@@ -1,3 +1,4 @@
+import { newLab, serializeLab, deserializeLab, profileOf, LAB_ORDER } from './horizonLab';
 import { newHorizon, HALLS, nodeCost, canOrderUme, type HorizonState } from './horizon';
 import { simulateOffline } from './offline';
 import { D, parseNum } from './num';
@@ -29,7 +30,7 @@ import {
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
 export const MIGRATION_KEY = 'scrap-idle-save-before-migration';
-const VERSION = 25;
+const VERSION = 26;
 
 /** Run length for a run whose start is not known; stays negative however long it is played. */
 const UNKNOWN_RUN_SECONDS = -1e12;
@@ -162,7 +163,7 @@ interface SaveV12 extends Omit<SaveV11, 'v'> {
 /** v14 adds the table's repeats of finds to Sorting (`echoes`); older saves have none. */
 
 /** v13 adds the bottom of the pit, kept under `layers.bottom`. */
-type HorizonSave = Omit<HorizonState, 'points' | 'total' | 'work'> & { points: string; total: string; work: string[]; smart?: boolean };
+type HorizonSave = Omit<HorizonState, 'points' | 'total' | 'work' | 'firstHall' | 'legacyAutomation'> & { firstHall?: string | null; legacyAutomation?:boolean; points: string; total: string; work: string[]; smart?: boolean };
 
 interface BottomSave {
   open: boolean;
@@ -195,7 +196,7 @@ interface BottomSave {
 }
 
 interface SaveV13 extends Omit<SaveV12, 'v' | 'layers'> {
-  v: 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25;
+  v: 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26;
   layers: { recycle: LayerSave; sorting: SortingSave; city: CitySave; bottom: BottomSave; horizon?: HorizonSave };
 }
 
@@ -502,7 +503,7 @@ export function serialize(state: GameState): string {
       sorting: saveSorting(state.sorting),
       city: { open: state.city.open, points: state.city.points.toString(), total: state.city.total.toString(), reforms: state.city.reforms, development: state.city.development, pitOpened: state.city.pitOpened, owned: state.city.owned },
       bottom: saveBottom(state.bottom),
-      horizon: { ...state.horizon, points: state.horizon.points.toString(), total: state.horizon.total.toString(), work: state.horizon.work.map(n => n.toString()) },
+      horizon: { ...state.horizon, firstHall:state.horizon.firstHall?serializeLab(state.horizon.firstHall):null, points: state.horizon.points.toString(), total: state.horizon.total.toString(), work: state.horizon.work.map(n => n.toString()) },
     },
     autobuy: state.autobuy,
     threat: { ...state.threat },
@@ -526,7 +527,7 @@ export function deserialize(text: string): GameState | null {
   } catch {
     return null;
   }
-  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25].includes(data.v as number)) return null;
+  if (!data || typeof data !== 'object' || ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26].includes(data.v as number)) return null;
 
   const state = newGame(typeof data.lastTick === 'number' ? data.lastTick : Date.now());
   const trash = parseNum(data.trash ?? '0');
@@ -543,7 +544,7 @@ export function deserialize(text: string): GameState | null {
   if (!state.revealed.includes('collector')) state.revealed.unshift('collector');
 
   // A v1 save simply has none of these yet.
-  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) {
+  if (data.v === 2 || data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) {
     const ids = (list: unknown) => (Array.isArray(list) ? list.filter((id) => typeof id === 'string' && upgradeById(id)) : []);
     state.upgrades = [...new Set(ids(data.upgrades))];
     state.seenUpgrades = [...new Set([...ids(data.seenUpgrades), ...state.upgrades])];
@@ -553,7 +554,7 @@ export function deserialize(text: string): GameState | null {
   // Before v3 there was a single run: everything collected so far belongs to it, length unknown.
   state.runTrash = state.totalTrash;
   state.runSeconds = UNKNOWN_RUN_SECONDS;
-  if (data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) {
+  if (data.v === 3 || data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) {
     const run = parseNum(data.runTrash ?? '0');
     const recycle = loadLayer(data.layers?.recycle);
     if (!run || !recycle) return null;
@@ -564,14 +565,14 @@ export function deserialize(text: string): GameState | null {
   }
 
   // Older saves start with nothing stirring.
-  if (data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) {
+  if (data.v === 4 || data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) {
     const t = data.threat;
     const level = typeof t?.level === 'number' && Number.isFinite(t.level) ? t.level : 0;
     state.threat.level = Math.min(Math.max(level, 0), 1);
     state.threat.losses = typeof t?.losses === 'number' && t.losses >= 0 ? Math.floor(t.losses) : 0;
   }
-  if (data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) state.story = loadStory(data.story);
-  if (data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) {
+  if (data.v === 5 || data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) state.story = loadStory(data.story);
+  if (data.v === 6 || data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) {
     const t = data.threat;
     state.threat.lights = typeof t?.lights === 'number' && t.lights >= 0 ? Math.floor(t.lights) : 0;
     state.threat.bravest = typeof t?.bravest === 'number' && Number.isFinite(t.bravest) ? Math.min(Math.max(t.bravest, 0), 1) : 0;
@@ -583,34 +584,34 @@ export function deserialize(text: string): GameState | null {
     state.autoRecycle = {
       on: ar?.on === true,
       // Before v12 the factor was a multiple of everything earned and could never be reached.
-      factor: (data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) && AUTO_FACTORS.includes(ar?.factor as (typeof AUTO_FACTORS)[number]) ? ar!.factor : AUTO_FACTOR_DEFAULT,
+      factor: (data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) && AUTO_FACTORS.includes(ar?.factor as (typeof AUTO_FACTORS)[number]) ? ar!.factor : AUTO_FACTOR_DEFAULT,
     };
   }
   // Before v7 there was no Automation tab: every script starts uninstalled, with default settings.
-  if (data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) state.scripts = loadScripts(data.scripts);
+  if (data.v === 7 || data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) state.scripts = loadScripts(data.scripts);
   // Before v8 there was no Sorting: the line opens on its own once Recycling has earned enough.
-  if (data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) {
+  if (data.v === 8 || data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) {
     const sorting = loadSorting(data.layers?.sorting);
     if (!sorting) return null;
     state.sorting = sorting;
   }
   // Before v9 nothing listened: the plant starts at normal load.
-  if (data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) state.hearing = loadHearing(data.hearing);
+  if (data.v === 9 || data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) state.hearing = loadHearing(data.hearing);
   // Before v10 there was no town: it opens on its own after enough resorts in one cycle.
-  if (data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) {
+  if (data.v === 10 || data.v === 11 || data.v === 12 || data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) {
     const city = loadCity((data.layers as SaveV10['layers'] | undefined)?.city);
     if (!city) return null;
     state.city = city;
   }
   // Before v13 nobody had gone down: the bottom is closed.
-  if (data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) {
+  if (data.v === 13 || data.v === 14 || data.v === 15 || data.v === 16 || data.v === 17 || data.v === 18 || data.v === 19 || data.v === 20 || data.v === 21 || data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) {
     const bottom = loadBottom((data.layers as SaveV13['layers'] | undefined)?.bottom);
     if (!bottom) return null;
     state.bottom = bottom;
   }
-  if (data.v !== 17 && data.v !== 18 && data.v !== 19 && data.v !== 20 && data.v !== 21 && data.v !== 22 && data.v !== 23 && data.v !== 24 && data.v !== 25 && state.hearing.phase === 'check' && state.hearing.noise === 0
+  if (data.v !== 17 && data.v !== 18 && data.v !== 19 && data.v !== 20 && data.v !== 21 && data.v !== 22 && data.v !== 23 && data.v !== 24 && data.v !== 25 && data.v !== 26 && state.hearing.phase === 'check' && state.hearing.noise === 0
     && state.hearing.noiseAuto && cityEffects(state.city).silencerFail === 0) state.hearing.resumeNoise = 1;
-  if (data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25) {
+  if (data.v === 22 || data.v === 23 || data.v === 24 || data.v === 25 || data.v === 26) {
     const raw = (data.layers as SaveV13['layers'] | undefined)?.horizon;
     if (raw) {
       const h = newHorizon();
@@ -623,14 +624,31 @@ export function deserialize(text: string): GameState | null {
       h.work = (HALLS[h.opened]?.nodes ?? []).map((_, i) => (parseNum(raw.work?.[i] ?? '0') ?? h.points.mul(0)).max(0).min(nodeCost(h, i)));
       if (raw.mode === 'growth' || raw.mode === 'balance' || raw.mode === 'assembly') h.mode = raw.mode;
       h.autoBuild = raw.autoBuild !== false; h.autoBuy = raw.autoBuy === true;
-      h.parallel = data.v === 25 ? raw.parallel !== false : true;
-      h.forecast = h.opened >= 3 && (data.v === 25 ? raw.forecast === true : raw.smart === true);
+      h.parallel = data.v >= 25 ? raw.parallel !== false : true;
+      h.forecast = h.opened >= 3 && (data.v >= 25 ? raw.forecast === true : raw.smart === true);
       h.selected = Number.isInteger(raw.selected) ? Math.max(0, Math.min(h.work.length - 1, raw.selected)) : 0;
       h.pinned = raw.pinned === true; h.reserveUme = raw.reserveUme !== false;
       h.clock = Number.isFinite(raw.clock) ? Math.max(0, Math.min(59.999999, raw.clock)) : 0;
       if (raw.nextPurchase === 'transport' || raw.nextPurchase === 'processing' || raw.nextPurchase === 'assembly') h.nextPurchase = raw.nextPurchase;
       h.connections = { frame: raw.connections?.frame === true, conductor: raw.connections?.conductor === true };
-      h.umeOrder = (data.v === 24 || data.v === 25) && raw.umeOrder === true && canOrderUme(h,state.bottom);
+      h.umeOrder = (data.v === 24 || data.v === 25 || data.v === 26) && raw.umeOrder === true && canOrderUme(h,state.bottom);
+      if(data.v===26){
+        h.firstHall=raw.firstHall?deserializeLab(raw.firstHall):null;
+        if(raw.firstHall&&!h.firstHall)return null;
+        h.legacyAutomation=raw.legacyAutomation===true;
+      }else if(h.open){
+        h.firstHall=newLab(profileOf(state));h.firstHall.pulses=0;
+        h.legacyAutomation=h.autoBuild||h.autoBuy;
+        if(h.opened===0){
+          // Refund every invested KM; old production upgrades remain owned.
+          h.points=h.points.add(h.work.reduce((sum,n)=>sum.add(n),D(0)));
+          h.work=HALLS[0].nodes.map(()=>D(0));h.clock=0;
+        }else{
+          for(const id of LAB_ORDER)h.firstHall.built[id]=true;
+          h.firstHall.commissioned=true;h.firstHall.autoDelivery=true;h.firstHall.launchedAt=0;
+        }
+      }
+      if(h.firstHall){h.firstHall.km=h.points;if(h.opened===0)h.clock%=1;}
       state.horizon = h;
       if (h.open && h.opened >= 1) state.bottom.supplyExtension = true;
     }

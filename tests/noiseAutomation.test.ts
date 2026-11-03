@@ -154,7 +154,7 @@ describe('v17 noise settings', () => {
     expect(back.hearing.resumeNoise).toBe(1);
     advance(back, 11);
     expect(back.hearing.noise).toBe(1);
-    expect(JSON.parse(serialize(back)).v).toBe(25);
+    expect(JSON.parse(serialize(back)).v).toBe(26);
   });
 
   it('round-trips manual mode and discards an invalid pending target', () => {

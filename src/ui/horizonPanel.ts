@@ -4,6 +4,8 @@ import type { GameState } from '../game/state';
 import { el } from './dom';
 import { HorizonCam } from './horizonCam';
 import { UmeOrder } from './umeOrder';
+import { HorizonFirstHall } from './horizonFirstHall';
+import { profileOf } from '../game/horizonLab';
 
 function forecastTime(seconds:Decimal):string {
   if(seconds.lt(60))return '<1 мин';
@@ -16,6 +18,7 @@ function forecastTime(seconds:Decimal):string {
 export class HorizonPanel {
   readonly root = el('section', 'panel horizon');
   readonly camera: HorizonCam;
+  private firstHall: HorizonFirstHall;
   private entry = el('div', 'h-entry');
   private entryText = el('p', 's-why');
   private enter = el('button', 'btn', 'ОБСЛЕДОВАТЬ СТЫК');
@@ -54,13 +57,14 @@ export class HorizonPanel {
   private identity: GameState['horizon'] | null = null;
   private currentButtons: HTMLButtonElement[] = [];
   constructor(private getState: () => GameState, private onChange: () => void, private visitMine: () => void) {
+    this.firstHall=new HorizonFirstHall(getState,onChange,visitMine);
     this.umeOrder=new UmeOrder(getState,onChange);
     this.camera = new HorizonCam(i => {
       const h = this.getState().horizon;
       if (this.viewedHall >= 0 && this.viewedHall !== h.opened) return;
       this.inspected = i; this.onChange();
     });
-    this.enter.type = 'button'; this.enter.addEventListener('click', () => { const s = this.getState(); if (enterHorizon(s.horizon, s.bottom)) this.onChange(); });
+    this.enter.type = 'button'; this.enter.addEventListener('click', () => { const s = this.getState(); if (enterHorizon(s.horizon, s.bottom, profileOf(s))) this.onChange(); });
     this.entry.append(el('h2', 'panel-title', 'Металлический стык'), this.entryText, this.enter);
     for (const [id, label] of [['growth','РОСТ'],['balance','БАЛАНС'],['assembly','СБОРКА']] as [BuildMode,string][]) {
       const b=el('button','btn',label);b.type='button';b.dataset.mode=id;
@@ -115,14 +119,16 @@ export class HorizonPanel {
     this.history.setAttribute('aria-label','Камеры пройденных залов');this.history.addEventListener('change',()=>{this.viewedHall=Number(this.history.value);this.onChange();});
     const targets=el('details','h-targets');targets.append(el('summary','','Осмотреть узлы'),this.nodes);
     this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.note,this.nodeText,this.inspection,this.modes,this.allocation,this.allocationNote,this.dispatcher,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
-    this.root.append(this.entry,this.content);
+    this.root.append(this.entry,this.firstHall.root,this.content);
   }
   render(s: GameState): void {
     const h=s.horizon;
     if(this.identity!==h){this.identity=h;this.viewedHall=-1;this.renderedHall=-1;this.inspected=null;this.camera.reset();}
-    this.entry.hidden=h.open;this.content.hidden=!h.open;
+    const first=h.open&&h.opened===0&&!!h.firstHall;
+    this.entry.hidden=h.open;this.content.hidden=!h.open||first;this.firstHall.root.hidden=!first;
     this.entryText.textContent=`За породой виден стык огромных створок. Глубина ${Math.floor(s.bottom.dug)}/22000 т · проходчик ${s.bottom.equipment.borer>0?'запущен':'не запущен'} · УМЕ переплавкой ${s.bottom.umeMade.gte(1)?'получена':'ещё не получена'}. Вход сохраняет всю шахту.`;
     this.enter.disabled=!canEnterHorizon(s.bottom);if(!h.open)return;
+    if(first){this.firstHall.render(s);return;}
     const r=horizonRates(h,s.city), hall=HALLS[h.opened], targets=buildTargets(h);
     this.wallet.textContent=`${format(h.points)} КМ · +${format(r.production)} КМ/мин`;
     this.ume.textContent=`УМЕ ${format(s.bottom.ume)}`;this.umeOrder.render(s);
@@ -183,10 +189,12 @@ export class HorizonPanel {
   }
   frame(dt:number,s:GameState):void {
     if(!s.horizon.open)return;
+    if(s.horizon.opened===0&&s.horizon.firstHall){this.firstHall.frame(s);return;}
     this.camera.update(dt,{state:s.horizon,hall:this.viewedHall>=0?this.viewedHall:s.horizon.opened,selected:this.inspected??buildTargets(s.horizon)[0]??s.horizon.selected});
   }
   focusAssemblyControls(): void {
     const h=this.getState().horizon;
+    if(h.opened===0&&h.firstHall){const target=this.firstHall.root.querySelector<HTMLElement>('.lab-actions');target?.scrollIntoView({block:'center'});target?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({preventScroll:true});return;}
     const target=h.autoBuild?this.modes:this.root.querySelector<HTMLElement>('.h-settings')!;
     if(target instanceof HTMLDetailsElement)target.open=true;
     const control=target.querySelector<HTMLElement>('button, input');

@@ -16,6 +16,10 @@
 .lab-trace { color:#90ac83; padding:10px 0; font-size:10px; letter-spacing:.025em; white-space:normal; overflow-wrap:anywhere; }
 .lab-shell h2 { font-size:13px; color:#afc39d; font-weight:600; line-height:1.5; margin:0 0 9px; }
 .lab-shell h3 { font-size:13px; color:#a8c09b; line-height:1.5; margin:0 0 5px; }
+.h-first h2 { font-size:13px; line-height:1.5; color:#afc39d; margin:0 0 9px; }
+.h-first h3 { font-size:13px; line-height:1.5; color:#a8c09b; margin:0 0 5px; }
+.h-first .lab-current { padding:10px 0; margin:8px 0; }
+.h-first .lab-current p { min-height:0; }
 .lab-current, .lab-delivery, .lab-launch { padding:14px 0; border-block:1px solid #294431; margin:10px 0 15px; }
 .lab-shell p { line-height:1.6; }
 .lab-current p, .lab-delivery p, .lab-launch p, .lab-inspect { font-size:11px; margin:5px 0 12px; min-height:3.2em; }

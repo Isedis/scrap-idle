@@ -1,4 +1,6 @@
 import { HorizonPanel } from './horizonPanel';
+import { restartHorizon } from '../game/horizon';
+import { profileOf } from '../game/horizonLab';
 import type { Release } from '../update';
 import { nextGoal } from './guidance';
 import { format } from '../game/num';
@@ -33,7 +35,7 @@ import {
   type BuyMode,
   type GameState,
 } from '../game/state';
-import { exportSave, importSave, wipeSave, writeSave, getSaveHealth, allowSaveReplacement, migrationCheckpoint } from '../game/save';
+import { exportSave, importSave, wipeSave, writeSave, getSaveHealth, allowSaveReplacement, migrationCheckpoint, serialize, deserialize } from '../game/save';
 import { ICONS } from './icons';
 import { el, progress, syncChildren, textBar } from './dom';
 export { textBar } from './dom';
@@ -229,7 +231,7 @@ export class App {
   private updateCredit!: HTMLElement;
   private updateStatus!: HTMLElement;
   private updateButton!: HTMLButtonElement;
-  private horizonLabEntry!: HTMLElement;
+  private horizonReset!: HTMLElement;
   /** Set by main: checks for a newer build and reloads into it. */
   onUpdate: () => Promise<'reloading' | 'latest' | 'offline' | 'save-error'> = async () => 'latest';
   private scene!: Scene;
@@ -1181,12 +1183,30 @@ export class App {
     this.updateCredit = el('p', 'note release-credit', __RELEASE_AUTHOR__ === 'Codex' ? `От Codex · ${__RELEASE_SUMMARY__}` : '');
     this.updateCredit.hidden = !this.updateCredit.textContent;
     panel.append(this.updateStatus, this.updateCredit, this.updateButton);
-    this.horizonLabEntry = el('div', '');
-    const labLink = el('a', 'btn horizon-lab-link', 'Испытание новой галереи →');
-    labLink.href = '?horizon-lab=1';
-    this.horizonLabEntry.append(labLink, el('p', 'note', 'Отдельный прогресс. Ресурсы основной игры не расходуются.'));
-    this.horizonLabEntry.hidden = true;
-    panel.append(this.horizonLabEntry);
+    const resetKey='scrap-idle-horizon-before-reset';
+    this.horizonReset=el('details','');
+    this.horizonReset.append(el('summary','','Начать «Горизонт» заново'));
+    const resetNote=el('p','note','Сбрасывает только «Горизонт». Свалка, сортировка, город, шахта и их кошельки остаются. Ранее потраченные УМЕ не возвращаются. Перед сбросом сохраняется копия слоя.');
+    const resetHall=el('button','btn','СБРОСИТЬ ТОЛЬКО ГОРИЗОНТ');resetHall.type='button';
+    const undoHall=el('button','btn','ВЕРНУТЬ ГОРИЗОНТ ДО СБРОСА');undoHall.type='button';
+    const resetStatus=el('p','note');resetStatus.setAttribute('role','status');
+    try{undoHall.disabled=!localStorage.getItem(resetKey);}catch{undoHall.disabled=true;}
+    resetHall.addEventListener('click',()=>{
+      const s=this.getState();if(!s.horizon.open)return;
+      try{localStorage.setItem(resetKey,serialize(s));}catch{resetStatus.textContent='Не удалось записать копию. Сброс не выполнен.';return;}
+      const previous=s.horizon;s.horizon=restartHorizon(profileOf(s));
+      if(!writeSave(s)){s.horizon=previous;resetStatus.textContent='Не удалось сохранить сброс. Прежний слой оставлен.';return;}
+      undoHall.disabled=false;resetHall.disabled=true;
+      resetStatus.textContent='«Горизонт» начат заново. Остальная игра сохранена.';this.render();
+    });
+    undoHall.addEventListener('click',()=>{
+      try{const raw=localStorage.getItem(resetKey),before=raw?deserialize(raw):null;if(!before){resetStatus.textContent='Копия слоя недоступна.';return;}
+        const s=this.getState(),previous=s.horizon;s.horizon=before.horizon;
+        if(!writeSave(s)){s.horizon=previous;resetStatus.textContent='Не удалось сохранить восстановление. Текущий слой оставлен.';return;}
+        resetHall.disabled=false;resetStatus.textContent='Состояние «Горизонта» до сброса возвращено. Остальные слои не изменены.';this.render();
+      }catch{resetStatus.textContent='Не удалось прочитать копию слоя.';}
+    });
+    this.horizonReset.append(resetNote,resetHall,undoHall,resetStatus);panel.append(this.horizonReset);
 
     // The debug button without typing ?debug: a copy started from the home screen has no address bar.
     panel.append(el('h2', 'panel-title', 'Отладка'));
@@ -1547,7 +1567,7 @@ export class App {
 
   render(): void {
     const state = this.getState();
-    this.horizonLabEntry.hidden = !state.horizon.open;
+    this.horizonReset.hidden=!state.horizon.open;
     const health=getSaveHealth();
     const warning=health.error ? `${health.error} → ЭКСПОРТ` : '';
     this.saveWarning.hidden=!warning;

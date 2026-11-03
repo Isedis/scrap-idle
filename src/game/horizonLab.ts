@@ -2,7 +2,7 @@ import { D, parseNum, type Decimal } from './num';
 import { ratePerSecond, type GameState } from './state';
 import { streetsOwned } from './city';
 
-/** Isolated first-hall experiment. Never writes or mutates a live GameState. */
+/** Receiving-hall material simulation; storage and the live wallet are owned by horizon.ts. */
 export const LAB_KEY='scrap-idle-horizon-lab-v1';
 export type LabModule='winch'|'press'|'frame'|'relay';
 export type LabProject=LabModule|'gallery';

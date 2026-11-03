@@ -3,10 +3,12 @@ import { D } from '../src/game/num';
 import { newGame, advance, reform } from '../src/game/state';
 import { serialize, deserialize } from '../src/game/save';
 import { melt, pressure, supplyRate } from '../src/game/bottom';
-import { HALLS, newHorizon, enterHorizon, canEnterHorizon, openGate, nodeCost, horizonRates, horizonTick, buyMachine, gateReady, buildTargets, nodeDone, productionPlan } from '../src/game/horizon';
+import { HALLS, newHorizon, enterHorizon as enterLiveHorizon, canEnterHorizon, openGate, nodeCost, horizonRates, horizonTick, buyMachine, gateReady, buildTargets, nodeDone, productionPlan } from '../src/game/horizon';
 
+// Preserve regression coverage of the original assembly equations used by later halls.
+const enterHorizon:typeof enterLiveHorizon=(h,b)=>{const ok=enterLiveHorizon(h,b);if(ok){h.firstHall=null;h.points=D(20);h.autoBuild=true;}return ok;};
 const readyState=()=>{const s=newGame(0);s.bottom.open=true;s.bottom.dug=22000;s.bottom.equipment.borer=1;s.bottom.umeMade=D(1);s.bottom.ume=D(5);return s;};
-describe('lower horizon',()=>{
+describe('legacy assembly equations and later horizon halls',()=>{
   it('prices both production links when one purchase alone cannot increase output',()=>{
     const s=readyState(),h=s.horizon;enterHorizon(h,s.bottom);
     const before=serialize(s),plan=productionPlan(h,s.city)!;
@@ -49,8 +51,8 @@ describe('lower horizon',()=>{
   it('requires earned UME and gives the starting installation only once without resetting the mine',()=>{
     const s=readyState();s.bottom.umeMade=D(0);expect(canEnterHorizon(s.bottom)).toBe(false);
     s.bottom.money.anomaly=D(150);expect(melt(s.bottom,'anomaly')).toBe(1);
-    expect(enterHorizon(s.horizon,s.bottom)).toBe(true);expect(enterHorizon(s.horizon,s.bottom)).toBe(false);
-    expect(s.horizon.points.eq(20)).toBe(true);expect(s.bottom.dug).toBe(22000);expect(s.bottom.umeMade.eq(1)).toBe(true);
+    expect(enterLiveHorizon(s.horizon,s.bottom)).toBe(true);expect(enterLiveHorizon(s.horizon,s.bottom)).toBe(false);
+    expect(s.horizon.points.eq(28)).toBe(true);expect(s.bottom.dug).toBe(22000);expect(s.bottom.umeMade.eq(1)).toBe(true);
   });
   it('uses a bottleneck and keeps half of production available for investment',()=>{
     const s=readyState();enterHorizon(s.horizon,s.bottom);buyMachine(s.horizon,'transport');

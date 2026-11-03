@@ -1,4 +1,5 @@
 import { newHorizon, horizonTick, settleUmeOrder, type HorizonState } from './horizon';
+import { profileOf } from './horizonLab';
 import { coveredNodes, coveredRecipes } from './capabilities';
 import { D, Decimal } from './num';
 import { affordableLineRecipes, assembleLine, lineRecipe, lineReserves } from './linePlanner';
@@ -332,7 +333,7 @@ export function advance(state: GameState, seconds: number, offline = false, slic
       autoOpen(b, Math.random);
       settleUmeOrder(state.horizon,b);
     }
-    horizonTick(state.horizon, dt, state.city);
+    horizonTick(state.horizon, dt, state.city, state.horizon.open ? profileOf(state) : undefined);
     state.runSeconds += dt;
     if (!offline) state.story.boost = Math.max(0, state.story.boost - dt);
     // Tails off the sorting line feed the thing: it climbs faster.

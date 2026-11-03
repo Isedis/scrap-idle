@@ -1,6 +1,7 @@
 import { D, Decimal } from './num';
 import { melt, meltCost, savingGoal, umeOpen, type BottomState } from './bottom';
 import { streetsOwned, type CityState } from './city';
+import { newLab, labRates, tickLab, startProject, requestShipment, LAB_ORDER, labCost, projectAvailable, type LabState, type LabModule, type LabProfile } from './horizonLab';
 
 export type Machine = 'transport' | 'processing' | 'assembly';
 export type BuildMode = 'growth' | 'balance' | 'assembly';
@@ -8,7 +9,7 @@ export interface HallNode { name: string; purpose: string; share: number; needs:
 export interface Hall { name: string; reward: string; nodes: HallNode[] }
 const node = (name: string, purpose: string, share: number, needs: number[] = []): HallNode => ({ name, purpose, share, needs });
 export const HALLS: readonly Hall[] = [
-  { name: 'Сервисный затвор', reward: 'Выпуск ×2 · снабжение шахты 9 т/мин', nodes: [
+  { name: 'Приёмная галерея', reward: 'Постоянное снабжение · автомонтаж следующего зала', nodes: [
     node('Основание', 'Держит направляющую обеих створок', 1/7), node('Левый привод', 'Соединяет тягу с левой створкой', 2/7, [0]),
     node('Правый привод', 'Приводит правую створку в движение', 5/14, [0]), node('Магистраль', 'Передаёт импульс УМЕ обоим приводам', 3/14, [0])] },
   { name: 'Подъёмный зал', reward: 'Выпуск ×2 · две монтажные цели', nodes: [
@@ -26,6 +27,8 @@ export const HALLS: readonly Hall[] = [
     node('Сопрягающий узел', 'Передаёт импульс главному створу', .15, [3])] },
 ];
 export interface HorizonState {
+  firstHall: LabState | null;
+  legacyAutomation: boolean;
   open: boolean; points: Decimal; total: Decimal; opened: number;
   levels: Record<Machine, number>; work: Decimal[];
   mode: BuildMode; autoBuild: boolean; autoBuy: boolean; forecast: boolean; parallel: boolean;
@@ -34,20 +37,32 @@ export interface HorizonState {
   umeOrder: boolean;
   nextPurchase: Machine | null; connections: { frame: boolean; conductor: boolean };
 }
-export const newHorizon = (): HorizonState => ({ open: false, points: D(0), total: D(0), opened: 0,
+export const newHorizon = (): HorizonState => ({ firstHall:null, legacyAutomation:false, open: false, points: D(0), total: D(0), opened: 0,
   levels: { transport: 0, processing: 0, assembly: 0 }, work: HALLS[0].nodes.map(() => D(0)),
   mode: 'balance', autoBuild: true, autoBuy: false, forecast: false, parallel: true, selected: 0, pinned: false,
   reserveUme: true, umeOrder: false, clock: 0, nextPurchase: null, connections: { frame: false, conductor: false } });
 export const canEnterHorizon = (b: BottomState) => b.open && b.dug >= 22000 && b.equipment.borer > 0 && b.umeMade.gte(1);
-export function enterHorizon(h: HorizonState, b: BottomState): boolean {
+export function restartHorizon(profile:LabProfile):HorizonState {
+  const h=newHorizon();h.open=true;h.points=D(28);h.autoBuild=false;h.autoBuy=false;
+  h.firstHall=newLab(profile);h.firstHall.pulses=0;h.firstHall.km=h.points;return h;
+}
+export function enterHorizon(h: HorizonState, b: BottomState, profile:LabProfile={source:'save',supply:0,quality:0,logistics:0,mine:0}): boolean {
   if (h.open || !canEnterHorizon(b)) return false;
-  h.open = true; h.points = h.points.add(20); return true;
+  h.open = true; h.points = h.points.add(28); h.firstHall=newLab(profile);
+  h.firstHall.pulses=0;h.firstHall.km=h.points;h.autoBuild=false;h.autoBuy=false;return true;
+}
+export function buildFirstHall(h:HorizonState,id:LabModule):boolean {
+  if(!h.open||h.opened!==0||!h.firstHall)return false;
+  h.firstHall.km=h.points;const started=startProject(h.firstHall,id);h.points=h.firstHall.km;return started;
+}
+export function supplyFirstHall(h:HorizonState):boolean {
+  return h.open&&h.opened===0&&!!h.firstHall&&requestShipment(h.firstHall);
 }
 export const hallCost = (h: HorizonState) => D(280).mul(Decimal.pow(8, h.opened));
 export const nodeCost = (h: HorizonState, i: number) => hallCost(h).mul(HALLS[h.opened]?.nodes[i]?.share ?? 0);
 export const nodeDone = (h: HorizonState, i: number) => !!HALLS[h.opened]?.nodes[i] && h.work[i].gte(nodeCost(h, i).mul(1 - 1e-12));
 export const nodeAvailable = (h: HorizonState, i: number) => !!HALLS[h.opened]?.nodes[i] && !nodeDone(h, i) && HALLS[h.opened].nodes[i].needs.every(n => nodeDone(h, n));
-export const gateReady = (h: HorizonState) => h.open && h.opened < 5 && HALLS[h.opened].nodes.every((_, i) => nodeDone(h, i));
+export const gateReady = (h: HorizonState) => h.open && h.opened < 5 && (h.opened===0&&h.firstHall?LAB_ORDER.every(id=>h.firstHall!.built[id]):HALLS[h.opened].nodes.every((_, i) => nodeDone(h, i)));
 export const umeReserved = (h: HorizonState) => h.open && h.opened < 5 && h.reserveUme ? 1 : 0;
 export const canOrderUme = (h: HorizonState, b: BottomState) => h.open && h.opened < HALLS.length && b.open && b.umeMade.gte(1) && umeOpen(b) && b.ume.lt(1);
 export function requestUme(h: HorizonState, b: BottomState): boolean {
@@ -70,15 +85,18 @@ export function settleUmeOrder(h: HorizonState, b: BottomState): void {
 export function openGate(h: HorizonState, b: BottomState): boolean {
   if (!gateReady(h) || b.ume.lt(1)) return false;
   b.ume = b.ume.sub(1); h.opened++; h.umeOrder=false;
+  if(h.opened===1&&h.firstHall){h.firstHall.commissioned=true;h.firstHall.launchedAt=h.firstHall.elapsed;h.firstHall.pulses=0;h.autoBuild=true;}
   b.supplyExtension = true;
   h.work = (HALLS[h.opened]?.nodes ?? []).map(() => D(0)); h.selected = 0; h.pinned = false;
   return true;
 }
 export function horizonRates(h: HorizonState, city: CityState) {
+  if(h.opened===0&&h.firstHall){const r=labRates(h.firstHall);return {transport:r.rawPerMinute,processing:r.rawPerMinute.mul(r.yieldPerRaw),assembly:D(r.crew),production:r.production};}
   const multiplier = Decimal.pow(2, h.opened);
-  const transport = D(4).mul(Decimal.pow(1.5, h.levels.transport)).mul(multiplier).mul(streetsOwned(city) >= 10 ? 1.1 : 1);
-  const processing = D(4).mul(Decimal.pow(1.5, h.levels.processing)).mul(multiplier).mul(h.connections.conductor ? 1.1 : 1);
-  const assembly = D(12).mul(Decimal.pow(1.5, h.levels.assembly)).mul(h.opened >= 4 ? 1.25 : 1).mul(h.connections.frame ? 1.1 : 1);
+  const p=h.firstHall?.profile;
+  const transport = D(4).mul(Decimal.pow(1.5, h.levels.transport)).mul(multiplier).mul(streetsOwned(city) >= 10 ? 1.1 : 1).mul(p?1+.8*p.supply:1);
+  const processing = D(4).mul(Decimal.pow(1.5, h.levels.processing)).mul(multiplier).mul(h.connections.conductor ? 1.1 : 1).mul(p?1+.5*p.quality:1);
+  const assembly = D(12).mul(Decimal.pow(1.5, h.levels.assembly)).mul(h.opened >= 4 ? 1.25 : 1).mul(h.connections.frame ? 1.1 : 1).mul(p?1+.35*p.mine:1);
   return { transport, processing, assembly, production: transport.min(processing) };
 }
 export const machineCost = (h: HorizonState, id: Machine) => D(id === 'transport' ? 20 : id === 'processing' ? 30 : 25).mul(Decimal.pow(1.8, h.levels[id])).ceil();
@@ -95,7 +113,7 @@ export function productionPlan(h: HorizonState, city: CityState): { machines: Ma
 const canAfford = (balance: Decimal, cost: Decimal) => balance.gte(cost.mul(1 - 1e-12));
 export function buyMachine(h: HorizonState, id: Machine): boolean {
   const cost = machineCost(h, id);
-  if (!h.open || !canAfford(h.points, cost) || !Number.isSafeInteger(h.levels[id] + 1)) return false;
+  if (!h.open || (h.opened===0&&!!h.firstHall) || !canAfford(h.points, cost) || !Number.isSafeInteger(h.levels[id] + 1)) return false;
   h.points = h.points.sub(cost).max(0); h.levels[id]++; if (h.nextPurchase === id) h.nextPurchase = null;
   return true;
 }
@@ -105,6 +123,7 @@ export function connectHorizon(h: HorizonState, b: BottomState, id: 'frame' | 'c
   b.money[currency] = b.money[currency].sub(price); h.connections[id] = true; return true;
 }
 export function buildTargets(h: HorizonState): number[] {
+  if(h.opened===0&&h.firstHall)return [];
   if (!h.autoBuild) return [];
   if (h.pinned && nodeAvailable(h, h.selected)) return [h.selected];
   const ids = (HALLS[h.opened]?.nodes ?? []).map((_, i) => i).filter(i => nodeAvailable(h, i));
@@ -149,8 +168,26 @@ function autoPurchase(h: HorizonState, city: CityState): void {
   const id = ids.find(id => canAfford(h.points, machineCost(h, id))); if (id) buyMachine(h, id);
 }
 /** Split at node completion and fixed purchase clocks, independent of render frequency. */
-export function horizonTick(h: HorizonState, seconds: number, city: CityState): void {
+export function horizonTick(h: HorizonState, seconds: number, city: CityState, profile?:LabProfile): void {
   if (!h.open || !Number.isFinite(seconds) || seconds <= 0) return;
+  if(h.firstHall&&profile)h.firstHall.profile={...profile};
+  if(h.firstHall&&h.opened===0){
+    h.clock%=1;
+    const f=h.firstHall;f.km=h.points;
+    let remaining=seconds;
+    while(remaining>1e-8){
+      const step=Math.min(remaining,1-h.clock);
+      const before=f.km;tickLab(f,step);h.total=h.total.add(f.km.sub(before));remaining-=step;h.clock+=step;
+      if(h.clock>=1-1e-8){h.clock=0;
+        if(h.legacyAutomation&&h.autoBuild&&h.mode!=='growth'){
+          if(!f.shipment&&f.raw.lte(labRates(f).capacity.mul(.5)))requestShipment(f);
+          const id=(['winch','frame','press','relay'] as LabModule[]).find(id=>projectAvailable(f,id));
+          if(id&&!f.job&&f.km.gte(labCost(f,id)))startProject(f,id);
+        }
+      }
+    }
+    h.points=f.km;return;
+  }
   let remaining = seconds;
   while (remaining > 1e-8) {
     // A completed or obsolete manual assignment returns to the normal queue.

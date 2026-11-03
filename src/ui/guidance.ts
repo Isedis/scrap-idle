@@ -17,7 +17,7 @@ export function nextGoal(s: GameState): Goal {
       const canMelt = s.bottom.money.anomaly.gte(meltCost(s.bottom, 'anomaly'));
       return { ...goal(canMelt ? 'Для затвора: переплавьте аномалии в УМЕ в шахте' : 'Для затвора: добудьте аномалии на жиле в шахте, затем переплавьте в УМЕ', 'bottom'), ready: canMelt, focus: 'ume' };
     }
-    return goal(gateReady(s.horizon) ? 'Горизонт: затвор готов к открытию' : 'Горизонт: сборка — '+HALLS[s.horizon.opened].name, 'horizon');
+    return goal(gateReady(s.horizon) ? 'Горизонт: затвор готов к открытию' : s.horizon.opened===0&&s.horizon.firstHall?'Горизонт: восстановить приёмную галерею':'Горизонт: сборка — '+HALLS[s.horizon.opened].name, 'horizon');
   }
   if (!s.horizon.open && canEnterHorizon(s.bottom)) return goal('Под шахтой обнаружен металлический стык', 'horizon');
   if (s.bottom.open) return bottomGoal(s);

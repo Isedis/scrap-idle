@@ -8,13 +8,6 @@ import { App } from './ui/app';
 import { CHECK_EVERY_MS, latestRelease, registerUpdates, selectRelease, reloadInto } from './update';
 import { debugOn, mountDebug } from './ui/debugPanel';
 
-// The design experiment has its own state and storage. The regular game never starts on this route.
-if(new URLSearchParams(location.search).get('horizon-lab')==='1') {
-  void import('./ui/horizonLab').then(({mountHorizonLab})=>mountHorizonLab(document.getElementById('app')!));
-}else bootGame();
-
-function bootGame():void {
-
 const AUTOSAVE_MS = 10_000;
 const RENDER_MS = 100;
 /** Away longer than this, the player gets a "while you were gone" note. */
@@ -142,4 +135,3 @@ document.addEventListener(
   },
   { passive: false },
 );
-}

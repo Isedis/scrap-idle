@@ -74,12 +74,12 @@ describe('one UME for a gate',()=>{
   });
   it('round-trips a pending order; saves predating v24 never opt in or lose existing progress',()=>{
     const s=ready();requestUme(s.horizon,s.bottom);s.horizon.points=D(123);s.horizon.work[0]=D(12);
-    s.city.total=D(1000);const raw=JSON.parse(serialize(s));expect(raw.v).toBe(25);
+    s.city.total=D(1000);const raw=JSON.parse(serialize(s));expect(raw.v).toBe(26);
     const copy=deserialize(JSON.stringify(raw))!;expect(copy.horizon.umeOrder).toBe(true);
     raw.v=23;
     const old=deserialize(JSON.stringify(raw))!;
-    expect(old.horizon.umeOrder).toBe(false);expect(old.horizon.points.eq(123)).toBe(true);
-    expect(old.horizon.work[0].eq(12)).toBe(true);expect(old.city.total.eq(1000)).toBe(true);
+    expect(old.horizon.umeOrder).toBe(false);expect(old.horizon.points.eq(135)).toBe(true);
+    expect(old.horizon.work[0].eq(0)).toBe(true);expect(old.city.total.eq(1000)).toBe(true);
     raw.v=24;raw.layers.bottom.ume='1';expect(deserialize(JSON.stringify(raw))!.horizon.umeOrder).toBe(false);
   });
 });

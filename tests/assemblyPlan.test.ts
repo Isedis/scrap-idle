@@ -83,6 +83,6 @@ describe('assembly allocation and dispatcher forecast',()=>{
     expect(old.horizon.points.eq(123)).toBe(true);expect(old.horizon.work[1].eq(456)).toBe(true);
     old.horizon.parallel=false;
     const back=deserialize(serialize(old))!;expect(back.horizon.parallel).toBe(false);expect(back.horizon.forecast).toBe(true);
-    expect(JSON.parse(serialize(back)).v).toBe(25);expect('smart' in JSON.parse(serialize(back)).layers.horizon).toBe(false);
+    expect(JSON.parse(serialize(back)).v).toBe(26);expect('smart' in JSON.parse(serialize(back)).layers.horizon).toBe(false);
   });
 });
