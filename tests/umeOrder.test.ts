@@ -72,9 +72,9 @@ describe('one UME for a gate',()=>{
     h.opened=4;h.work=HALLS[4].nodes.map((_,i)=>nodeCost(h,i));b.ume=D(1);
     expect(openGate(h,b)).toBe(true);expect(h.umeOrder).toBe(false);expect(requestUme(h,b)).toBe(false);
   });
-  it('round-trips a pending order in v24; older saves never opt in or lose existing progress',()=>{
+  it('round-trips a pending order; saves predating v24 never opt in or lose existing progress',()=>{
     const s=ready();requestUme(s.horizon,s.bottom);s.horizon.points=D(123);s.horizon.work[0]=D(12);
-    s.city.total=D(1000);const raw=JSON.parse(serialize(s));expect(raw.v).toBe(24);
+    s.city.total=D(1000);const raw=JSON.parse(serialize(s));expect(raw.v).toBe(25);
     const copy=deserialize(JSON.stringify(raw))!;expect(copy.horizon.umeOrder).toBe(true);
     raw.v=23;
     const old=deserialize(JSON.stringify(raw))!;

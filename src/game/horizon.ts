@@ -14,7 +14,7 @@ export const HALLS: readonly Hall[] = [
   { name: 'Подъёмный зал', reward: 'Выпуск ×2 · две монтажные цели', nodes: [
     node('Нижняя опора', 'Несёт подъёмную платформу', .2), node('Платформа', 'Поднимает монтаж к верхнему затвору', .3, [0]),
     node('Силовая линия', 'Питает верхний привод', .2, [0]), node('Верхняя тяга', 'Соединяет платформу и створ', .3, [1])] },
-  { name: 'Распределительный зал', reward: 'Выпуск ×2 · диспетчер зависимостей', nodes: [
+  { name: 'Распределительный зал', reward: 'Выпуск ×2 · диспетчер прогноза', nodes: [
     node('Общая шина', 'Соединяет две стороны зала', .2), node('Левый участок', 'Подводит тягу к боковой створке', .3, [0]),
     node('Правый участок', 'Замыкает второй контур привода', .3, [0]), node('Замыкатель', 'Объединяет обе готовые ветви', .2, [1, 2])] },
   { name: 'Поворотный зал', reward: 'Выпуск ×2 · монтаж ×1,25', nodes: [
@@ -28,7 +28,7 @@ export const HALLS: readonly Hall[] = [
 export interface HorizonState {
   open: boolean; points: Decimal; total: Decimal; opened: number;
   levels: Record<Machine, number>; work: Decimal[];
-  mode: BuildMode; autoBuild: boolean; autoBuy: boolean; smart: boolean;
+  mode: BuildMode; autoBuild: boolean; autoBuy: boolean; forecast: boolean; parallel: boolean;
   selected: number; pinned: boolean; reserveUme: boolean; clock: number;
   /** One manual order for the current gate; stops once the shared wallet has one UME. */
   umeOrder: boolean;
@@ -36,7 +36,7 @@ export interface HorizonState {
 }
 export const newHorizon = (): HorizonState => ({ open: false, points: D(0), total: D(0), opened: 0,
   levels: { transport: 0, processing: 0, assembly: 0 }, work: HALLS[0].nodes.map(() => D(0)),
-  mode: 'balance', autoBuild: true, autoBuy: false, smart: false, selected: 0, pinned: false,
+  mode: 'balance', autoBuild: true, autoBuy: false, forecast: false, parallel: true, selected: 0, pinned: false,
   reserveUme: true, umeOrder: false, clock: 0, nextPurchase: null, connections: { frame: false, conductor: false } });
 export const canEnterHorizon = (b: BottomState) => b.open && b.dug >= 22000 && b.equipment.borer > 0 && b.umeMade.gte(1);
 export function enterHorizon(h: HorizonState, b: BottomState): boolean {
@@ -108,12 +108,35 @@ export function buildTargets(h: HorizonState): number[] {
   if (!h.autoBuild) return [];
   if (h.pinned && nodeAvailable(h, h.selected)) return [h.selected];
   const ids = (HALLS[h.opened]?.nodes ?? []).map((_, i) => i).filter(i => nodeAvailable(h, i));
-  if (h.smart && h.opened >= 3) ids.sort((a, b) => {
-    const children = (id: number) => HALLS[h.opened].nodes.filter(n => n.needs.includes(id)).length;
-    return children(b) - children(a) || nodeCost(h, a).sub(h.work[a]).cmp(nodeCost(h, b).sub(h.work[b])) || a - b;
-  });
-  else if (ids.includes(h.selected)) ids.sort((a, b) => Number(b === h.selected) - Number(a === h.selected) || a - b);
-  return ids.slice(0, h.opened >= 2 ? 2 : 1);
+  if (ids.includes(h.selected)) ids.sort((a, b) => Number(b === h.selected) - Number(a === h.selected) || a - b);
+  return ids.slice(0, h.opened >= 2 && h.parallel ? 2 : 1);
+}
+
+function flowAt(h: HorizonState, r: ReturnType<typeof horizonRates>): Decimal {
+  if (!h.autoBuild || h.mode==='growth') return D(0);
+  const cap=h.mode==='balance'?r.production.mul(.5).min(r.assembly):r.assembly;
+  return h.mode==='assembly'&&h.points.lte(1e-10)?cap.min(r.production):cap;
+}
+
+/** Actual shared flow now, including a manual assignment or a single available node. */
+export function assemblyFlow(h: HorizonState, city: CityState): Decimal {
+  return h.open&&buildTargets(h).length?flowAt(h,horizonRates(h,city)):D(0);
+}
+
+/** Constant-power forecast; investments and manual gate opening are deliberately outside it. */
+export function assemblyForecast(h: HorizonState, city: CityState) {
+  const targets=buildTargets(h),r=horizonRates(h,city);
+  if(!h.open||h.opened>=HALLS.length||h.mode==='growth'||!targets.length)return null;
+  const cap=h.mode==='balance'?r.production.mul(.5).min(r.assembly):r.assembly;
+  if(cap.lte(0)||r.production.lte(0))return null;
+  const timeFor=(work:Decimal)=>{
+    const capacity=work.div(cap);
+    return (h.mode==='assembly'?capacity.max(work.sub(h.points).max(0).div(r.production)):capacity).mul(60);
+  };
+  const left=(id:number)=>nodeCost(h,id).sub(h.work[id]).max(0);
+  const smallest=targets.reduce((min,id)=>min.min(left(id)),left(targets[0]));
+  const remaining=HALLS[h.opened].nodes.reduce((sum,_,id)=>sum.add(left(id)),D(0));
+  return {next:targets.filter(id=>left(id).eq(smallest)),nextSeconds:timeFor(smallest.mul(targets.length)),totalSeconds:timeFor(remaining)};
 }
 function autoPurchase(h: HorizonState, city: CityState): void {
   if (!h.autoBuy) return;
@@ -133,8 +156,7 @@ export function horizonTick(h: HorizonState, seconds: number, city: CityState): 
     // A completed or obsolete manual assignment returns to the normal queue.
     if (h.pinned && !nodeAvailable(h, h.selected)) h.pinned = false;
     const r = horizonRates(h, city); const targets = h.mode === 'growth' ? [] : buildTargets(h);
-    let flow = h.mode === 'balance' ? r.production.mul(.5).min(r.assembly) : r.assembly;
-    if (h.mode === 'assembly' && h.points.lte(1e-10)) flow = flow.min(r.production);
+    const flow = flowAt(h,r);
     let dt = Math.min(remaining, 60 - h.clock);
     if (targets.length && flow.gt(0)) {
       for (const id of targets) dt = Math.min(dt, nodeCost(h, id).sub(h.work[id]).mul(targets.length).div(flow).mul(60).toNumber());

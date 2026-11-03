@@ -1,9 +1,17 @@
-import { format } from '../game/num';
-import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, productionPlan, buyMachine, connectHorizon, buildTargets, type Machine, type BuildMode } from '../game/horizon';
+import { format, type Decimal } from '../game/num';
+import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, productionPlan, buyMachine, connectHorizon, buildTargets, assemblyFlow, assemblyForecast, type Machine, type BuildMode } from '../game/horizon';
 import type { GameState } from '../game/state';
 import { el } from './dom';
 import { HorizonCam } from './horizonCam';
 import { UmeOrder } from './umeOrder';
+
+function forecastTime(seconds:Decimal):string {
+  if(seconds.lt(60))return '<1 мин';
+  const minutes=seconds.div(60).ceil();
+  if(minutes.lt(60))return `≈${format(minutes)} мин`;
+  if(minutes.lt(1440)){const rest=minutes.mod(60);return `≈${format(minutes.div(60).floor())} ч${rest.gt(0)?` ${format(rest)} мин`:''}`;}
+  return `≈${format(seconds.div(86400))} дн`;
+}
 
 export class HorizonPanel {
   readonly root = el('section', 'panel horizon');
@@ -23,6 +31,13 @@ export class HorizonPanel {
   private inspected: number | null = null;
   private nodes = el('div', 'h-nodes');
   private modes = el('div', 'h-modes');
+  private allocation=el('div','h-allocation');
+  private allocationNote=el('p','h-note h-allocation-note');
+  private dispatcher=el('div','h-dispatcher');
+  private dispatchToggle=el('button','btn h-dispatch-toggle');
+  private dispatchBody=el('div','h-dispatch-body');
+  private dispatchNext=el('p','h-note');
+  private dispatchFinish=el('p','h-note');
   private gate = el('button', 'btn h-gate', 'ОТКРЫТЬ · 1 УМЕ');
   private note = el('div', 'h-note');
   private history = el('select', 'h-select');
@@ -31,7 +46,7 @@ export class HorizonPanel {
   private investment = el('p', 'h-note h-investment');
   private investAuto = el('button', 'btn h-invest-auto');
   private machineRows = new Map<Machine, { text: HTMLElement; buy: HTMLButtonElement }>();
-  private options: { input: HTMLInputElement; key: 'autoBuild' | 'autoBuy' | 'smart' | 'reserveUme' }[] = [];
+  private options: { input: HTMLInputElement; key: 'autoBuild' | 'autoBuy' | 'reserveUme' }[] = [];
   private connections = el('div', 'h-connections');
   private connectionRows = new Map<'frame'|'conductor', HTMLButtonElement>();
   private renderedHall = -1;
@@ -51,6 +66,16 @@ export class HorizonPanel {
       const b=el('button','btn',label);b.type='button';b.dataset.mode=id;
       b.addEventListener('click',()=>{this.getState().horizon.mode=id;this.onChange();});this.modes.append(b);
     }
+    this.allocation.setAttribute('role','group');this.allocation.setAttribute('aria-label','Распределение общей мощности монтажа');
+    for(const [parallel,label] of [[false,'ОДИН УЗЕЛ'],[true,'ДВА УЗЛА']] as const){
+      const b=el('button','btn',label);b.type='button';b.dataset.parallel=String(parallel);
+      b.addEventListener('click',()=>{const h=this.getState().horizon;h.parallel=parallel;h.pinned=false;this.onChange();});this.allocation.append(b);
+    }
+    this.dispatchToggle.type='button';this.dispatchToggle.addEventListener('click',()=>{
+      const h=this.getState().horizon;if(h.opened<3)return;h.forecast=!h.forecast;this.onChange();
+    });
+    this.dispatchBody.append(this.dispatchNext,this.dispatchFinish,el('p','h-note','При текущих мощностях, без будущих покупок. Прогноз заканчивается готовностью монтажа; УМЕ и ручное открытие — отдельно.'));
+    this.dispatcher.append(this.dispatchToggle,this.dispatchBody);
     this.gate.type='button';this.gate.addEventListener('click',()=>{
       const s=this.getState();const old=s.horizon.opened;
       if(gateReady(s.horizon)&&s.bottom.ume.lt(1)){this.visitMine();return;}
@@ -65,7 +90,7 @@ export class HorizonPanel {
     });
     this.inspection.append(this.inspectedText,this.assign);this.inspection.hidden=true;
     const settings=el('details','h-settings');settings.append(el('summary','','Автоматика и резерв'));
-    for(const [key,label] of [['autoBuild','Автомонтаж'],['autoBuy','Автопокупка полезных улучшений'],['smart','Диспетчер зависимостей · после зала 3'],['reserveUme','Копить 1 УМЕ на текущий затвор']] as const){
+    for(const [key,label] of [['autoBuild','Автомонтаж'],['autoBuy','Автопокупка полезных улучшений'],['reserveUme','Копить 1 УМЕ на текущий затвор']] as const){
       const row=el('label','h-toggle');const input=el('input','');input.type='checkbox';
       input.addEventListener('change',()=>{const h=this.getState().horizon;h[key]=input.checked;if(key==='autoBuild'&&input.checked)h.pinned=false;this.onChange();});
       row.append(input,document.createTextNode(label));settings.append(row);this.options.push({input,key});
@@ -89,7 +114,7 @@ export class HorizonPanel {
     connections.append(this.connections,el('p','s-why','10 восстановленных улиц дают транспорту +10%, пока город сохраняет их. Подключения необязательны.'));
     this.history.setAttribute('aria-label','Камеры пройденных залов');this.history.addEventListener('change',()=>{this.viewedHall=Number(this.history.value);this.onChange();});
     const targets=el('details','h-targets');targets.append(el('summary','','Осмотреть узлы'),this.nodes);
-    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.note,this.nodeText,this.inspection,this.modes,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
+    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.note,this.nodeText,this.inspection,this.modes,this.allocation,this.allocationNote,this.dispatcher,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
     this.root.append(this.entry,this.content);
   }
   render(s: GameState): void {
@@ -121,6 +146,23 @@ export class HorizonPanel {
       this.assign.textContent=h.pinned&&h.selected===id?'НАЗНАЧЕНО · ПОТОМ АВТООЧЕРЕДЬ':'СТРОИТЬ СЛЕДУЮЩИМ';
     }
     this.modes.querySelectorAll('button').forEach(b=>b.classList.toggle('active',(b as HTMLElement).dataset.mode===h.mode));
+    this.allocation.hidden=h.opened<2||h.opened>=5;
+    this.allocation.querySelectorAll('button').forEach(b=>{
+      const active=b.dataset.parallel===String(h.parallel);b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));
+    });
+    const flow=assemblyFlow(h,s.city);
+    this.allocationNote.hidden=!hall;
+    this.allocationNote.textContent=flow.gt(0)
+      ? `Общий монтаж: ${format(flow)} КМ/мин · ${targets.length===2?`два узла по ${format(flow.div(2))}`:'весь поток одному узлу'}.${h.pinned?' Ручная задача до завершения, затем автоочередь.':h.opened>=2&&h.parallel&&targets.length===1?' Сейчас доступен только один узел.':''}`
+      : gateReady(h)?'Весь монтаж завершён.':'Мощность монтажа сейчас не расходуется.';
+    this.dispatcher.hidden=h.opened<3||h.opened>=5;
+    this.dispatchToggle.textContent=`ДИСПЕТЧЕР · ${h.forecast?'СКРЫТЬ':'ПОКАЗАТЬ'} ПРОГНОЗ`;
+    this.dispatchToggle.setAttribute('aria-expanded',String(h.forecast));this.dispatchBody.hidden=!h.forecast;
+    if(h.forecast&&h.opened>=3&&hall){
+      const prediction=assemblyForecast(h,s.city);
+      this.dispatchNext.textContent=prediction?`Ближайшее завершение: ${prediction.next.map(id=>hall.nodes[id].name).join(' + ')} · ${forecastTime(prediction.nextSeconds)}`:gateReady(h)?'Все узлы готовы.':'Прогноз на паузе: включите автомонтаж и режим «Баланс» или «Сборка».';
+      this.dispatchFinish.textContent=prediction?`До готовности всего монтажа: ${forecastTime(prediction.totalSeconds)}`:'';
+    }
     this.gate.hidden=!gateReady(h);this.gate.textContent=s.bottom.ume.lt(1)?'ЗА УМЕ В ШАХТУ →':'ОТКРЫТЬ · 1 УМЕ';
     const names={transport:'Транспорт',processing:'Переработка',assembly:'Монтаж'};
     const plan=productionPlan(h,s.city);
@@ -132,7 +174,7 @@ export class HorizonPanel {
       row.text.textContent=`${names[id]} · ур.${h.levels[id]} · ${format(r[id])} КМ/мин · ${gain}`;
       row.buy.textContent=`${format(machineCost(h,id))} КМ`;row.buy.disabled=h.points.lt(machineCost(h,id));
     }
-    this.options.forEach(({input,key})=>{input.checked=h[key];input.disabled=key==='smart'&&h.opened<3;});
+    this.options.forEach(({input,key})=>{input.checked=h[key];});
     if(document.activeElement!==this.lock)this.lock.value=h.nextPurchase??'';
     this.connectionRows.forEach((b,id)=>{b.disabled=h.connections[id]||s.bottom.money[id==='frame'?'scrap':'nonferrous'].lt(id==='frame'?100:40);b.classList.toggle('active',h.connections[id]);});
     const count=Math.min(5,h.opened+1);

@@ -2024,3 +2024,10 @@ html, body { overflow: hidden; }
 .b-work-note, .ume-order-note { margin: 6px 0; color: var(--mid); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .ume-order { margin: 10px 0; padding: 10px 0; border-block: 1px solid var(--line); }
 .ume-order-button { width: 100%; min-height: 44px; white-space: normal; }
+.h-allocation { display: flex; gap: 6px; margin: 10px 0 6px; }
+.h-allocation .btn { flex: 1; min-height: 44px; min-width: 0; font-size: 12px; padding-inline: 6px; }
+.h-allocation-note { margin: 6px 0 12px; }
+.h-dispatcher { margin: 8px 0 12px; }
+.h-dispatch-toggle { width: 100%; min-height: 44px; white-space: normal; }
+.h-dispatch-body { padding: 4px 0; }
+.h-dispatch-body > p:first-child { min-height: 3.2em; }
