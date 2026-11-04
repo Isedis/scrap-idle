@@ -2,7 +2,7 @@ import '@fontsource-variable/jetbrains-mono';
 import './style.css';
 import { format } from './game/num';
 import { advance, autoRecycleDue, autoSortDue, newGame, revealProducers, runScripts, storyTick, type GameState } from './game/state';
-import { applyOffline, readSave, writeSave } from './game/save';
+import { applyOffline, claimSave, isDisplaced, ownerChanged, readSave, writeSave } from './game/save';
 import { AWAY_SCREEN_SECONDS, awayReport, awaySnapshot, type AwayReport } from './game/away';
 import { App } from './ui/app';
 import { CHECK_EVERY_MS, latestRelease, registerUpdates, selectRelease, reloadInto } from './update';
@@ -30,6 +30,9 @@ const app = new App(
   (next) => (state = next),
 );
 if (debugOn()) mountDebug(app, () => state);
+// The copy opened last owns the save; this one stops when another takes over.
+claimSave(() => app.showElsewhere());
+window.addEventListener('storage', (e) => ownerChanged(e.key, e.newValue));
 app.render();
 welcomeBack(away, awayFirst, awayRaw);
 
@@ -57,6 +60,8 @@ function welcomeBack(seconds: number, report: AwayReport, raw: number): void {
 
 let lastRender = 0;
 function frame(): void {
+  // Another copy plays now: this one freezes where it was.
+  if (isDisplaced()) return;
   const now = Date.now();
   let dt = (now - state.lastTick) / 1000;
   if (dt > BACKGROUND_GAP_SECONDS) {

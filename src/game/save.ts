@@ -30,6 +30,8 @@ import {
 export const SAVE_KEY = 'scrap-idle-save';
 export const BACKUP_KEY = 'scrap-idle-save-backup';
 export const MIGRATION_KEY = 'scrap-idle-save-before-migration';
+/** Which open copy of the game owns the save: the newest one wins. */
+export const OWNER_KEY = 'scrap-idle-save-owner';
 const VERSION = 30;
 
 /** Run length for a run whose start is not known; stays negative however long it is played. */
@@ -734,11 +736,45 @@ let previewing = false;
 export const startPreview = () => void (previewing = true);
 export const isPreview = () => previewing;
 
+/**
+ * Two open copies of the game would overwrite each other's progress. The copy opened last
+ * claims the save; an older one stops writing as soon as it notices.
+ */
+const tabId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+let displaced = false;
+let onDisplaced: (() => void) | null = null;
+export const isDisplaced = () => displaced;
+
+function displace(): void {
+  if (displaced) return;
+  displaced = true;
+  onDisplaced?.();
+}
+
+/** Takes the save for this copy; `lost` runs once another copy takes it over. */
+export function claimSave(lost: () => void): void {
+  onDisplaced = lost;
+  if (previewing) return;
+  try { storage()?.setItem(OWNER_KEY, tabId); } catch { /* writes report their own errors */ }
+}
+
+/** A storage event from another copy: a new owner means this one must stop. */
+export function ownerChanged(key: string | null, value: string | null): void {
+  if (previewing || onDisplaced === null) return;
+  if (key === OWNER_KEY && value !== null && value !== tabId) displace();
+}
+
 export function writeSave(state: GameState): boolean {
-  if (previewing || replacementBlocked) return false;
+  if (previewing || replacementBlocked || displaced) return false;
   const store = storage();
   if (!store) return false;
   try {
+    // A missed event (a phone suspends background tabs) is caught right before writing.
+    const owner = onDisplaced === null ? null : store.getItem(OWNER_KEY);
+    if (owner !== null && owner !== tabId) {
+      displace();
+      return false;
+    }
     // The untouched old format must survive ordinary backup rotation.
     if (pendingMigration) {
       store.setItem(MIGRATION_KEY, pendingMigration);

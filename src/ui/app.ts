@@ -678,6 +678,24 @@ export class App {
     return !this.awayScreen.root.hidden || !this.intro.root.hidden;
   }
 
+  /** Another copy of the game took the save: this one stops and offers to take it back. */
+  showElsewhere(): void {
+    const cover = el('div', 'intro elsewhere');
+    cover.setAttribute('role', 'dialog');
+    cover.setAttribute('aria-modal', 'true');
+    const box = el('div', 'intro-box');
+    const button = el('button', 'btn intro-next', 'Играть здесь');
+    button.type = 'button';
+    button.addEventListener('click', () => location.reload());
+    box.append(
+      el('div', 'intro-title', '> СВЯЗЬ ПЕРЕХВАЧЕНА'),
+      el('p', 'intro-text', 'Игра открыта в другом окне. Здесь она остановлена, чтобы не затереть прогресс.'),
+      button,
+    );
+    cover.append(box);
+    this.root.append(cover);
+  }
+
   showAway(report: AwayReport, capped: number | null, then: () => void): void {
     this.awayScreen.show(report, capped, then, nextGoal(this.getState()).text, action=>{
       this.layerView=action==='ume'?'bottom':'horizon';this.show('recycle');this.render();

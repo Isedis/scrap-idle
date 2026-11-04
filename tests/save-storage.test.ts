@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newGame } from '../src/game/state';
 import { D } from '../src/game/num';
-import { SAVE_KEY, BACKUP_KEY, MIGRATION_KEY, serialize, readSave, writeSave, getSaveHealth, allowSaveReplacement, migrationCheckpoint, importSave, wipeSave } from '../src/game/save';
+import { SAVE_KEY, BACKUP_KEY, MIGRATION_KEY, OWNER_KEY, claimSave, ownerChanged, isDisplaced, serialize, readSave, writeSave, getSaveHealth, allowSaveReplacement, migrationCheckpoint, importSave, wipeSave } from '../src/game/save';
 
 describe('save storage and recovery', () => {
   let data: Map<string,string>;
@@ -55,5 +55,15 @@ describe('save storage and recovery', () => {
     data.set(MIGRATION_KEY,'old');wipeSave();expect(migrationCheckpoint()).toBeNull();
     vi.stubGlobal('window',{get localStorage(){throw new Error('blocked');}});
     expect(writeSave(newGame(0))).toBe(false);expect(getSaveHealth().error).toContain('недоступно');
+  });
+  // Runs last: once displaced, this module's copy of the game stays stopped.
+  it('stops writing once another open copy of the game claims the save',()=>{
+    let lost=0;claimSave(()=>lost++);
+    const s=newGame(0);s.trash=D(5);expect(writeSave(s)).toBe(true);
+    // Another tab took over and the storage event was missed (a suspended phone tab).
+    data.set(OWNER_KEY,'other');s.trash=D(9);
+    expect(writeSave(s)).toBe(false);expect(lost).toBe(1);expect(isDisplaced()).toBe(true);
+    expect(importSave(data.get(SAVE_KEY)!)!.trash.eq(5)).toBe(true);
+    ownerChanged(OWNER_KEY,'third');expect(lost).toBe(1);
   });
 });
