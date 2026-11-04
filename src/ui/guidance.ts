@@ -1,4 +1,5 @@
-import { canEnterHorizon, gateReady, HALLS } from '../game/horizon';
+import { canEnterHorizon, gateReady, assemblyReady, canCommission, commissionCost, nodeDone, powerCapacity, HALLS } from '../game/horizon';
+import { LAB_MODULES,LAB_ORDER,projectAvailable,labCost } from '../game/horizonLab';
 import { D, format } from '../game/num';
 import { PRODUCERS } from '../game/producers';
 import { RECYCLE_AT } from '../game/layers';
@@ -17,8 +18,29 @@ export function nextGoal(s: GameState): Goal {
       const canMelt = s.bottom.money.anomaly.gte(meltCost(s.bottom, 'anomaly'));
       return { ...goal(canMelt ? 'Для затвора: переплавьте аномалии в УМЕ в шахте' : 'Для затвора: добудьте аномалии на жиле в шахте, затем переплавьте в УМЕ', 'bottom'), ready: canMelt, focus: 'ume' };
     }
+    const h=s.horizon;
+    const action=(text:string,ready=false):Goal=>({...goal(`Горизонт: ${text}`,'horizon'),ready});
+    if(gateReady(h))return action('затвор готов к открытию',true);
+    if(h.opened===0&&h.firstHall){const f=h.firstHall;
+      if(f.job)return action(`идёт монтаж — ${LAB_MODULES[f.job.id as keyof typeof LAB_MODULES]?.name??'оборудование'}`);
+      if(f.raw.eq(0)&&!f.shipment&&!f.autoDelivery)return action('закажите партию сырья в приёмную галерею',true);
+      const available=LAB_ORDER.filter(id=>projectAvailable(f,id)),affordable=available.filter(id=>h.points.gte(labCost(f,id)));
+      if(affordable.length>1)return action('выберите следующую машину',true);
+      if(affordable.length)return action(`можно собрать — ${LAB_MODULES[affordable[0]].name}`,true);
+      if(available.length)return action(`копите КМ — ${LAB_MODULES[available[0]].name}`);
+    }
+    if(h.opened===1&&h.recipe===null)return action('выберите крупные или точные узлы',true);
+    if(h.opened===3&&h.powerMode!=='legacy'&&!assemblyReady(h)){
+      if(!h.regulator&&h.charge.gte(powerCapacity(h,s.city)))return action('накопитель полон — запустите привод',true);
+      if(!h.regulator&&nodeDone(h,0)&&h.points.gte(400))return action('доступен регулятор автоматических запусков',true);
+    }
+    if(h.opened===4){
+      if(h.trial)return action(`идёт проверка ${h.trial.kind==='feed'?'подачи':'привода'}`);
+      for(const kind of ['feed','drive'] as const)if(canCommission(h,kind))return action(h.points.gte(commissionCost(h,s.city))?`запустите проверку ${kind==='feed'?'подачи':'привода'}`:`копите КМ для проверки ${kind==='feed'?'подачи':'привода'}`,h.points.gte(commissionCost(h,s.city)));
+    }
     return goal(gateReady(s.horizon) ? 'Горизонт: затвор готов к открытию' : s.horizon.opened===0&&s.horizon.firstHall?'Горизонт: восстановить приёмную галерею':'Горизонт: сборка — '+HALLS[s.horizon.opened].name, 'horizon');
   }
+  if(s.horizon.opened===5)return goal('Контур запущен: доход свалки +25%','horizon');
   if (!s.horizon.open && canEnterHorizon(s.bottom)) return goal('Под шахтой обнаружен металлический стык', 'horizon');
   if (s.bottom.open) return bottomGoal(s);
   if (canDescend(s)) return { ...goal('Яма открыта: можно спуститься', 'city'), ready: true };

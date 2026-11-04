@@ -19,6 +19,9 @@ export class HorizonPanel {
   readonly root = el('section', 'panel horizon');
   readonly camera: HorizonCam;
   private firstHall: HorizonFirstHall;
+  private map=el('nav','h-map');
+  private mapNote=el('p','h-note h-map-note');
+  private mapButtons:HTMLButtonElement[]=[];
   private entry = el('div', 'h-entry');
   private entryText = el('p', 's-why');
   private enter = el('button', 'btn', 'ОБСЛЕДОВАТЬ СТЫК');
@@ -82,6 +85,9 @@ export class HorizonPanel {
       this.inspected = i; this.onChange();
     });
     this.enter.type = 'button'; this.enter.addEventListener('click', () => { const s = this.getState(); if (enterHorizon(s.horizon, s.bottom, profileOf(s))) this.onChange(); });
+    this.map.setAttribute('aria-label','Пять залов сооружения');
+    const chain=el('div','h-map-chain');this.map.append(chain,this.mapNote);
+    HALLS.forEach((_,i)=>{if(i)chain.append(el('span','h-map-arrow','→'));const b=el('button','btn h-map-button');b.type='button';b.dataset.hall=String(i);b.addEventListener('click',()=>{this.viewedHall=i;this.onChange();});chain.append(b);this.mapButtons.push(b);});
     this.entry.append(el('h2', 'panel-title', 'Металлический стык'), this.entryText, this.enter);
     this.recipe.append(el('h3','','ПРОФИЛЬ СБОРКИ'),this.recipeText);
     for(const [id,label,description] of [['heavy','КРУПНЫЕ УЗЛЫ','Шахта ускоряет монтаж. Платформа −20% КМ. После зала транспорт +20%, монтаж +10%.'],['precise','ТОЧНЫЕ УЗЛЫ','Сортировка ускоряет монтаж. Силовая линия −30% КМ. После зала переработка +20%, выпуск +8%.']] as const){
@@ -152,12 +158,16 @@ export class HorizonPanel {
     this.history.setAttribute('aria-label','Камеры пройденных залов');this.history.addEventListener('change',()=>{this.viewedHall=Number(this.history.value);this.onChange();});
     const targets=el('details','h-targets');targets.append(el('summary','','Осмотреть узлы'),this.nodes);
     this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.recipe,this.routing,this.power,this.commission,this.note,this.nodeText,this.inspection,this.modes,this.allocation,this.allocationNote,this.dispatcher,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
-    this.root.append(this.entry,this.firstHall.root,this.content);
+    this.root.append(this.entry,this.map,this.firstHall.root,this.content);
   }
   render(s: GameState): void {
     const h=s.horizon;
     if(this.identity!==h){this.identity=h;this.viewedHall=-1;this.renderedHall=-1;this.inspected=null;this.camera.reset();}
     const first=h.open&&h.opened===0&&!!h.firstHall;
+    this.map.hidden=!h.open;
+    const viewed=this.viewedHall>=0?this.viewedHall:Math.min(4,h.opened);
+    this.mapButtons.forEach((b,i)=>{const passed=i<h.opened,available=i<=h.opened;b.disabled=!available;b.textContent=`${i+1} ${passed?'✓':available?'•':'?'}`;b.setAttribute('aria-label',available?`${i+1}. ${HALLS[i].name}${passed?' — пройден':' — текущий'}`:`Зал ${i+1} закрыт`);b.setAttribute('aria-pressed',String(i===viewed));b.classList.toggle('active',i===viewed);});
+    this.mapNote.textContent=viewed!==Math.min(4,h.opened)?`Камера: ${HALLS[viewed].name}. Управление ниже — текущим залом ${Math.min(5,h.opened+1)}.`:h.opened===5?'Все пять участков соединены. Контур работает.':`Сейчас: ${HALLS[h.opened].name}. ✓ — пройдено · • — текущий зал.`;
     this.entry.hidden=h.open;this.content.hidden=!h.open||first;this.firstHall.root.hidden=!first;
     this.entryText.textContent=`За породой виден стык огромных створок. Глубина ${Math.floor(s.bottom.dug)}/22000 т · проходчик ${s.bottom.equipment.borer>0?'запущен':'не запущен'} · УМЕ переплавкой ${s.bottom.umeMade.gte(1)?'получена':'ещё не получена'}. Вход сохраняет всю шахту.`;
     this.enter.disabled=!canEnterHorizon(s.bottom);if(!h.open)return;
