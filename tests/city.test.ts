@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CITY_OPEN_SORTS, DISTRICTS, REFORM_SORTS, annex, annexCost, canAnnex, cityEffects, districtById, newCity, peopleLeft, pitReady, plan, STREETS, TOWN_PEOPLE, visible } from '../src/game/city';
+import { CITY_OPEN_SORTS, DISTRICTS, REFORM_SORTS, annex, annexCost, canAnnex, cityEffects, districtById, newCity, peopleLeft, pitReady, plan, STREETS, TERRITORY_INCOME, TOWN_PEOPLE, visible } from '../src/game/city';
 import { advance, autoLine, autoTree, canReform, newGame, reform, reformGainOf, resort, runScripts, scriptOwned, type GameState } from '../src/game/state';
 import { deserialize, serialize } from '../src/game/save';
 import { D } from '../src/game/num';
@@ -38,10 +38,11 @@ describe('annexing', () => {
   it('districts give their effects, stronger among their own kind', () => {
     const c = newCity();
     c.owned.push('zavod');
-    expect(cityEffects(c).income.toNumber()).toBeCloseTo(1.5);
+    // Each street also adds the land under the heap.
+    expect(cityEffects(c).income.toNumber()).toBeCloseTo(1.5 * TERRITORY_INCOME);
     // Two neighbouring streets: each is a quarter stronger.
     c.owned.push('rabo');
-    expect(cityEffects(c).income.toNumber()).toBeCloseTo(1.625 * 1.625);
+    expect(cityEffects(c).income.toNumber()).toBeCloseTo(1.625 * 1.625 * TERRITORY_INCOME ** 2);
     c.owned.push('prom1', 'boiler1', 'school1', 'nikola');
     const fx = cityEffects(c);
     expect(fx.recycled.toNumber()).toBe(2);

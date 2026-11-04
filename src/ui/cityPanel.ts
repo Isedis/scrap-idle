@@ -7,6 +7,7 @@ import {
   TOWN_PEOPLE,
   TYPE_NAMES,
   TYPE_TEXT,
+  TERRITORY_INCOME,
   annex,
   annexCost,
   canAnnex,
@@ -237,7 +238,7 @@ export class CityPanel {
       this.cardButton.textContent = 'В тумане';
     } else {
       this.cardTitle.textContent = `${d.name} · ${TYPE_NAMES[d.type]}`;
-      this.cardText.textContent = d.type === 'pit' && city.pitOpened ? 'Яма открыта навсегда · дно продолжает работать' : `${TYPE_TEXT[d.type]}${d.people ? ` · жителей ${d.people}` : ''}`;
+      this.cardText.textContent = d.type === 'pit' && city.pitOpened ? 'Яма открыта навсегда · дно продолжает работать' : `${TYPE_TEXT[d.type]}${d.type === 'dump' || d.type === 'pit' ? '' : ` · земля под свалкой: доход ×${String(TERRITORY_INCOME).replace('.', ',')}`}${d.people ? ` · жителей ${d.people}` : ''}`;
       this.card.dataset.state = owned ? 'owned' : visible(city, d.id) ? 'next' : 'far';
       if (d.type === 'pit' && !pitReady(city)) this.cardButton.textContent = `Нужен весь город · ${streetsOwned(city)}/${STREETS}`;
       else this.cardButton.textContent = visible(city, d.id) ? `Присоединить · ${format(cost)} га` : 'Не граничит со свалкой';

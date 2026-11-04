@@ -336,6 +336,12 @@ export function strength(city: CityState, id: string): number {
   return 1 + CLUSTER_BONUS * same;
 }
 
+/**
+ * Every street under the landfill adds to the heap, whatever else it gives. Without it the
+ * hospitals, boilers and cemeteries taken late gave no strength, and reforms stood still for hours.
+ */
+export const TERRITORY_INCOME = 1.1;
+
 /** Both boilers finish noise automation: no failures and automatic load restoration. */
 export const AUTO_NOISE_BOILERS = 2;
 
@@ -387,7 +393,7 @@ function computeEffects(city: CityState): CityEffects {
   const churches = power(city, 'church');
   const rivers = power(city, 'river');
   return {
-    income: mul('live', 0.5).mul(city.owned.includes('pit') || city.pitOpened ? 100 : 1).mul(developmentIncome(city)),
+    income: mul('live', 0.5).mul(Decimal.pow(TERRITORY_INCOME, streetsOwned(city))).mul(city.owned.includes('pit') || city.pitOpened ? 100 : 1).mul(developmentIncome(city)),
     recycled: mul('prom', 1),
     fractions: mul('market', 0.5),
     schools: city.owned.filter((id) => districtById(id)!.type === 'school').length,
