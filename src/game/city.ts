@@ -292,12 +292,12 @@ export function cityPitRoutes(owned: readonly string[]): readonly PitRoute[] {
 }
 
 /**
- * What the next district costs: gently dearer each time, 3 ha for the first, about 430
+ * What the next district costs: gently dearer each time, 3 ha for the first, about 560
  * for the last street; the station makes all of them cheaper, the pit costs double.
  */
 export function annexCost(city: CityState, id: string): Decimal {
   const n = city.owned.length - 1;
-  const base = (3 + 2 * n + 0.15 * n * n) * cityEffects(city).annexDiscount;
+  const base = (3 + 2 * n + 0.22 * n * n) * cityEffects(city).annexDiscount;
   return D(districtById(id)?.type === 'pit' ? base * 2 : base).ceil();
 }
 
