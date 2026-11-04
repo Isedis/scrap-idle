@@ -245,7 +245,7 @@ export class HorizonPanel {
   frame(dt:number,s:GameState):void {
     if(!s.horizon.open)return;
     if(s.horizon.opened===0&&s.horizon.firstHall){this.firstHall.frame(s);return;}
-    this.camera.update(dt,{state:s.horizon,hall:this.viewedHall>=0?this.viewedHall:s.horizon.opened,selected:this.inspected??buildTargets(s.horizon)[0]??s.horizon.selected,shares:routingShares(s.horizon,s.city),powerFill:s.horizon.charge.div(powerCapacity(s.horizon,s.city)).min(1).toNumber()});
+    this.camera.update(dt,{state:s.horizon,hall:this.viewedHall>=0?this.viewedHall:s.horizon.opened,selected:this.inspected??buildTargets(s.horizon)[0]??s.horizon.selected,inspected:this.inspected!==null,shares:routingShares(s.horizon,s.city),powerFill:s.horizon.charge.div(powerCapacity(s.horizon,s.city)).min(1).toNumber()});
   }
   focusAssemblyControls(): void {
     const h=this.getState().horizon;
