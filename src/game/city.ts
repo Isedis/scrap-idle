@@ -340,7 +340,7 @@ export function strength(city: CityState, id: string): number {
  * Every street under the landfill adds to the heap, whatever else it gives. Without it the
  * hospitals, boilers and cemeteries taken late gave no strength, and reforms stood still for hours.
  */
-export const TERRITORY_INCOME = 1.1;
+export const TERRITORY_INCOME = 1.05;
 
 /** Both boilers finish noise automation: no failures and automatic load restoration. */
 export const AUTO_NOISE_BOILERS = 2;
