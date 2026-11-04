@@ -22,7 +22,7 @@ function versionFile(): Plugin {
     apply: 'build',
     generateBundle(_, bundle) {
       this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: BUILD_ID, ...credit }) });
-      const files = [...new Set([...Object.keys(bundle), 'index.html', 'icon.svg', 'manifest.webmanifest'])];
+      const files = [...new Set([...Object.keys(bundle), 'index.html', 'icon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'])];
       const source = readFileSync('scripts/service-worker.js', 'utf8')
         .replace('__SW_BUILD__', JSON.stringify(BUILD_ID))
         .replace('__SW_FILES__', JSON.stringify(files));
