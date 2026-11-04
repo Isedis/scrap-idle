@@ -138,7 +138,7 @@ export const itemById = (id: string) => ITEMS.find((i) => i.id === id);
 
 // ---- Ignatyev's tools ---------------------------------------------------------------
 
-export type ToolId = 'pick' | 'lamp' | 'luck';
+export type ToolId = 'pick' | 'lamp' | 'luck' | 'fork';
 
 export interface ToolDef {
   id: ToolId;
@@ -155,6 +155,8 @@ export const TOOLS: readonly ToolDef[] = [
   { id: 'pick', name: 'Кирка', text: 'Копает на 30% быстрее за уровень', base: 60, growth: 1.7, costIn: 'dust', max: 25 },
   { id: 'lamp', name: 'Фонарь', text: 'Ценная тара попадается чаще: +12% за уровень на каждую ступень', base: 8, growth: 1.8, costIn: 'scrap', max: 15 },
   { id: 'luck', name: 'Чутьё', text: 'Редкое внутри на 20% чаще за уровень', base: 4, growth: 1.9, costIn: 'nonferrous', max: 15 },
+  // Anomalies had nothing to do until the УМЕ: thousands piled up over the first ten hours.
+  { id: 'fork', name: 'Камертон', text: 'Порода поддаётся: копает на 5% быстрее за уровень', base: 50, growth: 1.6, costIn: 'anomaly', max: 10 },
 ];
 
 export const toolCost = (t: ToolDef, level: number) => D(t.base).mul(Decimal.pow(t.growth, level)).floor();
@@ -259,7 +261,7 @@ export const newBottom = (): BottomState => ({
   dug: 0,
   stock: { sack: 0, crate: 0, suitcase: 0, safe: 0, coffin: 0 },
   money: zeroMoney(),
-  tools: { pick: 0, lamp: 0, luck: 0 },
+  tools: { pick: 0, lamp: 0, luck: 0, fork: 0 },
   auto: 0,
   saving: null,
   dry: {},
@@ -289,8 +291,9 @@ export function setPower(b: BottomState, epoch: Epoch): number {
 /** Older strata take more work per tonne; tools improve power, not surface throughput. */
 export const STRATUM_DENSITY = 6000;
 export const DIG_SCRAP = 0.5;
+export const FORK_STEP = 1.05;
 export const DIG_NONFERROUS = 0.35;
-const digPower = (b: BottomState) => BASE_DIG * 1.3 ** b.tools.pick
+const digPower = (b: BottomState) => BASE_DIG * 1.3 ** b.tools.pick * FORK_STEP ** b.tools.fork
   * (b.equipment.hoist ? 1.25 : 1) * 1.5 ** b.equipment.borer
   * (setPower(b, 'medieval') ? 1 + 0.25 * setPower(b, 'medieval') : 1);
 export const digRate = (b: BottomState, fall = 0) => digPower(b) * pressure(b, fall) / (1 + b.dug / STRATUM_DENSITY);

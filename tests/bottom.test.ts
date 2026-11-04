@@ -350,7 +350,22 @@ describe('the descent and the save', () => {
     expect(back.bottom.money.nonferrous.toNumber()).toBe(17);
     expect(back.bottom.supplied).toBe(0);
     expect(back.bottom.equipment).toEqual({ hoist: false, bench: false, borer: 0 });
-    expect(JSON.parse(serialize(back)).v).toBe(30);
+    expect(JSON.parse(serialize(back)).v).toBe(31);
+  });
+
+  it('loads a v30 save without the tuning fork at level 0 and keeps it after', async () => {
+    const { newGame } = await import('../src/game/state');
+    const { serialize, deserialize } = await import('../src/game/save');
+    const state = newGame(0);
+    state.bottom.open = true;
+    state.bottom.tools.pick = 4;
+    const old = JSON.parse(serialize(state));
+    old.v = 30;
+    delete old.layers.bottom.tools.fork;
+    const back = deserialize(JSON.stringify(old))!;
+    expect(back.bottom.tools).toEqual({ pick: 4, lamp: 0, luck: 0, fork: 0 });
+    back.bottom.tools.fork = 3;
+    expect(deserialize(serialize(back))!.bottom.tools.fork).toBe(3);
   });
 
   it('gives an old deep save its first UME once without replaying old excavation', async () => {

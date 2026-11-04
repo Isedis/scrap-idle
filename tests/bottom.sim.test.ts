@@ -28,6 +28,7 @@ import {
   bottomTick,
   digRate,
   toolCost,
+  umeOpen,
   type BottomState,
   type Rarity,
 } from '../src/game/bottom';
@@ -74,13 +75,15 @@ export function simulateBottom(hours: number, log: (h: number, what: string) => 
   let aboveHours = 0;
   const seen = new Set<string>();
   const firstRarity = new Set<Rarity>();
+  // Once the УМЕ melts, anomalies go into it rather than into the tuning fork.
+  const wantTool = (t: (typeof TOOLS)[number]) => t.costIn !== 'anomaly' || !umeOpen(b);
   for (let m = 0; m < hours * 60; m++) {
     const h = m / 60;
     aboveHours += (1 + 0.12 * scripts) / 60;
     const digits = digitsAt(aboveHours);
     if (!savingGoal(b)) {
       const offers = savingGoals(b);
-      const tool = TOOLS.filter(t => b.tools[t.id] < t.max).sort((a, c) => b.tools[a.id] - b.tools[c.id])[0];
+      const tool = TOOLS.filter(t => b.tools[t.id] < t.max && wantTool(t)).sort((a, c) => b.tools[a.id] - b.tools[c.id])[0];
       const target = offers.find(g => g.id === 'auto')
         ?? offers.find(g => g.id === `script:${SCRIPTS[scripts]?.[0]}`)
         ?? offers.find(g => g.id.startsWith('equipment:') && g.unlocked)
@@ -105,7 +108,7 @@ export function simulateBottom(hours: number, log: (h: number, what: string) => 
       log(h, `скрипт наверху: ${name}`);
     }
     for (let guard = 0; guard < 50; guard++) {
-      const t = TOOLS.filter((x) => b.tools[x.id] < x.max).find((x) => b.money[x.costIn].gte(toolCost(x, b.tools[x.id])) && canSpend(`tool:${x.id}`, x.costIn, toolCost(x, b.tools[x.id]).toNumber()));
+      const t = TOOLS.filter((x) => b.tools[x.id] < x.max && wantTool(x)).find((x) => b.money[x.costIn].gte(toolCost(x, b.tools[x.id])) && canSpend(`tool:${x.id}`, x.costIn, toolCost(x, b.tools[x.id]).toNumber()));
       if (!t || !buyTool(b, t.id)) break;
       if (b.tools[t.id] === 1 || b.tools[t.id] % 5 === 0) log(h, `${t.name} ур. ${b.tools[t.id]}`);
     }
@@ -130,7 +133,7 @@ export function simulateBottom(hours: number, log: (h: number, what: string) => 
     for (const r of RARITIES) {
       const need = [
         ...EQUIPMENT.filter((e) => e.costIn === r && !b.equipment[e.id]).map((e) => e.cost),
-        ...TOOLS.filter((x) => x.costIn === r && b.tools[x.id] < x.max).map((x) => toolCost(x, b.tools[x.id]).toNumber()),
+        ...TOOLS.filter((x) => x.costIn === r && b.tools[x.id] < x.max && wantTool(x)).map((x) => toolCost(x, b.tools[x.id]).toNumber()),
         ...CONTAINERS.filter((c) => c.costIn === r && c.cost > 0).map((c) => c.cost * 5),
         ...(AUTO_OPEN[b.auto]?.costIn === r ? [AUTO_OPEN[b.auto].cost] : []),
         ...(SCRIPTS[scripts]?.[2] === r ? [SCRIPTS[scripts][1]] : []),
