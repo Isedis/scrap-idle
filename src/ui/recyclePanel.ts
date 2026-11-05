@@ -113,7 +113,7 @@ export class RecyclePanel {
     const keeps = el('div', 'r-keeps classic-reset');
     keeps.append(
       el('div', '', 'Начнутся заново: мусор, производители, улучшения.'),
-      el('div', '', 'Останутся: вторсырьё и всё дерево ниже.'),
+      el('div', '', 'Останутся: вторсырьё, дерево, постройки и следы на полигоне.'),
     );
     this.action.append(this.actionTitle, this.actionBar, this.actionNote, this.preview.root, this.button, keeps);
     this.runView.append(this.action);

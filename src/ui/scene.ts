@@ -1,3 +1,4 @@
+import { yardStage, type YardState } from '../game/yard';
 import type { Decimal } from '../game/num';
 import type { EventKind } from '../game/story';
 import { drawLurker } from './lurker';
@@ -47,8 +48,12 @@ export interface SceneView {
   /** Purchased hardware, including retained blueprints after a recycle. */
   upgrades: readonly string[];
   rate: Decimal;
-  /** Trash collected this run: the heap grows with it and shrinks on recycle. */
+  /** Lifetime waste: the permanent landfill does not collapse at a batch reset. */
   total: Decimal;
+  /** History of the place, independent of the current production batch. */
+  yard?: YardState;
+  steady?: boolean;
+  producerOff?: readonly string[];
   /** Recycles done: a recycling complex grows on the horizon. */
   recycles: number;
   /** Threat 0..1: darkness, interference and the thing in the yard grow with it. */
@@ -207,6 +212,12 @@ export class Scene {
   private h = 0;
   private t = 0;
   private view: SceneView | null = null;
+  private yardIdentity: YardState | null = null;
+  private lastOwnership: Record<string,number> = {};
+  private coastUntil: Record<string,number> = {};
+  private idleEquipment = false;
+  private lastBatches = -1;
+  private batchStarted = -10;
   private items: Item[] = [];
   private particles: Particle[] = [];
   private walkers: Walker[] = [];
@@ -303,18 +314,35 @@ export class Scene {
   }
 
   private owned(id: string): number {
-    return this.view?.owned[id] ?? 0;
+    const current=this.view?.owned[id]??0;
+    return this.t<(this.coastUntil[id]??0)?Math.max(current,this.lastOwnership[id]??0):current;
   }
 
   private upgraded(id: string): boolean {
-    return this.view?.upgrades.includes(id) ?? false;
+    return !!(this.view?.upgrades.includes(id)||this.view?.yard?.upgrades.includes(id));
+  }
+
+  private physical(id:string):number { return Math.max(this.view?.owned[id]??0,this.view?.yard?.built[id]??0); }
+  /** Rare movement belongs to the place, not to the countdown until a reset. */
+  private atmosphericMoment():number {
+    const memory=this.view?.yard;
+    if(!memory||this.reducedMotion)return 0;
+    const stage=yardStage(memory);if(!stage)return 0;
+    const phase=(this.t+59)%(240-stage*30);
+    return phase<4?Math.sin(phase*Math.PI/2)*Math.sin(phase*Math.PI/4):0;
+  }
+  private evidence(id:string):boolean { return this.view?.yard?.evidence.includes(id)??false; }
+  private equipment(id:string,draw:()=>void):void {
+    if(!this.physical(id))return;
+    const old=this.idleEquipment;this.idleEquipment=this.owned(id)===0;
+    this.ctx.save();draw();this.ctx.restore();this.idleEquipment=old;
   }
 
   /** Fixed yard destinations keep the delivery, conveyor and output visibly connected. */
   private intake(): [number, number] { return [this.w * 0.13, this.laneY(1) - 16]; }
   private pressX(): number { return this.w * 0.75; }
   private pressPhase(): number {
-    return this.reducedMotion ? 0.18 : (this.t % this.pressPeriod()) / this.pressPeriod();
+    return this.reducedMotion || !this.owned('press') ? 0.18 : (this.t % this.pressPeriod()) / this.pressPeriod();
   }
   private pressPeriod(): number { return Math.max(2.4, 4.4 / (1 + Math.sqrt(this.owned('press')) * 0.07)); }
 
@@ -434,14 +462,34 @@ export class Scene {
   // ---- Simulation ---------------------------------------------------------
 
   update(dt: number, view: SceneView): void {
+    if((view.yard??null)!==this.yardIdentity){
+      this.yardIdentity=view.yard??null;this.lastOwnership={};this.coastUntil={};this.lastBatches=-1;this.batchStarted=-10;
+      this.items=[];this.walkers=[];this.trucks=[];this.satellites=[];
+    }
     this.view = view;
     if (!this.w) return;
     dt = Math.min(dt, 0.1);
     this.t += dt;
+    // Machinery coasts briefly when a new batch is funded on the next automation tick.
+    for(const id of new Set([...Object.keys(view.owned),...Object.keys(this.lastOwnership)])){
+      const n=view.owned[id]??0;
+      if(n>=(this.lastOwnership[id]??0)||this.t>=(this.coastUntil[id]??0)){
+        this.lastOwnership[id]=n;this.coastUntil[id]=this.t+1.2;
+      }
+    }
+    const batches=view.yard?.batches??view.recycles;
+    if(this.lastBatches>=0&&batches>this.lastBatches){
+      if(this.t-this.batchStarted>2.4)this.batchStarted=this.t;
+      if(view.steady)for(const id of Object.keys(this.lastOwnership)){
+        if(this.lastOwnership[id]>0&&!view.producerOff?.includes(id))this.coastUntil[id]=this.t+5;
+      }
+    }
+    this.lastBatches=batches;
 
     // Heap: a mound at the start, filling the sky by 1e15 kg.
     this.grow = Math.min(Math.log10(view.total.toNumber() + 1) / 15, 1);
-    const target = this.h * (0.1 + 0.36 * this.grow);
+    const uneasy=this.view.yard&&yardStage(this.view.yard)>=2?this.atmosphericMoment()*2.2:0;
+    const target = this.h * (0.1 + 0.36 * this.grow)+uneasy;
     this.heapHeight += (target - this.heapHeight) * Math.min(dt * 2, 1);
     // At the edge the heap breathes.
     const breath = this.active('breathe');
@@ -529,8 +577,8 @@ export class Scene {
       this.beltItems = this.beltItems.filter((u) => u < 1);
     }
 
-    for (const [x, y] of this.chimneyTops()) if (Math.random() < dt * 1.2) this.smoke(x, y);
-    for (const [x, y] of this.stackTops()) if (Math.random() < dt * 0.9) this.smoke(x, y, true);
+    if(this.owned('plant'))for (const [x, y] of this.chimneyTops()) if (Math.random() < dt * 1.2) this.smoke(x, y);
+    if(this.owned('incinerator'))for (const [x, y] of this.stackTops()) if (Math.random() < dt * 0.9) this.smoke(x, y, true);
 
     const orbital = this.owned('orbital');
     if (orbital > 0) {
@@ -541,7 +589,7 @@ export class Scene {
         this.skyDropIn = Math.max(0.6, 5 - orbital * 0.15);
       }
     }
-    for (const s of this.satellites) {
+    if(this.owned('orbital'))for (const s of this.satellites) {
       s.x += s.speed * dt;
       if (s.x > this.w + 10) {
         s.x = -10;
@@ -633,7 +681,7 @@ export class Scene {
   // ---- Landmarks ----------------------------------------------------------
 
   private plantCount() {
-    const n = this.owned('plant');
+    const n = this.physical('plant');
     return n > 0 ? Math.min(1 + Math.floor(n / 5), 3) : 0;
   }
 
@@ -649,7 +697,7 @@ export class Scene {
   }
 
   private stackCount() {
-    const n = this.owned('incinerator');
+    const n = this.physical('incinerator');
     return n > 0 ? Math.min(Math.max(1 + Math.floor(n / 10), this.upgraded('incinerator-4') ? 2 : 1), 3) : 0;
   }
 
@@ -667,7 +715,7 @@ export class Scene {
   }
 
   private holeRadius(index = 0) {
-    return (6 + Math.min(this.owned('singularity'), 30) * 0.45) * (index ? .55 : 1);
+    return (6 + Math.min(this.physical('singularity'), 30) * 0.45) * (index ? .55 : 1);
   }
 
   private holeCenter(index = 0): [number, number] {
@@ -678,7 +726,7 @@ export class Scene {
 
   /** Static machinery also exists when reduced motion disables the simulation. */
   private syncSatellites(): void {
-    const owned=this.owned('orbital');
+    const owned=this.physical('orbital');
     const target=Math.min(owned,this.upgraded('orbital-3')?5:3);
     while(this.satellites.length<target)this.satellites.push({
       x:this.t<.5||this.reducedMotion?rnd(15,this.w-15):-20,
@@ -699,25 +747,24 @@ export class Scene {
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, this.horizon);
 
-    if (this.owned('orbital') > 0 || this.owned('singularity') > 0) this.drawStars();
-    if (this.owned('singularity') > 0) {
-      this.drawHole();
-      if(this.upgraded('singularity-2'))this.drawHole(1);
-    }
-    if(this.owned('orbital')>0&&this.upgraded('orbital-4'))this.drawMoonBase();
-    for (const s of this.satellites) this.drawSatellite(s);
+    if (this.physical('orbital') > 0 || this.physical('singularity') > 0) this.drawStars();
+    this.equipment('singularity',()=>{this.drawHole();if(this.upgraded('singularity-2'))this.drawHole(1);});
+    this.equipment('orbital',()=>{
+      if(this.upgraded('orbital-4'))this.drawMoonBase();
+      for(const s of this.satellites)this.drawSatellite(s);
+    });
 
     // Far plane.
     this.drawSkyline();
     this.drawComplex();
-    this.drawStacks();
-    this.drawPlants();
+    this.equipment('incinerator',()=>this.drawStacks());
+    this.equipment('plant',()=>this.drawPlants());
     this.drawLamp();
     this.drawFence();
 
     // Middle plane.
     this.drawHeap();
-    if (this.view?.traces.includes('fridge') && !this.active('fridge')) this.drawFridge(0.55, 0.9);
+    if ((this.view?.traces.includes('fridge')||this.evidence('fridge')) && !this.active('fridge')) this.drawFridge(0.55, 0.9);
 
     // Near plane.
     const yard = ctx.createLinearGradient(0, this.horizon, 0, h);
@@ -736,9 +783,10 @@ export class Scene {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    this.drawPersistentMarks();
     this.drawYardInfrastructure();
-    if (this.owned('sorter') > 0) this.drawBelt();
-    if (this.owned('press') > 0) this.drawPress();
+    this.equipment('sorter',()=>this.drawBelt());
+    this.equipment('press',()=>this.drawPress());
 
     // Back lane first, then trucks, then the front lane, so nearer things overlap farther ones.
     for (const wk of this.walkers) if (wk.lane === 0) this.actor(() => this.drawWalker(wk));
@@ -746,7 +794,7 @@ export class Scene {
     for (const it of this.items) this.actor(() => this.drawItem(it));
     this.drawParticles();
     // The receiving lip is in front of arriving loose scrap.
-    if (this.owned('truck') > 0 || this.owned('sorter') > 0) this.drawIntakeLip();
+    if (this.physical('truck') > 0 || this.physical('sorter') > 0) this.drawIntakeLip();
     for (const wk of this.walkers) if (wk.lane === 1) this.actor(() => this.drawWalker(wk));
     if (this.view?.refined) {
       // A faint pool of ground light and edge shadow separate the three depth planes.
@@ -1309,6 +1357,10 @@ export class Scene {
       ctx.fill();
       return;
     }
+    if(this.idleEquipment){
+      ctx.fillStyle='#0b1c12';ctx.fill();
+      if(line>0){ctx.strokeStyle='#2b4835';ctx.lineWidth=line;ctx.stroke();}return;
+    }
     if (line <= 0) {
       ctx.fillStyle = fill;
       ctx.fill();
@@ -1358,13 +1410,13 @@ export class Scene {
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.lineWidth = this.mode === 'halo' ? width + 3 : width;
-    ctx.strokeStyle = this.mode === 'halo' ? HALO : color;
+    ctx.strokeStyle = this.mode === 'halo' ? HALO : this.idleEquipment?'#2b4835':color;
     ctx.stroke();
   }
 
   private drawStars(): void {
     const { ctx } = this;
-    const n = Math.min(20 + this.owned('orbital') * 4 + this.owned('singularity') * 4, this.stars.length);
+    const n = Math.min(20 + this.physical('orbital') * 4 + this.physical('singularity') * 4, this.stars.length);
     ctx.fillStyle = C.light;
     for (let i = 0; i < n; i++) {
       const s = this.stars[i];
@@ -1378,6 +1430,9 @@ export class Scene {
     const { ctx } = this;
     const [x, y] = this.holeCenter(index);
     const r = this.holeRadius(index);
+    if(this.idleEquipment){
+      this.circle(x,y,r,'#102417',1);this.line(x-r*.6,y,x+r*.6,y,'#2b4835',1);return;
+    }
     const halo = ctx.createRadialGradient(x, y, r * 0.8, x, y, r * 3);
     halo.addColorStop(0, 'rgba(170, 240, 180, 0.3)');
     halo.addColorStop(1, 'rgba(170, 240, 180, 0)');
@@ -1449,7 +1504,7 @@ export class Scene {
       this.line(s.x-11,s.y-4,s.x-23,s.y-7,'#4f715a',.8);this.line(s.x-11,s.y+4,s.x-23,s.y+7,'#4f715a',.8);
       this.box(s.x-20,s.y-1,3,3,C.hub,.6);
     }
-    if (this.reducedMotion || Math.sin(this.t * 4 + s.phase) > 0.6) {
+    if (!this.idleEquipment&&(this.reducedMotion || Math.sin(this.t * 4 + s.phase) > 0.6)) {
       this.ctx.fillStyle = C.red;
       this.ctx.fillRect(s.x - 0.5, s.y - 4, 1.5, 1.5);
     }
@@ -1473,7 +1528,7 @@ export class Scene {
   /** Recycling domes on the horizon behind the heap, one more for each of the first recycles. */
   private drawComplex(): void {
     const { ctx } = this;
-    const n = Math.min(this.view?.recycles ?? 0, 4);
+    const n = Math.min(this.view?.yard?.batches ?? this.view?.recycles ?? 0, 4);
     for (let i = 0; i < n; i++) {
       // Big enough to show over the heap's shoulder early in a run; the heap hides them as it grows.
       const x = this.w * (0.87 - i * 0.09);
@@ -1517,7 +1572,7 @@ export class Scene {
       this.paint(C.far);
       ctx.fillStyle = C.amber;
       for (let k = 0; k < 3; k++) {
-        ctx.globalAlpha = k === 1 && Math.sin(this.t * 3 + i) > 0.7 ? 0.25 : 0.8;
+        ctx.globalAlpha = this.idleEquipment?0:k === 1 && Math.sin(this.t * 3 + i) > 0.7 ? 0.25 : 0.8;
         ctx.fillRect(x + 4 + k * 8, roof + 7, 4, 3);
       }
       ctx.globalAlpha = 1;
@@ -1542,14 +1597,14 @@ export class Scene {
       ctx.globalAlpha = 0.5;
       ctx.fillRect(x - 3, y + 6, 6, 1.5);
       ctx.globalAlpha = 1;
-      if (Math.sin(this.t * 3 + x) > 0) {
+      if (!this.idleEquipment&&Math.sin(this.t * 3 + x) > 0) {
         ctx.fillStyle = C.red;
         ctx.fillRect(x - 1, y - 3, 2.5, 2.5);
       }
     }
     this.box(baseX, this.horizon - 20, this.w - baseX + 2, 20, C.far);
     ctx.fillStyle = C.amber;
-    ctx.globalAlpha = 0.6 + 0.3 * Math.sin(this.t * 2.3);
+    ctx.globalAlpha = this.idleEquipment?0:0.6 + 0.3 * Math.sin(this.t * 2.3);
     ctx.fillRect(baseX + 6, this.horizon - 12, 10, 6);
     ctx.globalAlpha = 1;
     if(this.upgraded('incinerator-2'))this.circle(baseX+6,this.horizon-4,5,C.hub,1);
@@ -1608,7 +1663,7 @@ export class Scene {
 
   private drawHeap(): void {
     const { ctx } = this;
-    const landfill = this.owned('landfill');
+    const landfill = this.physical('landfill');
     if (landfill > 0) {
       // A second, distant mountain of trash.
       const scale = 0.5 + 0.5 * Math.min(landfill / 25, 1);
@@ -1631,6 +1686,11 @@ export class Scene {
       ctx.restore();
     }
 
+    if(this.evidence('breathe')){
+      const x=this.heapX+this.heapHalf*.2,y=this.surface(x)+14;
+      this.line(x,y,x-4,y+11,'#081e12',2);this.line(x-4,y+11,x+2,y+22,'#081e12',2);
+      this.line(x+2,y+22,x-1,Math.min(y+32,this.horizon-5),'#081e12',2);
+    }
     // Big junk sticking out of the heap; more shows as it grows.
     const visible = Math.round(4 + this.grow * 6);
     const s = Math.min(Math.max(this.heapHeight / 75, 0.5), 0.85);
@@ -1740,9 +1800,24 @@ export class Scene {
     this.poly([[x+w,y],[x+w+3,y-3],[x+w+3,y+h-3],[x+w,y+h]], '#304d3a', 0.7);
   }
 
+  private drawPersistentMarks():void {
+    if(this.evidence('bag')||this.evidence('driverless')){
+      const x=this.w*.52,y=this.horizon+7;
+      for(let i=0;i<3;i++)this.line(x+i*3,y,x+15+i*3,this.laneY(1)-8,'#213b29',.8);
+    }
+    if(this.evidence('eyes')){
+      const x=this.w*.94,y=this.fenceTop;
+      this.line(x,y-4,x-5,y+13,'#4c7057',2);this.line(x-5,y+13,x-1,this.horizon,'#4c7057',1);
+    }
+    if(this.evidence('lamp-turn')){
+      const x=this.w*.24,y=this.horizon-62;
+      this.line(x+1,y+8,x+7,y+12,'#48694f',1);this.line(x+7,y+12,x+3+this.atmosphericMoment()*2,y+19,'#48694f',1);
+    }
+  }
+
   private drawYardInfrastructure(): void {
     const { ctx } = this;
-    const truck = this.owned('truck') > 0, belt = this.owned('sorter') > 0;
+    const truck = this.physical('truck') > 0, belt = this.physical('sorter') > 0;
     if (truck || belt) {
       const [x,y] = this.intake();
       // A low unloading bay, well below the heap and clear of the press's output.
@@ -1750,25 +1825,26 @@ export class Scene {
       for (let i=0;i<4;i++) this.line(x-25+i*12,y+13,x-20+i*12,y+7,'#386348',1);
       this.yardBlock(x-19,y-4,38,13);
       this.poly([[x-21,y-7],[x+21,y-7],[x+14,y+2],[x-14,y+2]], '#07180f', 1);
-      for(let i=0;i<5;i++)this.box(x-11+i*5,y-4-(i%2)*2,5,4,J.bags[i%3],.7);
+      const progress=this.reducedMotion?1:Math.min(1,(this.t-this.batchStarted)/1.2);
+      for(let i=0;i<5;i++)if(progress>=i/5)this.box(x-11+i*5,y-4-(i%2)*2,5,4,J.bags[i%3],.7);
       if (this.upgraded('truck-1')) {
         for(let i=0;i<3;i++)this.poly([[x+43+i*13,y+12],[x+48+i*13,y+15],[x+43+i*13,y+18]],C.deep,.7);
       }
     }
-    if(this.owned('collector')>0&&this.upgraded('collector-4')){
+    if(this.physical('collector')>0&&this.upgraded('collector-4')){
       const x=this.w*.43,y=this.horizon+8;
       this.yardBlock(x,y,17,19);this.line(x+8,y+2,x+8,y+17,'#77927e',.7);
       this.box(x+3,y+4,3,2,C.hub,.5);this.box(x+11,y+4,3,2,C.hub,.5);
       this.box(x+20,y+13,7,6,J.bags[0],.7);this.box(x+22,y+10,3,3,J.bags[1],.5);
     }
-    if (this.owned('plant') > 0) {
+    if (this.physical('plant') > 0) {
       // Supply ducts link the distant factory to the operating yard.
       const y=this.horizon+5;
       this.line(14,y,this.pressX()+18,y,'#254b34',3);
       for(let x=24;x<this.pressX();x+=40)this.line(x,y-3,x,y+3,'#4c7058',1);
       this.line(this.pressX()+18,y,this.pressX()+18,this.laneY(0)-10,'#254b34',3);
     }
-    if (this.upgraded('landfill-2') && this.owned('landfill') > 0) {
+    if (this.upgraded('landfill-2') && this.physical('landfill') > 0) {
       const x=this.heapX+this.heapHalf*.6,y=this.surface(x)+8;
       this.line(x,y,x,this.horizon-3,'#426b50',3);
       this.line(x,this.horizon-3,this.w-20,this.horizon-3,'#426b50',2);
@@ -1795,10 +1871,10 @@ export class Scene {
     ctx.save();ctx.translate(x0,y0);ctx.rotate(angle);
     this.box(0,-4,len,8,'#396a4c',1.2);
     this.box(0,-3,len,5,'#0b2417',.5);
-    const shift=this.reducedMotion?0:(this.t*14)%9;
+    const shift=this.reducedMotion||this.idleEquipment?0:(this.t*14)%9;
     for(let d=shift;d<len-2;d+=9)this.line(d,-2,d+2,2,'#698c72',1);
     this.circle(0,0,4,C.hub,1);this.circle(len,0,4,C.hub,1);
-    const material=this.reducedMotion?[.18,.48,.78]:this.beltItems;
+    const material=this.idleEquipment?[]:this.reducedMotion?[.18,.48,.78]:this.beltItems;
     for(const u of material){this.box(u*len-3,-10,6,5,C.items[Math.floor(u*50)%C.items.length],.8);}
     // Purchased magnet and optical gate are separate, recognisable attachments.
     if(this.upgraded('sorter-1')){
@@ -1827,7 +1903,7 @@ export class Scene {
     this.line(feedX-5,feedY-12,feedX,feedY,'#375e44',4);
     this.box(feedX,feedY,27,6,'#386248',1);
     this.circle(feedX+2,feedY+3,3,C.hub,.8);
-    if(p<.38)this.box(feedX+Math.min(1,p/.3)*23,feedY-6,6,6,C.items[2],.7);
+    if(!this.idleEquipment&&p<.38)this.box(feedX+Math.min(1,p/.3)*23,feedY-6,6,6,C.items[2],.7);
     // Foundation, enclosed rear panel, load and platen, then the front posts and cap.
     this.yardBlock(x-4,base,47,7);
     this.box(x+4,top+7,29,51,'#0b2115',.7);
@@ -1850,7 +1926,7 @@ export class Scene {
     // A short exit bed carries each finished bale to an orderly, capped stack.
     this.box(x+39,base-2,Math.max(10,this.w-x-45),4,'#365b42',.7);
     if(p>.86)this.yardBlock(x+35+(p-.86)/.14*10,base-9,7,7);
-    const count=Math.min(6,1+Math.floor(Math.log2(this.owned('press')+1)/2));
+    const count=Math.min(6,1+Math.floor(Math.log2(this.physical('press')+1)/2));
     const cols=Math.max(1,Math.min(3,Math.floor((this.w-x-50)/8)));
     for(let i=0;i<count;i++){
       const col=i%cols,row=Math.floor(i/cols);

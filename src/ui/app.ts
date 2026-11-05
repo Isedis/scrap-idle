@@ -1481,7 +1481,10 @@ export class App {
       owned: state.owned,
       upgrades: state.upgrades,
       rate: ratePerSecond(state),
-      total: state.runTrash,
+      total: state.totalTrash,
+      yard: state.yard,
+      steady: state.autobuy && scriptOwned(state,'producers') && state.autoRecycle.on && scriptOwned(state,'recycle'),
+      producerOff: state.scripts.producerOff,
       recycles: state.recycle.resets,
       threat: state.threat.level,
       traces: state.story.traces,
@@ -1525,7 +1528,7 @@ export class App {
     this.toastQueue = [];
     this.recyclePanel.camera.slam();
     this.sound.press();
-    this.caption(`Переработка №${state.recycle.resets}: +${format(gain)} вторсырья`);
+    this.caption(`Партия №${state.recycle.resets} обработана: +${format(gain)} вторсырья`);
     this.toast(`Получено ${format(gain)} вторсырья. Доход ×${format(passiveBonus(state.recycle.total))}`);
     // The player stays on the tab: the press comes down on camera 03, and the tree is right there to spend on.
     this.render();

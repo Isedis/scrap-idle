@@ -1,3 +1,4 @@
+import { newYard, rememberYard, yardStage, type YardState } from './yard';
 import { newHorizon, horizonTick, settleUmeOrder, type HorizonState } from './horizon';
 import { profileOf } from './horizonLab';
 import { coveredNodes, coveredRecipes } from './capabilities';
@@ -103,6 +104,7 @@ import {
 export type BuyMode = 'one' | 'ten' | 'max';
 
 export interface GameState {
+  yard: YardState;
   trash: Decimal;
   /** Trash collected over the whole game; never spent, never reset. */
   totalTrash: Decimal;
@@ -156,6 +158,7 @@ export interface GameState {
 export function newGame(now = Date.now()): GameState {
   // The game is automatic from the first second: one collector is free.
   return {
+    yard: newYard(),
     trash: D(0),
     totalTrash: D(0),
     runTrash: D(0),
@@ -312,6 +315,8 @@ const OFFLINE_SLICES = 200;
  */
 export function advance(state: GameState, seconds: number, offline = false, sliceSeconds = SLICE_SECONDS, controlsCovered = false): void {
   if (seconds <= 0) return;
+  rememberYard(state.yard,state.owned,state.upgrades,state.story);
+  state.yard.stage=Math.max(state.yard.stage,stageIndex(state.threat.level));
   // Closed, the plant runs at normal load: louder is only for someone who is there to hear.
   const noise = state.hearing.noise;
   if (offline) state.hearing.noise = Math.min(fullNoiseAutomation(state) ? state.hearing.resumeNoise ?? noise : noise, 1);
@@ -337,6 +342,7 @@ export function advance(state: GameState, seconds: number, offline = false, slic
     }
     horizonTick(state.horizon, dt, state.city, state.horizon.open ? profileOf(state) : undefined);
     state.runSeconds += dt;
+    if(threatActive(state.totalTrash.max(state.runTrash)))state.yard.wakeSeconds=Math.min(4*3600,state.yard.wakeSeconds+dt*(offline?.05:1));
     if (!offline) state.story.boost = Math.max(0, state.story.boost - dt);
     // Tails off the sorting line feed the thing: it climbs faster.
     if (!controlsCovered) state.threat.level = climb(state.threat.level, state.runTrash, dt * threatSpeed(state.sorting) * treeThreatSpeed(state.recycle) * town.threatSpeed, offline);
@@ -344,6 +350,7 @@ export function advance(state: GameState, seconds: number, offline = false, slic
     const pushed = sortingTick(state.sorting, rate, dt, offline);
     // What falls back into the heap pushes it up, but never over the edge by itself.
     if (!controlsCovered && pushed > 0) state.threat.level = Math.min(state.threat.level + pushed, Math.max(state.threat.level, offline ? OFFLINE_CAP : SORT_PUSH_CAP));
+    state.yard.stage=Math.max(state.yard.stage,stageIndex(state.threat.level));
     if (!state.sorting.open && state.recycle.total.gte(SORT_AT)) state.sorting.open = true;
     // A player already past the resorts the town asks for finds it open too.
     if (!state.city.open && state.sorting.sorts >= CITY_OPEN_SORTS) state.city.open = true;
@@ -395,6 +402,8 @@ export function buy(state: GameState, id: string, mode: BuyMode = state.buyMode)
   if (count === 0) return 0;
   state.trash = state.trash.sub(cost);
   state.owned[id] = owned(state, id) + count;
+  rememberYard(state.yard,state.owned,state.upgrades,state.story);
+  state.yard.stage=Math.max(state.yard.stage,stageIndex(state.threat.level));
   return count;
 }
 
@@ -446,6 +455,8 @@ export function buyUpgrade(state: GameState, id: string): boolean {
   if (!u || state.upgrades.includes(id) || !isUnlocked(state, u) || state.trash.lt(u.cost)) return false;
   state.trash = state.trash.sub(u.cost);
   state.upgrades.push(id);
+  rememberYard(state.yard,state.owned,state.upgrades,state.story);
+  state.yard.stage=Math.max(state.yard.stage,stageIndex(state.threat.level));
   return true;
 }
 
@@ -487,6 +498,7 @@ export function recycle(state: GameState): Decimal {
   // A run carried over from an old save has no known length and sets no record.
   if (state.runSeconds >= 0) layer.bestSeconds = layer.bestSeconds === null ? state.runSeconds : Math.min(layer.bestSeconds, state.runSeconds);
 
+  state.yard.batches=Math.min(Number.MAX_SAFE_INTEGER,state.yard.batches+1);
   startNewRun(state);
   return gain;
 }
@@ -573,6 +585,8 @@ export const ranksReached = (state: GameState) => RANKS.filter((r) => hasRank(st
 
 /** Starts the run over, keeping what the Recycling tree says to keep. */
 function startNewRun(state: GameState): void {
+  rememberYard(state.yard,state.owned,state.upgrades,state.story);
+  state.yard.stage=Math.max(state.yard.stage,stageIndex(state.threat.level));
   const layer = state.recycle;
   state.trash = D(hasNode(layer, 's6') ? 1e10 : hasNode(layer, 's4') ? 1e8 : hasNode(layer, 's2') ? 1e4 : 0);
   state.runTrash = D(0);
@@ -593,6 +607,7 @@ function startNewRun(state: GameState): void {
 
 /** The floodlight: pushes the threat back to nothing. */
 export function lightUp(state: GameState): void {
+  state.yard.stage=Math.max(state.yard.stage,stageIndex(state.threat.level));
   state.threat.lights += 1;
   state.threat.bravest = Math.max(state.threat.bravest, state.threat.level);
   state.threat.level = 0;
@@ -1082,8 +1097,10 @@ export function buyNode(state: GameState, id: string): boolean {
  * recording for the screen to play, or null. Nothing happens before the threat wakes.
  */
 export function storyTick(state: GameState, dt: number, now = new Date()): Recording | null {
-  if (!threatActive(state.runTrash) || state.threat.level >= 1) return null;
-  const stage = stageIndex(state.threat.level);
+  if (!threatActive(state.totalTrash.max(state.runTrash)) || state.threat.level >= 1) return null;
+  rememberYard(state.yard,state.owned,state.upgrades,state.story);
+  state.yard.stage=Math.max(state.yard.stage,stageIndex(state.threat.level));
+  const stage = Math.max(stageIndex(state.threat.level),yardStage(state.yard));
   const story = state.story;
   // The first thing on camera comes soon after the threat wakes.
   if (story.seq === 0) story.nextIn = Math.min(story.nextIn, FIRST_EVENT_SECONDS);
@@ -1096,18 +1113,22 @@ export function storyTick(state: GameState, dt: number, now = new Date()): Recor
   const done = CASES.every((c) => story.cases.includes(c.id) || story.records.some((r) => r.event === c.id));
   const sooner = freshCase(story, stage, state.owned, plant) ? FRESH_CASE_FACTOR : done ? QUIET_FACTOR : 1;
   story.nextIn = eventInterval(stage, isNight(now)) * sooner;
+  rememberYard(state.yard,state.owned,state.upgrades,state.story);
+  state.yard.stage=Math.max(state.yard.stage,stageIndex(state.threat.level));
   return rec;
 }
 
 /** While the game was closed the camera kept recording: up to two events from the absence. */
 export function recordAway(state: GameState, seconds: number, now: number): Recording[] {
-  if (seconds < 10 * 60 || !threatActive(state.runTrash)) return [];
+  if (seconds < 10 * 60 || !threatActive(state.totalTrash.max(state.runTrash))) return [];
   const count = seconds > 2 * 3600 ? 2 : 1;
   const out: Recording[] = [];
   for (let i = 0; i < count; i++) {
     const at = now - seconds * 1000 * Math.random();
-    const event = pickEvent(state.story, stageIndex(state.threat.level), state.owned, Math.random, state.sorting.open);
+    const event = pickEvent(state.story, Math.max(stageIndex(state.threat.level),yardStage(state.yard)), state.owned, Math.random, state.sorting.open);
     out.push(record(state.story, event, at, { away: true }));
+    rememberYard(state.yard,state.owned,state.upgrades,state.story);
+    state.yard.stage=Math.max(state.yard.stage,stageIndex(state.threat.level));
   }
   return out;
 }
