@@ -1479,6 +1479,7 @@ export class App {
   private yardView(state: GameState): SceneView {
     return {
       owned: state.owned,
+      upgrades: state.upgrades,
       rate: ratePerSecond(state),
       total: state.runTrash,
       recycles: state.recycle.resets,

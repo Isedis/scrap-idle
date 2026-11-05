@@ -2064,3 +2064,6 @@ html, body { overflow: hidden; }
 .h-project { padding:12px 0; border-block:1px solid var(--line); }
 .h-project h3 { font-size:12px; color:var(--glow); }
 .h-project .btn { width:100%; min-height:44px; font-size:11px; white-space:normal; margin:6px 0; }
+
+/* The operating yard needs room for the receiving bay and separate output lane. */
+.dump-panel > .feed { height:260px; }

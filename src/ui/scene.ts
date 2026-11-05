@@ -44,6 +44,8 @@ export interface SceneView {
   /** Optional, reversible lighting treatment for the main terminal. */
   refined?: boolean;
   owned: Record<string, number>;
+  /** Purchased hardware, including retained blueprints after a recycle. */
+  upgrades: readonly string[];
   rate: Decimal;
   /** Trash collected this run: the heap grows with it and shrinks on recycle. */
   total: Decimal;
@@ -92,6 +94,8 @@ interface Item {
   color: string;
   /** Seconds since it landed; -1 while in the air. */
   landed: number;
+  /** Intake deliveries land below the heap, in the receiving hopper. */
+  floor?: number;
   /** Pulled into the black hole instead of falling. */
   sucked?: boolean;
 }
@@ -271,7 +275,7 @@ export class Scene {
 
   /** Where the heap meets the yard; the far plane stands on this line too. */
   private get horizon() {
-    return Math.round(this.h * 0.7);
+    return Math.round(this.h * 0.66);
   }
   /** Feet of people and wheels of vehicles, per lane. */
   private laneY(lane: 0 | 1) {
@@ -299,6 +303,18 @@ export class Scene {
   private owned(id: string): number {
     return this.view?.owned[id] ?? 0;
   }
+
+  private upgraded(id: string): boolean {
+    return this.view?.upgrades.includes(id) ?? false;
+  }
+
+  /** Fixed yard destinations keep the delivery, conveyor and output visibly connected. */
+  private intake(): [number, number] { return [this.w * 0.13, this.laneY(1) - 16]; }
+  private pressX(): number { return this.w * 0.75; }
+  private pressPhase(): number {
+    return this.reducedMotion ? 0.18 : (this.t % this.pressPeriod()) / this.pressPeriod();
+  }
+  private pressPeriod(): number { return Math.max(2.4, 4.4 / (1 + Math.sqrt(this.owned('press')) * 0.07)); }
 
   // ---- Bright moments -----------------------------------------------------
 
@@ -359,9 +375,9 @@ export class Scene {
 
   // ---- Spawning -----------------------------------------------------------
 
-  private throwItem(x: number, y: number, targetX: number, flight = 0.8): void {
+  private throwItem(x: number, y: number, targetX: number, flight = 0.8, floor?: number): void {
     if (this.items.length >= MAX_ITEMS) return;
-    const targetY = this.surface(targetX);
+    const targetY = floor ?? this.surface(targetX);
     const g = 260;
     this.items.push({
       x,
@@ -373,6 +389,7 @@ export class Scene {
       kind: Math.floor(Math.random() * 5) as ItemKind,
       color: pick(C.items),
       landed: -1,
+      floor,
     });
   }
 
@@ -461,6 +478,7 @@ export class Scene {
     }
 
     const trucks = this.owned('truck');
+    if (!trucks) { this.trucks = []; this.truckIn = 1; }
     if (trucks > 0) {
       this.truckIn -= dt;
       if (this.truckIn <= 0 && this.trucks.length < 1) {
@@ -471,7 +489,7 @@ export class Scene {
     for (const tr of this.trucks) {
       if (tr.state === 'in') {
         tr.x += 55 * dt;
-        if (tr.x >= this.heapX - this.heapHalf - 30) {
+        if (tr.x >= this.intake()[0] + 24) {
           tr.state = 'dump';
           tr.timer = 2.2;
         }
@@ -480,7 +498,9 @@ export class Scene {
         tr.tilt = tr.timer > 0.7 ? Math.min(tr.tilt + dt * 0.9, 0.5) : Math.max(tr.tilt - dt * 1.4, 0);
         if (!tr.dumped && tr.timer < 1.2) {
           tr.dumped = true;
-          for (let i = 0; i < 6; i++) this.throwItem(tr.x + 4, this.laneY(1) - 34, this.onHeap(), rnd(0.6, 1));
+          const [ix, iy] = this.intake();
+          const load = Math.min(10, 4 + Math.floor(Math.log2(trucks + 1)));
+          for (let i = 0; i < load; i++) this.throwItem(tr.x + 4, this.laneY(1) - 34, ix + rnd(-10, 10), rnd(0.55, 0.85), iy);
         }
         if (tr.timer <= 0) tr.state = 'out';
       } else {
@@ -491,6 +511,7 @@ export class Scene {
 
     // Sorting line: a belt climbing from the yard to the foot of the heap.
     const sorters = this.owned('sorter');
+    if (!sorters) { this.beltItems = []; this.beltIn = 0; }
     if (sorters > 0) {
       this.beltIn -= dt;
       if (this.beltIn <= 0) {
@@ -563,7 +584,7 @@ export class Scene {
       it.x += it.vx * dt;
       it.y += it.vy * dt;
       it.rot += it.spin * dt;
-      const floor = this.surface(it.x) + 2;
+      const floor = it.floor ?? this.surface(it.x) + 2;
       if (it.vy > 0 && it.y >= floor) {
         it.y = floor;
         it.landed = 0;
@@ -627,7 +648,7 @@ export class Scene {
 
   private stackCount() {
     const n = this.owned('incinerator');
-    return n > 0 ? Math.min(1 + Math.floor(n / 10), 3) : 0;
+    return n > 0 ? Math.min(Math.max(1 + Math.floor(n / 10), this.upgraded('incinerator-4') ? 2 : 1), 3) : 0;
   }
 
   private stackTops(): [number, number][] {
@@ -638,8 +659,9 @@ export class Scene {
 
   /** The sorting belt: from the yard [x0, y0] up to the heap's foot [x1, y1]. */
   private beltLine(): [number, number, number, number] {
-    const x1 = this.heapX - this.heapHalf * 0.7;
-    return [this.w * 0.02, this.laneY(0) + 2, x1, this.surface(x1) - 2];
+    const x1 = this.heapX - this.heapHalf * 0.6;
+    const [ix, iy] = this.intake();
+    return [ix + 12, iy - 2, x1, this.surface(x1) - 3];
   }
 
   private holeRadius() {
@@ -695,6 +717,7 @@ export class Scene {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    this.drawYardInfrastructure();
     if (this.owned('sorter') > 0) this.drawBelt();
     if (this.owned('press') > 0) this.drawPress();
 
@@ -704,6 +727,8 @@ export class Scene {
     for (const wk of this.walkers) if (wk.lane === 1) this.actor(() => this.drawWalker(wk));
     for (const it of this.items) this.actor(() => this.drawItem(it));
     this.drawParticles();
+    // The receiving lip is in front of arriving loose scrap.
+    if (this.owned('truck') > 0 || this.owned('sorter') > 0) this.drawIntakeLip();
     if (this.view?.refined) {
       // A faint pool of ground light and edge shadow separate the three depth planes.
       const shade = ctx.createLinearGradient(0, 0, 0, h);
@@ -861,7 +886,7 @@ export class Scene {
   }
 
   private driverlessX(p: Playing): number {
-    const stop = this.heapX - this.heapHalf - 30;
+    const stop = this.intake()[0] + 24;
     if (p.t < 3) return -90 + (stop + 90) * (p.t / 3);
     if (p.t < 5.5) return stop;
     return stop - (stop + 90) * ((p.t - 5.5) / 3.5);
@@ -1438,6 +1463,12 @@ export class Scene {
         ctx.fillRect(x + 4 + k * 8, roof + 7, 4, 3);
       }
       ctx.globalAlpha = 1;
+      if(i===0){
+        if(this.upgraded('plant-1'))this.box(x+4,roof+14,20,3,C.hub,.6);
+        if(this.upgraded('plant-2')){this.yardBlock(x+30,this.horizon-13,9,13);this.circle(x+34,this.horizon-8,3,C.hub,.6);}
+        if(this.upgraded('plant-3')){this.line(x+3,roof-3,x+29,roof-3,C.hub,2);this.line(x+3,roof-3,x+3,roof+4,C.hub,2);}
+        if(this.upgraded('plant-4'))this.yardBlock(x-1,this.horizon-10,12,10);
+      }
     }
   }
 
@@ -1448,6 +1479,7 @@ export class Scene {
     const baseX = this.w - 12 - (tops.length - 1) * 13 - 12;
     for (const [x, y] of tops) {
       this.box(x - 3.5, y, 7, this.horizon - 18 - y, C.far);
+      if(this.upgraded('incinerator-1'))this.yardBlock(x-6,y+11,12,10);
       ctx.fillStyle = C.light;
       ctx.globalAlpha = 0.5;
       ctx.fillRect(x - 3, y + 6, 6, 1.5);
@@ -1462,6 +1494,8 @@ export class Scene {
     ctx.globalAlpha = 0.6 + 0.3 * Math.sin(this.t * 2.3);
     ctx.fillRect(baseX + 6, this.horizon - 12, 10, 6);
     ctx.globalAlpha = 1;
+    if(this.upgraded('incinerator-2'))this.circle(baseX+6,this.horizon-4,5,C.hub,1);
+    if(this.upgraded('incinerator-3'))this.box(baseX+7,this.horizon-11,7,4,C.light,.7);
   }
 
   private drawLamp(): void {
@@ -1619,56 +1653,123 @@ export class Scene {
     ctx.restore();
   }
 
-  private drawBelt(): void {
+  /** Solid industrial faces stay quiet; the light belongs to moving material. */
+  private yardBlock(x: number, y: number, w: number, h: number): void {
+    this.box(x, y, w, h, '#548163', 1);
+    this.poly([[x,y],[x+3,y-3],[x+w+3,y-3],[x+w,y]], '#72917a', 0.7);
+    this.poly([[x+w,y],[x+w+3,y-3],[x+w+3,y+h-3],[x+w,y+h]], '#304d3a', 0.7);
+  }
+
+  private drawYardInfrastructure(): void {
     const { ctx } = this;
-    const [x0, y0, x1, y1] = this.beltLine();
-    const angle = Math.atan2(y1 - y0, x1 - x0);
-    const len = Math.hypot(x1 - x0, y1 - y0);
-    // Legs down to the yard.
-    for (let u = 0.15; u < 1; u += 0.3) {
-      const lx = x0 + (x1 - x0) * u;
-      const ly = y0 + (y1 - y0) * u;
-      this.box(lx - 1, ly, 2.5, this.laneY(0) + 4 - ly, C.far, 0.8);
+    const truck = this.owned('truck') > 0, belt = this.owned('sorter') > 0;
+    if (truck || belt) {
+      const [x,y] = this.intake();
+      // A low unloading bay, well below the heap and clear of the press's output.
+      ctx.fillStyle = '#10281b';ctx.fillRect(x-24,y-3,60,18);
+      for (let i=0;i<4;i++) this.line(x-25+i*12,y+13,x-20+i*12,y+7,'#386348',1);
+      this.yardBlock(x-19,y-4,38,13);
+      this.poly([[x-21,y-7],[x+21,y-7],[x+14,y+2],[x-14,y+2]], '#07180f', 1);
+      for(let i=0;i<5;i++)this.box(x-11+i*5,y-4-(i%2)*2,5,4,J.bags[i%3],.7);
+      if (this.upgraded('truck-1')) {
+        for(let i=0;i<3;i++)this.poly([[x+43+i*13,y+12],[x+48+i*13,y+15],[x+43+i*13,y+18]],C.deep,.7);
+      }
     }
-    ctx.save();
-    ctx.translate(x0, y0);
-    ctx.rotate(angle);
-    this.box(0, -2.5, len, 5, '#1b4a2e', 1.2);
-    ctx.fillStyle = C.green;
-    const shift = (this.t * 20) % 8;
-    for (let d = shift; d < len - 2; d += 8) ctx.fillRect(d, -1, 3, 1.5);
-    for (const u of this.beltItems) {
-      ctx.save();
-      ctx.translate(u * len, -5);
-      this.box(-2.5, -2.5, 5, 5, C.items[Math.floor(u * 50) % C.items.length], 0.9);
-      ctx.restore();
+    if (this.owned('plant') > 0) {
+      // Supply ducts link the distant factory to the operating yard.
+      const y=this.horizon+5;
+      this.line(14,y,this.pressX()+18,y,'#254b34',3);
+      for(let x=24;x<this.pressX();x+=40)this.line(x,y-3,x,y+3,'#4c7058',1);
+      this.line(this.pressX()+18,y,this.pressX()+18,this.laneY(0)-10,'#254b34',3);
+    }
+    if (this.upgraded('landfill-2') && this.owned('landfill') > 0) {
+      const x=this.heapX+this.heapHalf*.6,y=this.surface(x)+8;
+      this.line(x,y,x,this.horizon-3,'#426b50',3);
+      this.line(x,this.horizon-3,this.w-20,this.horizon-3,'#426b50',2);
+      this.circle(x,y,3,C.hub,1);
+    }
+  }
+
+  private drawIntakeLip(): void {
+    const [x,y]=this.intake();
+    this.box(x-20,y+4,40,4,'#6b8c72',.8);
+    this.line(x-18,y+8,x-18,y+13,C.far,2);
+    this.line(x+18,y+8,x+18,y+13,C.far,2);
+  }
+
+  private drawBelt(): void {
+    const {ctx}=this;
+    const [x0,y0,x1,y1]=this.beltLine();
+    const angle=Math.atan2(y1-y0,x1-x0),len=Math.hypot(x1-x0,y1-y0);
+    for (let u=.18;u<.95;u+=.31) {
+      const x=x0+(x1-x0)*u,y=y0+(y1-y0)*u;
+      this.line(x,y+4,x,this.laneY(1)-8,'#284b35',2);
+      this.line(x,this.laneY(1)-8,x+9,this.laneY(1)-8,'#42664e',2);
+    }
+    ctx.save();ctx.translate(x0,y0);ctx.rotate(angle);
+    this.box(0,-4,len,8,'#396a4c',1.2);
+    this.box(0,-3,len,5,'#0b2417',.5);
+    const shift=this.reducedMotion?0:(this.t*14)%9;
+    for(let d=shift;d<len-2;d+=9)this.line(d,-2,d+2,2,'#698c72',1);
+    this.circle(0,0,4,C.hub,1);this.circle(len,0,4,C.hub,1);
+    const material=this.reducedMotion?[.18,.48,.78]:this.beltItems;
+    for(const u of material){this.box(u*len-3,-10,6,5,C.items[Math.floor(u*50)%C.items.length],.8);}
+    // Purchased magnet and optical gate are separate, recognisable attachments.
+    if(this.upgraded('sorter-1')){
+      const d=len*.42;
+      this.line(d,-17,d,6,'#6f9379',2);this.line(d-9,-17,d+9,-17,'#93b29a',3);
+      this.box(d-7,-16,14,5,'#365c44',1);
+    }
+    if(this.upgraded('sorter-2')){
+      const d=len*.72;
+      this.line(d,-18,d,5,'#6f9379',2);this.box(d-6,-20,12,8,C.hub,1);
+      this.box(d-2,-17,4,3,C.light,0);
+      this.line(d,-11,d,-5,this.reducedMotion||Math.sin(this.t*3)>0?'#a0c7a4':'#42664e',1);
     }
     ctx.restore();
+    if(this.upgraded('sorter-3'))this.yardBlock(x0-16,y0-17,11,15);
+    if(this.upgraded('sorter-4')){
+      this.yardBlock(x0+15,y0-23,12,18);this.box(x0+18,y0-20,6,5,C.glow,.5);
+    }
   }
 
   private drawPress(): void {
-    const n = this.owned('press');
-    const x = this.w * 0.82;
-    const base = this.laneY(0) + 4;
-    const top = base - 42;
-    this.box(x, top, 5, 42, C.far);
-    this.box(x + 27, top, 5, 42, C.far);
-    this.box(x - 2, top - 3, 36, 7, C.hub);
-    // Piston: slow lift, fast slam.
-    const period = Math.max(0.8, 2 - n * 0.03);
-    const p = (this.t % period) / period;
-    const y = p < 0.75 ? top + 6 + 4 * (1 - p / 0.75) : top + 6 + 18 * Math.sin(((p - 0.75) / 0.25) * Math.PI);
-    this.box(x + 14, top + 4, 4, y - top - 4, C.hub, 0.8);
-    this.box(x + 6, y, 20, 6, C.amber);
-    this.box(x + 7, base - 8, 18, 8, C.lime);
-    // Finished cubes stacked beside it.
-    const cubes = Math.min(n, 6);
-    for (let i = 0; i < cubes; i++) {
-      const row = i < 4 ? 0 : i < 7 ? 1 : i < 9 ? 2 : 3;
-      const col = i < 4 ? i : i < 7 ? i - 4 : i < 9 ? i - 7 : 0;
-      const cx = x + 36 + col * 7 + row * 3.5;
-      if (cx > this.w - 4) continue;
-      this.box(cx, base - 7 - row * 7, 7, 7, C.items[i % C.items.length], 1);
+    const x=this.pressX(),base=this.laneY(0)+5,top=base-62,p=this.pressPhase();
+    const down=p<.38?0:p<.55?(p-.38)/.17:p<.7?1:p<.86?1-(p-.7)/.16:0;
+    // Material is taken from the heap foot into the lower receiving chamber.
+    const feedX=x-27,feedY=base-11;
+    this.line(feedX-5,feedY-12,feedX,feedY,'#375e44',4);
+    this.box(feedX,feedY,27,6,'#386248',1);
+    this.circle(feedX+2,feedY+3,3,C.hub,.8);
+    if(p<.38)this.box(feedX+Math.min(1,p/.3)*23,feedY-6,6,6,C.items[2],.7);
+    // Foundation, enclosed rear panel, load and platen, then the front posts and cap.
+    this.yardBlock(x-4,base,47,7);
+    this.box(x+4,top+7,29,51,'#0b2115',.7);
+    this.box(x+9,base-12,19,9,C.green,1);
+    const platen=top+15+down*30;
+    const rods=this.upgraded('press-2')?[11,25]:[18];
+    for(const r of rods)this.box(x+r,top+6,3,platen-top-5,'#7f9c84',.7);
+    this.yardBlock(x+5,platen,28,6);
+    this.box(x+7,platen+1,24,2,'#74947c',0);
+    if(this.upgraded('press-4'))this.box(x+6,platen+5,27,2,'#c1d1bc',0);
+    this.yardBlock(x,top+3,5,58);this.yardBlock(x+33,top+3,5,58);
+    this.yardBlock(x-3,top,44,8);
+    this.box(x+10,top+2,18,3,'#112c1b',.5);
+    if(this.upgraded('press-1')){
+      this.yardBlock(x-12,base-26,9,23);
+      this.line(x-7,base-25,x-7,top+12,'#6b8b72',2);
+      this.line(x-7,top+12,x+3,top+12,'#6b8b72',2);
+    }
+    if(this.upgraded('press-3'))this.box(x+8,base-5,23,3,'#86a78a',.7);
+    // A short exit bed carries each finished bale to an orderly, capped stack.
+    this.box(x+39,base-2,Math.max(10,this.w-x-45),4,'#365b42',.7);
+    if(p>.86)this.yardBlock(x+35+(p-.86)/.14*10,base-9,7,7);
+    const count=Math.min(6,1+Math.floor(Math.log2(this.owned('press')+1)/2));
+    const cols=Math.max(1,Math.min(3,Math.floor((this.w-x-50)/8)));
+    for(let i=0;i<count;i++){
+      const col=i%cols,row=Math.floor(i/cols);
+      this.yardBlock(x+48+col*8,base-7-row*8,7,7);
+      this.line(x+51+col*8,base-6-row*8,x+51+col*8,base-1-row*8,'#72977b',.6);
     }
   }
 
@@ -1699,6 +1800,9 @@ export class Scene {
       ctx.quadraticCurveTo(-10, -5, -6, -6);
       ctx.closePath();
       this.paint(C.cyan, 1);
+      if(this.upgraded('collector-1'))this.line(-10,-12,-6,-12,C.light,1);
+      if(this.upgraded('collector-3'))this.line(5,-12,12,-3,C.hub,1.4);
+      if(this.upgraded('collector-2'))this.box(4,-13,3,3,C.lime,.7);
     }
     ctx.restore();
   }
@@ -1733,6 +1837,14 @@ export class Scene {
     this.paint(C.cyan);
     this.circle(12, -1.5, 2.2, C.tyre, 1);
     this.circle(23, -1.5, 2.2, C.tyre, 1);
+    if(this.upgraded('cart-1')){this.circle(12,-1.5,.8,C.light,0);this.circle(23,-1.5,.8,C.light,0);}
+    if(this.upgraded('cart-2')){this.box(8,-22,18,8,C.deep,1);this.box(11,-25,6,3,J.box,.7);}
+    if(this.upgraded('cart-3')){
+      this.line(27,-7,32,-7,C.hub,1);this.box(32,-12,16,9,C.deep,1);
+      this.circle(35,-1.5,2.2,C.tyre,1);this.circle(45,-1.5,2.2,C.tyre,1);
+      this.box(36,-16,7,4,J.bags[1],.7);
+    }
+    if(this.upgraded('cart-4')){this.box(13,-6,8,4,C.hub,.6);this.box(16,-5,2,2,C.light,0);}
     ctx.restore();
   }
 
@@ -1761,6 +1873,19 @@ export class Scene {
     this.box(6, -34, 9, 4, C.amber, 1);
     this.box(20, -33, 7, 3, C.cyan, 1);
     ctx.restore();
+    // Hardware is fixed to the tilting body, unlike the cab and chassis.
+    if(!empty){
+      ctx.save();ctx.translate(x+2,g-10);ctx.rotate(-tr.tilt);
+      if(this.upgraded('truck-2')){
+        this.box(2,-27,9,23,'#1c422d',1);
+        this.line(7,-25,7,-7,C.hub,2);this.box(4,-18,6,5,C.lime,.7);
+      }
+      if(this.upgraded('truck-4')){
+        this.box(0,-43,56,11,C.deep,1);
+        this.line(3,-36,52,-36,C.hub,1);
+      }
+      ctx.restore();
+    }
     // Cab and chassis stay level.
     ctx.beginPath();
     ctx.moveTo(x + 58, g - 32);
@@ -1785,6 +1910,11 @@ export class Scene {
     this.circle(x + 68, g - 5, 2.2, C.hub, 0.8);
     ctx.fillStyle = C.amber;
     ctx.fillRect(x + 80, g - 18, 2.5, 3);
+    if(!empty&&this.upgraded('truck-3')){
+      this.box(x+62,g-36,9,3,'#98b699',.6);
+      ctx.save();ctx.globalAlpha=.12;
+      this.poly([[x+82,g-17],[x+112,g-5],[x+83,g-4]],C.light,0);ctx.restore();
+    }
   }
 
   private drawParticles(): void {
