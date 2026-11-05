@@ -1,0 +1,33 @@
+{
+  "name": "Isidacorp",
+  "version": "1.0",
+  "colors": {
+    "void": "#000000",
+    "signal": "#FF0000",
+    "phosphor": "#FFF2CC",
+    "panel": "#10120F",
+    "muted": "#92988D"
+  },
+  "font": {
+    "family": "JetBrains Mono",
+    "fallback": "monospace",
+    "headingWeight": 600,
+    "bodyWeight": 400
+  },
+  "logo": {
+    "file": "assets/isidacorp-logo.png",
+    "format": "raster PNG",
+    "canvasPx": [
+      1254,
+      1254
+    ],
+    "visibleBoundsApproxPx": [
+      278,
+      64,
+      990,
+      1032
+    ],
+    "minimumVisibleWidthDigitalPx": 360,
+    "recommendedClearspace": "height of ASCII wordmark"
+  }
+}
