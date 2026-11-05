@@ -98,6 +98,8 @@ interface Item {
   floor?: number;
   /** Pulled into the black hole instead of falling. */
   sucked?: boolean;
+  /** The purchased auxiliary singularity has its own intake destination. */
+  sink?: 0 | 1;
 }
 
 interface Particle {
@@ -448,8 +450,10 @@ export class Scene {
 
     // A few actors stand for the whole workforce; once machines arrive, fewer people walk the yard.
     const machines = this.owned('truck') >= 10 || this.owned('sorter') >= 10;
-    this.syncWalkers('collector', Math.min(this.owned('collector'), machines ? 2 : 4));
+    this.syncWalkers('collector', Math.min(this.owned('collector'), machines ? (this.upgraded('collector-4') ? 3 : 2) : 4));
     this.syncWalkers('cart', Math.min(this.owned('cart'), machines ? 1 : 2));
+    this.syncSatellites();
+    if (!this.owned('singularity')) this.items = this.items.filter(it => !it.sucked);
     if (!this.reducedMotion) this.simulate(dt);
     this.updateZoom(dt);
     this.draw();
@@ -537,14 +541,11 @@ export class Scene {
         this.skyDropIn = Math.max(0.6, 5 - orbital * 0.15);
       }
     }
-    const satTarget = Math.min(orbital, 3);
-    while (this.satellites.length < satTarget) this.satellites.push({ x: -10, y: rnd(0.08, 0.32) * this.h, speed: rnd(8, 20), phase: rnd(0, 6) });
-    this.satellites.length = Math.min(this.satellites.length, satTarget);
     for (const s of this.satellites) {
       s.x += s.speed * dt;
       if (s.x > this.w + 10) {
         s.x = -10;
-        s.y = rnd(0.08, 0.32) * this.h;
+        s.y = this.satelliteY();
       }
     }
 
@@ -553,14 +554,15 @@ export class Scene {
       this.holePullIn -= dt;
       if (this.holePullIn <= 0 && this.items.length < MAX_ITEMS) {
         const x = this.onHeap();
-        this.items.push({ x, y: this.surface(x), vx: 0, vy: 0, rot: 0, spin: rnd(-8, 8), kind: Math.floor(Math.random() * 5) as ItemKind, color: pick(C.items), landed: -1, sucked: true });
+        this.items.push({ x, y: this.surface(x), vx: 0, vy: 0, rot: 0, spin: rnd(-8, 8), kind: Math.floor(Math.random() * 5) as ItemKind, color: pick(C.items), landed: -1, sucked: true, sink: this.upgraded('singularity-2') && Math.random() < .5 ? 1 : 0 });
         this.holePullIn = Math.max(0.4, 3.5 - holes * 0.1);
       }
     }
 
-    const [hx, hy] = this.holeCenter();
     for (const it of this.items) {
       if (it.sucked) {
+        const sink = it.sink && this.upgraded('singularity-2') ? 1 : 0;
+        const [hx, hy] = this.holeCenter(sink);
         // Spiral in, faster as it gets close.
         const dx = hx - it.x;
         const dy = hy - it.y;
@@ -573,7 +575,7 @@ export class Scene {
         it.x += it.vx * dt;
         it.y += it.vy * dt;
         it.rot += it.spin * dt;
-        if (d < this.holeRadius() * 0.6) it.landed = 99;
+        if (d < this.holeRadius(sink) * 0.6) it.landed = 99;
         continue;
       }
       if (it.landed >= 0) {
@@ -664,12 +666,25 @@ export class Scene {
     return [ix + 12, iy - 2, x1, this.surface(x1) - 3];
   }
 
-  private holeRadius() {
-    return 6 + Math.min(this.owned('singularity'), 30) * 0.45;
+  private holeRadius(index = 0) {
+    return (6 + Math.min(this.owned('singularity'), 30) * 0.45) * (index ? .55 : 1);
   }
 
-  private holeCenter(): [number, number] {
-    return [this.w * 0.2, this.h * 0.22];
+  private holeCenter(index = 0): [number, number] {
+    return index ? [this.w * .1, this.h * .37] : [this.w * .2, this.h * .22];
+  }
+
+  private satelliteY(): number { return rnd(Math.max(42,this.h*.17),Math.max(52,this.h*.32)); }
+
+  /** Static machinery also exists when reduced motion disables the simulation. */
+  private syncSatellites(): void {
+    const owned=this.owned('orbital');
+    const target=Math.min(owned,this.upgraded('orbital-3')?5:3);
+    while(this.satellites.length<target)this.satellites.push({
+      x:this.t<.5||this.reducedMotion?rnd(15,this.w-15):-20,
+      y:this.satelliteY(),speed:rnd(8,20),phase:rnd(0,6),
+    });
+    this.satellites.length=Math.min(this.satellites.length,target);
   }
 
   // ---- Drawing ------------------------------------------------------------
@@ -685,7 +700,11 @@ export class Scene {
     ctx.fillRect(0, 0, w, this.horizon);
 
     if (this.owned('orbital') > 0 || this.owned('singularity') > 0) this.drawStars();
-    if (this.owned('singularity') > 0) this.drawHole();
+    if (this.owned('singularity') > 0) {
+      this.drawHole();
+      if(this.upgraded('singularity-2'))this.drawHole(1);
+    }
+    if(this.owned('orbital')>0&&this.upgraded('orbital-4'))this.drawMoonBase();
     for (const s of this.satellites) this.drawSatellite(s);
 
     // Far plane.
@@ -724,11 +743,11 @@ export class Scene {
     // Back lane first, then trucks, then the front lane, so nearer things overlap farther ones.
     for (const wk of this.walkers) if (wk.lane === 0) this.actor(() => this.drawWalker(wk));
     for (const tr of this.trucks) this.actor(() => this.drawTruck(tr));
-    for (const wk of this.walkers) if (wk.lane === 1) this.actor(() => this.drawWalker(wk));
     for (const it of this.items) this.actor(() => this.drawItem(it));
     this.drawParticles();
     // The receiving lip is in front of arriving loose scrap.
     if (this.owned('truck') > 0 || this.owned('sorter') > 0) this.drawIntakeLip();
+    for (const wk of this.walkers) if (wk.lane === 1) this.actor(() => this.drawWalker(wk));
     if (this.view?.refined) {
       // A faint pool of ground light and edge shadow separate the three depth planes.
       const shade = ctx.createLinearGradient(0, 0, 0, h);
@@ -1349,16 +1368,16 @@ export class Scene {
     ctx.fillStyle = C.light;
     for (let i = 0; i < n; i++) {
       const s = this.stars[i];
-      ctx.globalAlpha = 0.35 + 0.35 * Math.sin(this.t * 1.5 + s.phase);
+      ctx.globalAlpha = this.reducedMotion ? .55 : 0.35 + 0.35 * Math.sin(this.t * 1.5 + s.phase);
       ctx.fillRect(s.x * this.w, s.y * this.h, s.r, s.r);
     }
     ctx.globalAlpha = 1;
   }
 
-  private drawHole(): void {
+  private drawHole(index = 0): void {
     const { ctx } = this;
-    const [x, y] = this.holeCenter();
-    const r = this.holeRadius();
+    const [x, y] = this.holeCenter(index);
+    const r = this.holeRadius(index);
     const halo = ctx.createRadialGradient(x, y, r * 0.8, x, y, r * 3);
     halo.addColorStop(0, 'rgba(170, 240, 180, 0.3)');
     halo.addColorStop(1, 'rgba(170, 240, 180, 0)');
@@ -1372,7 +1391,7 @@ export class Scene {
       ctx.strokeStyle = i === 0 ? C.amber : C.glow;
       ctx.globalAlpha = 0.85;
       ctx.beginPath();
-      const a = this.t * (1.6 + i * 0.5) + i * Math.PI;
+      const a = (this.reducedMotion ? 0 : this.t) * (1.6 + i * 0.5) + i * Math.PI;
       ctx.arc(0, 0, r * (1.7 + i * 0.35), a, a + Math.PI * 1.3);
       ctx.stroke();
     }
@@ -1385,13 +1404,52 @@ export class Scene {
     ctx.strokeStyle = 'rgba(170, 240, 180, 0.75)';
     ctx.lineWidth = 1;
     ctx.stroke();
+    if(this.upgraded('singularity-1')){
+      // Four fixed stabiliser jaws make containment visible without another flashing halo.
+      for(let i=0;i<4;i++){
+        const a=i*Math.PI/2,dx=Math.cos(a),dy=Math.sin(a);
+        this.line(x+dx*(r+2),y+dy*(r+2),x+dx*(r+6),y+dy*(r+6),'#6c9477',2);
+      }
+    }
+    if(this.upgraded('singularity-3')){
+      const phase=this.reducedMotion?0:this.t*.3;
+      for(let i=0;i<3;i++){
+        const a=phase+i*.4,rr=r+7+i*3;
+        this.line(x+Math.cos(a)*rr,y+Math.sin(a)*rr*.55,x+Math.cos(a+.12)*rr,y+Math.sin(a+.12)*rr*.55,'#526e59',1);
+      }
+    }
+    if(this.upgraded('singularity-4')){
+      // A tiny enclosed constellation inside the dark disc: the pocket universe.
+      this.circle(x,y,r*.5,'#0c1b12',.6);
+      for(const [u,v] of [[-.35,-.15],[.1,-.3],[.3,.1],[-.1,.3]])this.box(x+u*r,y+v*r,1,1,'#85a88c',0);
+    }
+  }
+
+  private drawMoonBase(): void {
+    const x=this.w*.43,y=Math.max(49,this.h*.18),{ctx}=this;
+    ctx.save();ctx.globalAlpha=.75;
+    this.circle(x,y,11,'#6a8a73',.7);
+    this.circle(x-4,y+3,2,'#314c38',.5);this.circle(x+4,y+5,1.5,'#314c38',.5);
+    this.box(x-7,y-2,7,4,'#9eb4a2',.7);this.box(x+1,y-4,6,6,'#8da794',.7);
+    this.line(x-1,y-1,x+2,y-1,'#a8c1ad',1);
+    this.line(x+5,y-4,x+5,y-9,'#9eb4a2',.7);
+    this.box(x+4,y-9,3,1,'#b4c8b8',0);
+    ctx.restore();
   }
 
   private drawSatellite(s: Satellite): void {
     this.box(s.x - 2, s.y - 2, 4, 4, C.green, 1);
     this.box(s.x - 9, s.y - 1, 6, 2, C.cyan, 0.8);
     this.box(s.x + 3, s.y - 1, 6, 2, C.cyan, 0.8);
-    if (Math.sin(this.t * 4 + s.phase) > 0.6) {
+    if(this.upgraded('orbital-1')){
+      this.line(s.x+9,s.y,s.x+15,s.y-6,C.hub,.8);this.line(s.x+9,s.y,s.x+15,s.y+6,C.hub,.8);
+      this.line(s.x+15,s.y-6,s.x+15,s.y+6,C.deep,.8);this.line(s.x+12,s.y-3,s.x+12,s.y+3,C.deep,.6);
+    }
+    if(this.upgraded('orbital-2')){
+      this.line(s.x-11,s.y-4,s.x-23,s.y-7,'#4f715a',.8);this.line(s.x-11,s.y+4,s.x-23,s.y+7,'#4f715a',.8);
+      this.box(s.x-20,s.y-1,3,3,C.hub,.6);
+    }
+    if (this.reducedMotion || Math.sin(this.t * 4 + s.phase) > 0.6) {
       this.ctx.fillStyle = C.red;
       this.ctx.fillRect(s.x - 0.5, s.y - 4, 1.5, 1.5);
     }
@@ -1564,6 +1622,15 @@ export class Scene {
     this.heapPath(this.heapX, this.heapHalf, this.heapHeight);
     this.paint(C.heapFront, 1.6);
 
+    if(landfill>0&&this.upgraded('landfill-1')){
+      ctx.save();this.heapPath(this.heapX,this.heapHalf,this.heapHeight);ctx.clip();
+      for(let i=1;i<=4;i++){
+        const y=this.horizon-this.heapHeight*i/5;
+        ctx.fillStyle=i%2?'#183d27':'#244d33';ctx.fillRect(this.heapX-this.heapHalf,y,this.heapHalf*2,4);
+      }
+      ctx.restore();
+    }
+
     // Big junk sticking out of the heap; more shows as it grows.
     const visible = Math.round(4 + this.grow * 6);
     const s = Math.min(Math.max(this.heapHeight / 75, 0.5), 0.85);
@@ -1577,29 +1644,42 @@ export class Scene {
 
     if (landfill > 0) {
       // Terraces cut into the heap, and a flag on the summit.
-      ctx.setLineDash([4, 3]);
-      ctx.strokeStyle = C.heapEdge;
+      const terraces=this.upgraded('landfill-3');
+      ctx.setLineDash(terraces?[]:[4,3]);
+      ctx.strokeStyle = terraces?'#76967e':C.heapEdge;
       ctx.lineWidth = 1;
       const n = Math.min(landfill, 3);
       for (let k = 1; k <= n; k++) {
         const f = k / (n + 1);
         const half = this.heapHalf * (1 - f * 0.85);
         const y = this.horizon - this.heapHeight * f * 0.85;
+        if(terraces){
+          ctx.fillStyle='#213d2b';ctx.fillRect(this.heapX-half,y,half*2,4);
+          this.line(this.heapX+half,y,this.heapX+half,y+7,'#52745d',1);
+        }
         ctx.beginPath();
         ctx.moveTo(this.heapX - half, y);
         ctx.lineTo(this.heapX + half, y);
+        ctx.strokeStyle = terraces ? '#76967e' : C.heapEdge;
         ctx.stroke();
       }
       ctx.setLineDash([]);
       const peak = this.heapX + this.heapHalf * 0.02;
       const top = this.surface(peak);
       this.box(peak - 0.75, top - 16, 1.5, 16, C.light, 0.6);
-      const wave = Math.sin(this.t * 4) * 1.5;
+      const wave = this.reducedMotion ? 0 : Math.sin(this.t * 4) * 1.5;
       ctx.beginPath();
       ctx.moveTo(peak + 0.75, top - 16);
       ctx.lineTo(peak + 11, top - 13 + wave);
       ctx.lineTo(peak + 0.75, top - 10);
       this.paint(C.amber, 1);
+      if(this.upgraded('landfill-4')){
+        const x=this.heapX-19,y=this.horizon-17;
+        this.yardBlock(x,y,35,16);this.box(x+4,y+3,27,13,'#07190f',.8);
+        this.line(x+14,y+4,x+14,y+15,'#53775e',1);this.line(x+20,y+4,x+20,y+15,'#53775e',1);
+        for(let i=0;i<3;i++)this.line(x+14,y+6+i*4,x+20,y+6+i*4,'#6e9078',.7);
+        this.box(x+25,y+4,3,2,'#92ad98',0);
+      }
     }
   }
 
@@ -1674,6 +1754,12 @@ export class Scene {
       if (this.upgraded('truck-1')) {
         for(let i=0;i<3;i++)this.poly([[x+43+i*13,y+12],[x+48+i*13,y+15],[x+43+i*13,y+18]],C.deep,.7);
       }
+    }
+    if(this.owned('collector')>0&&this.upgraded('collector-4')){
+      const x=this.w*.43,y=this.horizon+8;
+      this.yardBlock(x,y,17,19);this.line(x+8,y+2,x+8,y+17,'#77927e',.7);
+      this.box(x+3,y+4,3,2,C.hub,.5);this.box(x+11,y+4,3,2,C.hub,.5);
+      this.box(x+20,y+13,7,6,J.bags[0],.7);this.box(x+22,y+10,3,3,J.bags[1],.5);
     }
     if (this.owned('plant') > 0) {
       // Supply ducts link the distant factory to the operating yard.
