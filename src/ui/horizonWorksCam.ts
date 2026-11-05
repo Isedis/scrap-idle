@@ -84,7 +84,7 @@ export function drawWorks(ctx:CanvasRenderingContext2D,v:WorksView,width:number,
       for(let n=0;n<24;n++)if(p(1)>n/24){const a=angle+n*Math.PI/12;box(253+Math.cos(a)*83,170+Math.sin(a)*83,7,7,metal);}}
     if(p(2)>0){block(72,269-p(2)*49,59,p(2)*49);if(p(2)>.95){ring(101,244,17,edge);ring(101,244,8,lit);line(115,230,233,177,edge,4);line(112,256,239,188,dim,4);bolts(77,264,4,12);}}
     if(p(3)>0){block(358,264-p(3)*36,58,p(3)*36);if(p(3)>.95){block(347,228,72,9);line(349,240,305,212,kick>0?amber:edge,7);block(367,247,25,10);}}
-    block(29,112,28,164);box(35,121,16,147,dark);const fill=archived?0:v.powerFill??0;box(36,264-fill*137,14,fill*137,'#afa06c');for(let n=0;n<7;n++)line(33,130+n*20,53,130+n*20,edge);line(57,263,77,263,kick>0?amber:edge,4);
+    block(29,112,28,164);box(35,121,16,147,dark);const fill=archived&&!(s.opened===5&&s.powerLinked)?0:v.powerFill??0;box(36,264-fill*137,14,fill*137,'#afa06c');for(let n=0;n<7;n++)line(33,130+n*20,53,130+n*20,edge);line(57,263,77,263,kick>0?amber:edge,4);
     if(s.regulator){block(380,143,38,49);box(386,149,26,29,dark);for(let n=0;n<3;n++)box(390+n*7,156,4,5,lit);line(384,193,384,218,edge,3);}
   }
   if(hall===4){
@@ -100,6 +100,10 @@ export function drawWorks(ctx:CanvasRenderingContext2D,v:WorksView,width:number,
       if(p(4)>.7){line(213,229,206,280,edge,7);line(327,229,338,280,edge,7);}}
     block(355,252,55,30);box(362,258,41,16,dark);for(let n=0;n<2;n++)box(368+n*17,262,9,6,s.finalChecks&(1<<n)?'#b1c99a':edge);
     if(s.trial){box(357,289,50,4,dim);box(357,289,50*(1-s.trial.left/s.trial.duration),4,amber);}
+  }
+  if(hall===4&&s.opened===5){
+    if(s.project){const progress=s.project.work.div(s.project.cost).min(1).toNumber();line(149,320,406,320,dim,5);line(149,320,149+257*progress,320,amber,3);}
+    if(s.powerLinked){line(306,259,353,259,kick>0?amber:edge,6);line(353,259,353,294,edge,4);block(333,294,54,20);box(340,300,39,8,s.powerMode==='charge'?'#b6aa72':'#779970');for(let n=0;n<Math.min(5,s.powerSections);n++){line(405+n*7,202,405+n*7,289,edge,3);block(400+n*7,285,7,9);}}
   }
   // Installation activity stays at the real active job; equipment does not animate before it exists.
   if(active&&targets.length){const id=targets[0],r=WORK_REGIONS[hall]?.[id];if(r){const x=r[0]+r[2]/2;block(x-11,321,23,9);box(x-7,330,4,4,edge);box(x+7,330,4,4,edge);line(x,321,x+8,308,amber,2);if(!reduced)for(let n=0;n<3;n++)box(x+Math.sin(t*9+n)*6,306+Math.cos(t*8+n)*4,2,2,amber);}}

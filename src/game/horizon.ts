@@ -29,7 +29,9 @@ export const HALLS: readonly Hall[] = [
 ];
 export type Routing = 'even'|'left'|'right'|'auto'|'legacy';
 export type CommissionKind='feed'|'drive';
+export type PowerProject={kind:'connection'|'section';cost:Decimal;work:Decimal};
 export interface HorizonState {
+  powerLinked:boolean; powerSections:number; project:PowerProject|null;
   finalChecks:number; trial:{kind:CommissionKind;left:number;duration:number}|null;
   powerMode:'steady'|'charge'|'legacy'; charge:Decimal; regulator:boolean; powerShots:number;
   routing:Routing; dispatcher:boolean;
@@ -44,7 +46,7 @@ export interface HorizonState {
   umeOrder: boolean;
   nextPurchase: Machine | null; connections: { frame: boolean; conductor: boolean };
 }
-export const newHorizon = (): HorizonState => ({ finalChecks:0,trial:null,powerMode:'steady',charge:D(0),regulator:false,powerShots:0,routing:'even',dispatcher:false,recipe:null, firstHall:null, legacyAutomation:false, open: false, points: D(0), total: D(0), opened: 0,
+export const newHorizon = (): HorizonState => ({ powerLinked:false,powerSections:0,project:null,finalChecks:0,trial:null,powerMode:'steady',charge:D(0),regulator:false,powerShots:0,routing:'even',dispatcher:false,recipe:null, firstHall:null, legacyAutomation:false, open: false, points: D(0), total: D(0), opened: 0,
   levels: { transport: 0, processing: 0, assembly: 0 }, work: HALLS[0].nodes.map(() => D(0)),
   mode: 'balance', autoBuild: true, autoBuy: false, forecast: false, parallel: true, selected: 0, pinned: false,
   reserveUme: true, umeOrder: false, clock: 0, nextPurchase: null, connections: { frame: false, conductor: false } });
@@ -165,19 +167,34 @@ export function routingShares(h:HorizonState,city:CityState,targets=buildTargets
   return targets.map(id=>route==='even'?.5:route==='left'?(id===1?.8:.2):(id===2?.8:.2));
 }
 
-export function powerCapacity(h:HorizonState,city:CityState):Decimal {return horizonRates(h,city).production.mul(2);}
+export function projectCost(h:HorizonState,city:CityState):Decimal {
+  const r=horizonRates(h,city);return r.production.min(r.assembly).mul(h.powerLinked?12:10).mul(h.powerLinked?D(1.3).pow(h.powerSections):1).ceil();
+}
+export function startPowerProject(h:HorizonState,city:CityState):boolean {
+  if(!h.open||h.opened!==5||h.project||!Number.isSafeInteger(h.powerSections+1))return false;
+  h.project={kind:h.powerLinked?'section':'connection',cost:projectCost(h,city),work:D(0)};h.autoBuild=true;return true;
+}
+function settleProject(h:HorizonState):void {
+  if(!h.project||h.project.work.lt(h.project.cost.mul(1-1e-12)))return;
+  if(h.project.kind==='connection'){h.powerLinked=true;h.powerMode='steady';}else h.powerSections++;
+  h.project=null;
+}
+export const powerYield=(h:HorizonState)=>1.5*(1+.05*h.powerSections);
+export const powerAvailable=(h:HorizonState)=>h.open&&(h.opened===3&&h.powerMode!=='legacy'||h.opened===5&&h.powerLinked);
+export function powerCapacity(h:HorizonState,city:CityState):Decimal {return horizonRates(h,city).production.mul(2).mul(1+.25*h.powerSections);}
 export function chargeRate(h:HorizonState,city:CityState):Decimal {
-  return h.open&&h.opened===3&&h.powerMode==='charge'&&h.charge.lt(powerCapacity(h,city))?horizonRates(h,city).production.mul(.25):D(0);
+  return powerAvailable(h)&&h.powerMode==='charge'&&h.charge.lt(powerCapacity(h,city))?horizonRates(h,city).production.mul(.25):D(0);
 }
 export function setPowerMode(h:HorizonState,mode:'steady'|'charge'):boolean {
-  if(!h.open||h.opened!==3||h.powerMode==='legacy')return false;h.powerMode=mode;return true;
+  if(!powerAvailable(h))return false;h.powerMode=mode;return true;
 }
 export function installRegulator(h:HorizonState):boolean {
-  if(!h.open||h.opened!==3||h.powerMode==='legacy'||h.regulator||!nodeDone(h,0)||h.points.lt(400))return false;
+  if(!powerAvailable(h)||h.regulator||h.opened===3&&!nodeDone(h,0)||h.points.lt(400))return false;
   h.points=h.points.sub(400);h.regulator=true;return true;
 }
 export function launchPower(h:HorizonState):boolean {
-  if(!h.open||h.opened!==3||h.powerMode==='legacy'||h.charge.lte(1e-8))return false;
+  if(!powerAvailable(h)||h.charge.lte(1e-8))return false;
+  if(h.opened===5){if(!h.project)return false;const yieldRate=powerYield(h),work=h.project.cost.sub(h.project.work).min(h.charge.mul(yieldRate));if(work.lte(1e-8))return false;h.project.work=h.project.work.add(work);h.charge=h.charge.sub(work.div(yieldRate)).max(0);h.powerShots++;settleProject(h);return true;}
   const ids=HALLS[3].nodes.map((_,i)=>i).filter(i=>nodeAvailable(h,i));
   const id=ids.includes(h.selected)?h.selected:ids[0];if(id===undefined)return false;
   const work=nodeCost(h,id).sub(h.work[id]).min(h.charge.mul(1.5));
@@ -198,21 +215,22 @@ export function startCommission(h:HorizonState,city:CityState,kind:CommissionKin
 }
 
 function autoPower(h:HorizonState,city:CityState):boolean {
-  if(h.opened!==3||!h.regulator||!h.autoBuild||h.mode==='growth'||h.charge.lte(1e-8))return false;
-  const remaining=HALLS[3].nodes.reduce((sum,_,i)=>sum.add(nodeCost(h,i).sub(h.work[i]).max(0)),D(0));
-  return (h.charge.gte(powerCapacity(h,city).mul(1-1e-12))||h.charge.mul(1.5).gte(remaining.mul(1-1e-12)))&&launchPower(h);
+  if(!powerAvailable(h)||h.opened===5&&!h.project||!h.regulator||!h.autoBuild||h.mode==='growth'||h.charge.lte(1e-8))return false;
+  const remaining=h.opened===5?h.project!.cost.sub(h.project!.work):HALLS[3].nodes.reduce((sum,_,i)=>sum.add(nodeCost(h,i).sub(h.work[i]).max(0)),D(0));
+  return (h.charge.gte(powerCapacity(h,city).mul(1-1e-12))||h.charge.mul(h.opened===5?powerYield(h):1.5).gte(remaining.mul(1-1e-12)))&&launchPower(h);
 }
 
 function flowAt(h: HorizonState, r: ReturnType<typeof horizonRates>): Decimal {
   if (!h.autoBuild || h.mode==='growth') return D(0);
-  const income=h.opened===3&&h.powerMode==='charge'&&h.charge.lt(r.production.mul(2))?r.production.mul(.75):r.production;
+  const capacity=r.production.mul(2).mul(1+.25*h.powerSections);
+  const income=powerAvailable(h)&&h.powerMode==='charge'&&h.charge.lt(capacity)?r.production.mul(.75):r.production;
   const cap=h.mode==='balance'?income.mul(.5).min(r.assembly):r.assembly;
   return h.mode==='assembly'&&h.points.lte(1e-10)?cap.min(income):cap;
 }
 
 /** Actual shared flow now, including a manual assignment or a single available node. */
 export function assemblyFlow(h: HorizonState, city: CityState): Decimal {
-  return h.open&&buildTargets(h).length?flowAt(h,horizonRates(h,city)):D(0);
+  return h.open&&(buildTargets(h).length||h.opened===5&&h.project)?flowAt(h,horizonRates(h,city)):D(0);
 }
 
 /** Constant-power forecast; investments and manual gate opening are deliberately outside it. */
@@ -268,16 +286,19 @@ export function horizonTick(h: HorizonState, seconds: number, city: CityState, p
     if (h.pinned && !nodeAvailable(h, h.selected)) h.pinned = false;
     const r = horizonRates(h, city); const targets = h.mode === 'growth' ? [] : buildTargets(h);
     const charging=chargeRate(h,city),income=r.production.sub(charging);
+    const project=h.opened===5?h.project:null;
     const flow = flowAt(h,r);const shares=routingShares(h,city,targets);
     let dt = Math.min(remaining, 60 - h.clock);
     if(h.trial)dt=Math.min(dt,h.trial.left);
     if(charging.gt(0))dt=Math.min(dt,powerCapacity(h,city).sub(h.charge).div(charging).mul(60).toNumber());
-    if(h.opened===3&&h.regulator&&h.autoBuild&&h.mode!=='growth'){
-      const rest=HALLS[3].nodes.reduce((sum,_,i)=>sum.add(nodeCost(h,i).sub(h.work[i]).max(0)),D(0));
-      const need=rest.sub(h.charge.mul(1.5)),speed=flow.add(charging.mul(1.5));
+    if((h.opened===3||project)&&h.regulator&&h.autoBuild&&h.mode!=='growth'){
+      const rest=project?project.cost.sub(project.work):HALLS[3].nodes.reduce((sum,_,i)=>sum.add(nodeCost(h,i).sub(h.work[i]).max(0)),D(0));
+      const yieldRate=h.opened===5?powerYield(h):1.5;
+      const need=rest.sub(h.charge.mul(yieldRate)),speed=flow.add(charging.mul(yieldRate));
       if(need.gt(1e-8)&&speed.gt(0))dt=Math.min(dt,need.div(speed).mul(60).toNumber());
     }
-    if (targets.length && flow.gt(0)) {
+    if ((targets.length||project) && flow.gt(0)) {
+      if(project)dt=Math.min(dt,project.cost.sub(project.work).div(flow).mul(60).toNumber());
       for (const [index,id] of targets.entries()) dt = Math.min(dt, nodeCost(h, id).sub(h.work[id]).div(flow.mul(shares[index])).mul(60).toNumber());
       if (flow.gt(income) && h.points.gt(1e-10)) dt = Math.min(dt, h.points.div(flow.sub(income)).mul(60).toNumber());
     }
@@ -291,7 +312,9 @@ export function horizonTick(h: HorizonState, seconds: number, city: CityState, p
       h.work[id] = h.work[id].add(work); spent = spent.add(work);
       if (nodeCost(h, id).sub(h.work[id]).lte(nodeCost(h, id).mul(1e-12))) h.work[id] = nodeCost(h, id);
     }
+    if(project){const work=flow.mul(dt/60).min(project.cost.sub(project.work)).max(0);project.work=project.work.add(work);spent=spent.add(work);}
     h.points = h.points.add(gained).sub(spent).max(0); h.total = h.total.add(r.production.mul(dt/60));
+    settleProject(h);
     if (h.pinned && nodeDone(h, h.selected)) h.pinned = false;
     if(h.trial){h.trial.left=Math.max(0,h.trial.left-dt);if(h.trial.left<=1e-7){h.finalChecks|=h.trial.kind==='feed'?1:2;h.trial=null;}}
     h.clock += dt; remaining -= dt;

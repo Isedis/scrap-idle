@@ -40,7 +40,7 @@ export function nextGoal(s: GameState): Goal {
     }
     return goal(gateReady(s.horizon) ? 'Горизонт: затвор готов к открытию' : s.horizon.opened===0&&s.horizon.firstHall?'Горизонт: восстановить приёмную галерею':'Горизонт: сборка — '+HALLS[s.horizon.opened].name, 'horizon');
   }
-  if(s.horizon.opened===5)return goal('Контур запущен: доход свалки +25%','horizon');
+  if(s.horizon.opened===5){const h=s.horizon;return {...goal(h.project?(!h.autoBuild||h.mode==='growth'?'Проект на паузе: включите монтаж и «Баланс» или «Сборку»':h.project.kind==='connection'?'Строится силовое подключение':'Строится секция силовой магистрали'):h.powerLinked?'Контур работает: доступна следующая силовая секция':'Контур запущен: доступен проект силового подключения','horizon'),ready:!h.project};}
   if (!s.horizon.open && canEnterHorizon(s.bottom)) return goal('Под шахтой обнаружен металлический стык', 'horizon');
   if (s.bottom.open) return bottomGoal(s);
   if (canDescend(s)) return { ...goal('Яма открыта: можно спуститься', 'city'), ready: true };

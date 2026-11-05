@@ -1,5 +1,5 @@
-import { format, type Decimal } from '../game/num';
-import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, productionPlan, buyMachine, connectHorizon, buildTargets, assemblyFlow, assemblyForecast, assemblyReady,canCommission,startCommission,commissionCost,powerCapacity,chargeRate,setPowerMode,installRegulator,launchPower,chooseHallRecipe, setRouting, installDispatcher, routingShares, type Machine, type BuildMode } from '../game/horizon';
+import { D, format, type Decimal } from '../game/num';
+import { HALLS, canEnterHorizon, enterHorizon, openGate, nodeAvailable, nodeCost, nodeDone, gateReady, horizonRates, machineCost, productionPlan, buyMachine, connectHorizon, buildTargets, assemblyFlow, assemblyForecast, projectCost,startPowerProject,powerAvailable,powerYield,assemblyReady,canCommission,startCommission,commissionCost,powerCapacity,chargeRate,setPowerMode,installRegulator,launchPower,chooseHallRecipe, setRouting, installDispatcher, routingShares, type Machine, type BuildMode } from '../game/horizon';
 import type { GameState } from '../game/state';
 import { el } from './dom';
 import { HorizonCam } from './horizonCam';
@@ -46,12 +46,17 @@ export class HorizonPanel {
   private dispatchFinish=el('p','h-note');
   private gate = el('button', 'btn h-gate', 'ОТКРЫТЬ · 1 УМЕ');
   private note = el('div', 'h-note');
+  private project=el('div','h-project');
+  private projectText=el('p','h-note');
+  private projectBar=el('progress','h-power-bar');
+  private projectStart=el('button','btn');
   private commission=el('div','h-commission');
   private commissionText=el('p','h-note');
   private commissionBar=el('progress','h-power-bar');
   private commissionButtons=new Map<'feed'|'drive',HTMLButtonElement>();
   private power=el('div','h-power');
   private powerText=el('p','h-note');
+  private powerIntro=el('p','h-note');
   private powerBar=el('progress','h-power-bar');
   private pulse=el('button','btn','ЗАПУСТИТЬ ПРИВОД');
   private regulator=el('button','btn','УСТАНОВИТЬ РЕГУЛЯТОР · 400 КМ');
@@ -94,10 +99,12 @@ export class HorizonPanel {
       const root=el('div','h-recipe-option'),button=el('button','btn',label);button.type='button';button.addEventListener('click',()=>{if(chooseHallRecipe(this.getState().horizon,id))this.onChange();});
       root.append(el('p','h-note',description),button);this.recipeButtons.set(id,{root,button});this.recipe.append(root);
     }
+    this.project.append(el('h3','','РАЗВИТИЕ РАБОТАЮЩЕГО КОНТУРА'),this.projectText,this.projectBar,this.projectStart);
+    this.projectBar.max=1;this.projectBar.setAttribute('aria-label','Монтаж проекта');this.projectStart.type='button';this.projectStart.addEventListener('click',()=>{if(startPowerProject(this.getState().horizon,this.getState().city))this.onChange();});
     this.commission.append(el('h3','','ПУСКОНАЛАДКА ГЛАВНОГО МЕХАНИЗМА'),el('p','h-note','Подача проверяется после сборки обеих рам, привод — после сопряжения. Каждое испытание оплачивается один раз и идёт само, включая офлайн. Итоговый запуск: доход свалки +25%.'),this.commissionText,this.commissionBar);
     this.commissionBar.max=1;this.commissionBar.setAttribute('aria-label','Испытание механизма');
     for(const kind of ['feed','drive'] as const){const b=el('button','btn');b.type='button';b.dataset.commission=kind;b.addEventListener('click',()=>{if(startCommission(this.getState().horizon,this.getState().city,kind))this.onChange();});this.commissionButtons.set(kind,b);this.commission.append(b);}
-    this.power.append(el('h3','','СИЛОВОЙ НАКОПИТЕЛЬ'),el('p','h-note','25% выпуска → заряд. 1 ЭН → 1,5 КМ монтажа. УМЕ нужна при открытии зала.'),this.powerText,this.powerBar);
+    this.power.append(el('h3','','СИЛОВОЙ НАКОПИТЕЛЬ'),this.powerIntro,this.powerText,this.powerBar);
     this.powerBar.max=1;this.powerBar.setAttribute('aria-label','Заряд накопителя');
     for(const [id,label] of [['steady','ПОСТОЯННАЯ РАБОТА'],['charge','НАКОПЛЕНИЕ']] as const){const b=el('button','btn',label);b.type='button';b.dataset.power=id;b.addEventListener('click',()=>{if(setPowerMode(this.getState().horizon,id))this.onChange();});this.powerButtons.set(id,b);this.power.append(b);}
     this.pulse.type='button';this.pulse.addEventListener('click',()=>{const h=this.getState().horizon;if(this.inspected!==null&&nodeAvailable(h,this.inspected))h.selected=this.inspected;if(launchPower(h))this.onChange();});
@@ -157,7 +164,7 @@ export class HorizonPanel {
     connections.append(this.connections,el('p','s-why','10 восстановленных улиц дают транспорту +10%, пока город сохраняет их. Подключения необязательны.'));
     this.history.setAttribute('aria-label','Камеры пройденных залов');this.history.addEventListener('change',()=>{this.viewedHall=Number(this.history.value);this.onChange();});
     const targets=el('details','h-targets');targets.append(el('summary','','Осмотреть узлы'),this.nodes);
-    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.recipe,this.routing,this.power,this.commission,this.note,this.nodeText,this.inspection,this.modes,this.allocation,this.allocationNote,this.dispatcher,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
+    this.content.append(this.wallet,this.ume,this.camera.root,this.title,this.recipe,this.routing,this.project,this.power,this.commission,this.note,this.nodeText,this.inspection,this.modes,this.allocation,this.allocationNote,this.dispatcher,this.gate,this.umeOrder.root,targets,machines,settings,connections,el('label','h-note','Осмотреть зал'),this.history);
     this.root.append(this.entry,this.map,this.firstHall.root,this.content);
   }
   render(s: GameState): void {
@@ -176,12 +183,16 @@ export class HorizonPanel {
     this.wallet.textContent=`${format(h.points)} КМ · +${format(r.production.sub(chargeRate(h,s.city)))} КМ/мин`;
     this.ume.textContent=`УМЕ ${format(s.bottom.ume)}`;this.umeOrder.render(s);
     this.title.textContent=hall?`${h.opened+1}/5 · ${hall.name}`:'Главный механизм запущен';
+    this.project.hidden=h.opened!==5;
+    if(h.opened===5){this.projectBar.hidden=!h.project;this.projectStart.hidden=!!h.project;
+      if(h.project){this.projectBar.value=h.project.work.div(h.project.cost).min(1).toNumber();this.projectText.textContent=`${h.project.kind==='connection'?'Силовое подключение':'Секция силовой магистрали'} · ${format(h.project.work)}/${format(h.project.cost)} КМ. ${!h.autoBuild?'Монтаж выключен.':h.mode==='growth'?'Пауза: режим «Рост» копит КМ.':'Материал поступает постепенно; улучшения производства доступны во время стройки.'}`;}
+      else{this.projectText.textContent=h.powerLinked?`Подключение работает. Силовых секций: ${h.powerSections}. Следующая секция добавит 25% базовой ёмкости и 5% базовой эффективности импульса. Режимы «Баланс» и «Сборка» направляют КМ в монтаж.`:'Проект подключит накопитель к дальнейшему строительству и откроет расширение силовой магистрали. Материал расходуется постепенно: «Рост» копит КМ, «Баланс» и «Сборка» строят.';this.projectStart.textContent=`${h.powerLinked?'СЛЕДУЮЩАЯ СИЛОВАЯ СЕКЦИЯ':'НАЧАТЬ СИЛОВОЕ ПОДКЛЮЧЕНИЕ'} · ${format(projectCost(h,s.city))} КМ`;}}
     this.commission.hidden=h.opened!==4;
     if(h.opened===4){this.commissionText.textContent=`ПОДАЧА [${h.finalChecks&1?'OK':'··'}] ─ ПРИВОД [${h.finalChecks&2?'OK':'··'}]${h.trial?` · осталось ${Math.ceil(h.trial.left)} с`:h.finalChecks===3?' · система готова к запуску':''}`;
       this.commissionBar.hidden=!h.trial;if(h.trial)this.commissionBar.value=1-h.trial.left/h.trial.duration;
       for(const [kind,b] of this.commissionButtons){const done=!!(h.finalChecks&(kind==='feed'?1:2));b.disabled=!canCommission(h,kind)||h.points.lt(commissionCost(h,s.city));b.textContent=`${kind==='feed'?'ПРОВЕРИТЬ ПОДАЧУ':'ПРОВЕРИТЬ ПРИВОД'} · ${done?'ГОТОВО':h.trial?.kind===kind?'ИДЁТ ИСПЫТАНИЕ':format(commissionCost(h,s.city))+' КМ'}`;}}
-    const powered=h.opened===3&&h.powerMode!=='legacy';this.power.hidden=!powered;
-    if(powered){const capacity=powerCapacity(h,s.city);this.powerBar.value=h.charge.div(capacity).min(1).toNumber();this.powerText.textContent=`${format(h.charge)} ЭН · ёмкость ${format(capacity)} · заряд +${format(chargeRate(h,s.city))}/мин. ${h.regulator?'Регулятор запускает полный накопитель автоматически при включённом монтаже.':'Ручной запуск расходует заряд на выбранный доступный узел.'}`;this.powerButtons.forEach((b,id)=>{b.classList.toggle('active',h.powerMode===id);b.setAttribute('aria-pressed',String(h.powerMode===id));});this.pulse.disabled=h.charge.lte(1e-8)||gateReady(h);this.regulator.hidden=h.regulator;this.regulator.disabled=!nodeDone(h,0)||h.points.lt(400);}
+    const powered=powerAvailable(h);this.power.hidden=!powered;
+    if(powered){this.powerIntro.textContent=`25% выпуска → заряд. 1 ЭН → ${format(D(powerYield(h)))} КМ монтажа.${h.opened===5?' Проекты не расходуют УМЕ.':' УМЕ нужна при открытии зала.'}`;const capacity=powerCapacity(h,s.city);this.powerBar.value=h.charge.div(capacity).min(1).toNumber();this.powerText.textContent=`${format(h.charge)} ЭН · ёмкость ${format(capacity)} · заряд +${format(chargeRate(h,s.city))}/мин. ${h.regulator?'Регулятор запускает накопитель автоматически при включённом монтаже.':h.opened===5?`Импульс даёт ${format(D(powerYield(h)))} монтажа за ЭН и идёт в текущий проект.`:'Ручной запуск расходует заряд на выбранный доступный узел.'}`;this.powerButtons.forEach((b,id)=>{b.classList.toggle('active',h.powerMode===id);b.setAttribute('aria-pressed',String(h.powerMode===id));});this.pulse.disabled=h.charge.lte(1e-8)||gateReady(h)||h.opened===5&&!h.project;this.regulator.hidden=h.regulator;this.regulator.disabled=!(h.opened===5&&h.powerLinked||nodeDone(h,0))||h.points.lt(400);}
     const network=h.opened===2&&h.routing!=='legacy';this.routing.hidden=!network;
     if(network){const shares=routingShares(h,s.city,targets);this.routeNote.textContent=targets.length&&assemblyFlow(h,s.city).gt(0)?`Поток: ${targets.map((id,i)=>`${hall.nodes[id].name} ${Math.round(shares[i]*100)}%`).join(' · ')}.${h.routing==='auto'?' Диспетчер выбирает приоритет по ограничению выпуска и монтажа.':''}`:'Подача на паузе или монтаж завершён.';
       this.routeButtons.forEach((b,id)=>{b.disabled=id==='auto'&&!h.dispatcher;b.classList.toggle('active',h.routing===id);b.setAttribute('aria-pressed',String(h.routing===id));});this.install.hidden=h.dispatcher;this.install.disabled=!nodeDone(h,0)||h.points.lt(200);}
@@ -198,7 +209,7 @@ export class HorizonPanel {
       b.textContent=`${hall.nodes[i].name} · ${done?'ГОТОВО':active?`${percent}%`:'нужны предыдущие узлы'}`;
       b.classList.toggle('active',targets.includes(i)&&h.mode!=='growth');b.setAttribute('aria-pressed',String(this.inspected===i));
     });
-    this.nodeText.textContent=!hall?'Все пять залов открыты.':h.opened===4&&assemblyReady(h)&&h.finalChecks!==3?'Монтаж готов. Завершите проверки подачи и привода, затем передайте 1 УМЕ для запуска.':h.opened===1&&h.recipe===null?'Монтаж ждёт выбора профиля. Оба варианта сохраняют КМ и открытые возможности.':gateReady(h)?'Монтаж завершён. Можно открыть затвор.':h.mode==='growth'?'Монтаж на паузе: режим «Рост» копит весь выпуск КМ.':!h.autoBuild?'Монтаж выключен. Назначьте узел или включите автомонтаж.':`Сейчас строится: ${targets.map(i=>`${hall.nodes[i].name} · ${format(h.work[i])}/${format(nodeCost(h,i))} КМ`).join('; ')}. ${h.mode==='balance'?'До половины выпуска идёт на сборку.':'Сборка использует выпуск и запас КМ.'}`;
+    this.nodeText.textContent=!hall?(h.project?'Проект использует общий монтажный поток.':'Все пять залов открыты. Можно развивать работающий контур.'):h.opened===4&&assemblyReady(h)&&h.finalChecks!==3?'Монтаж готов. Завершите проверки подачи и привода, затем передайте 1 УМЕ для запуска.':h.opened===1&&h.recipe===null?'Монтаж ждёт выбора профиля. Оба варианта сохраняют КМ и открытые возможности.':gateReady(h)?'Монтаж завершён. Можно открыть затвор.':h.mode==='growth'?'Монтаж на паузе: режим «Рост» копит весь выпуск КМ.':!h.autoBuild?'Монтаж выключен. Назначьте узел или включите автомонтаж.':`Сейчас строится: ${targets.map(i=>`${hall.nodes[i].name} · ${format(h.work[i])}/${format(nodeCost(h,i))} КМ`).join('; ')}. ${h.mode==='balance'?'До половины выпуска идёт на сборку.':'Сборка использует выпуск и запас КМ.'}`;
     const id=this.inspected,selected=id===null?null:hall?.nodes[id];
     this.inspection.hidden=!selected;
     if(selected&&id!==null){
